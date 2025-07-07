@@ -26,6 +26,10 @@ sys.modules['homeassistant.exceptions'] = Mock()
 sys.modules['homeassistant.core'].HomeAssistant = MockHomeAssistant
 sys.modules['homeassistant.exceptions'].HomeAssistantError = MockHomeAssistantError
 
+# Import types after mocking is set up
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+
 from custom_components.smart_climate.entity_waiter import EntityWaiter, EntityNotAvailableError
 
 
