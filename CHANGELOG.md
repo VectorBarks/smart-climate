@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-07-07
+
 ### Added
 - Comprehensive UI configuration with ALL settings available through the interface
 - New UI configuration options:
@@ -73,5 +75,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Safe temperature limits to prevent extreme settings
 - Atomic file operations for data persistence
 
-[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/VectorBarks/smart-climate/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/VectorBarks/smart-climate/releases/tag/v1.0.0
