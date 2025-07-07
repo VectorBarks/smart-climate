@@ -1,11 +1,15 @@
 """Offset calculation engine for Smart Climate Control."""
 
 import logging
-from typing import Optional, Dict, List, Tuple, Callable
+from typing import Optional, Dict, List, Tuple, Callable, TYPE_CHECKING
 import statistics
 from datetime import datetime
 
 from .models import OffsetInput, OffsetResult
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+    from .data_store import SmartClimateDataStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -180,6 +184,89 @@ class LightweightOffsetLearner:
             "mean_error": mean_error,
             "has_sufficient_data": self._has_sufficient_data
         }
+    
+    def serialize_for_persistence(self) -> Dict:
+        """Serialize learner state for persistence.
+        
+        Returns:
+            Dictionary containing all learner state that can be saved to JSON
+        """
+        # Convert datetime objects to ISO strings for JSON serialization
+        serializable_samples = []
+        for sample in self._training_samples:
+            serializable_sample = sample.copy()
+            if isinstance(serializable_sample.get("timestamp"), datetime):
+                serializable_sample["timestamp"] = serializable_sample["timestamp"].isoformat()
+            serializable_samples.append(serializable_sample)
+        
+        return {
+            "samples": serializable_samples,
+            "min_samples": self._min_samples,
+            "max_samples": self._max_samples,
+            "has_sufficient_data": self._has_sufficient_data,
+            "statistics": self.get_statistics()
+        }
+    
+    def restore_from_persistence(self, data: Dict) -> bool:
+        """Restore learner state from persisted data.
+        
+        Args:
+            data: Dictionary containing serialized learner state
+            
+        Returns:
+            True if restoration was successful, False otherwise
+        """
+        try:
+            # Validate data structure
+            if not isinstance(data, dict):
+                _LOGGER.warning("Invalid persistence data: not a dictionary")
+                return False
+            
+            samples = data.get("samples", [])
+            if not isinstance(samples, list):
+                _LOGGER.warning("Invalid samples data in persistence: not a list")
+                return False
+            
+            # Restore samples, converting timestamp strings back to datetime objects
+            restored_samples = []
+            for sample in samples:
+                if not isinstance(sample, dict):
+                    continue
+                
+                # Validate required fields exist
+                required_fields = ["predicted", "actual", "ac_temp", "room_temp", "mode", "hour", "day_of_week"]
+                if not all(field in sample for field in required_fields):
+                    # Skip samples missing required fields
+                    continue
+                
+                # Convert timestamp string back to datetime
+                timestamp_str = sample.get("timestamp")
+                if isinstance(timestamp_str, str):
+                    try:
+                        sample["timestamp"] = datetime.fromisoformat(timestamp_str)
+                    except ValueError:
+                        # Skip samples with invalid timestamps
+                        continue
+                elif not isinstance(timestamp_str, datetime):
+                    # Skip samples with invalid timestamp types
+                    continue
+                
+                restored_samples.append(sample)
+            
+            # Restore state
+            self._training_samples = restored_samples[-self._max_samples:]  # Keep only recent samples
+            self._has_sufficient_data = len(self._training_samples) >= self._min_samples
+            
+            _LOGGER.debug(
+                "Restored %d learning samples, sufficient_data=%s",
+                len(self._training_samples), self._has_sufficient_data
+            )
+            
+            return True
+            
+        except Exception as exc:
+            _LOGGER.warning("Failed to restore learner state from persistence: %s", exc)
+            return False
 
 
 class OffsetEngine:
@@ -242,6 +329,10 @@ class OffsetEngine:
             self._enable_learning = True
             _LOGGER.info("Offset learning has been enabled")
             self._notify_update_callbacks()
+            
+            # Trigger save to persist the learning state change
+            # Note: This is synchronous but will be handled in an async context
+            # by the calling code that manages the enable/disable operations
     
     def disable_learning(self) -> None:
         """Disable the learning system at runtime."""
@@ -249,6 +340,10 @@ class OffsetEngine:
             self._enable_learning = False
             _LOGGER.info("Offset learning has been disabled")
             self._notify_update_callbacks()
+            
+            # Trigger save to persist the learning state change
+            # Note: This is synchronous but will be handled in an async context
+            # by the calling code that manages the enable/disable operations
     
     def calculate_offset(self, input_data: OffsetInput) -> OffsetResult:
         """Calculate temperature offset based on current conditions.
@@ -614,3 +709,114 @@ class OffsetEngine:
         
         # Ensure confidence is within bounds
         return min(1.0, max(0.0, final_confidence))
+    
+    def set_data_store(self, data_store: "SmartClimateDataStore") -> None:
+        """Set the data store for persistence operations.
+        
+        Args:
+            data_store: SmartClimateDataStore instance for this entity
+        """
+        self._data_store = data_store
+        _LOGGER.debug("Data store configured for OffsetEngine")
+    
+    async def async_save_learning_data(self) -> None:
+        """Save learning data to persistent storage.
+        
+        This method serializes the current learning state and saves it
+        to disk so it survives Home Assistant restarts.
+        """
+        if not self._enable_learning or not self._learner:
+            _LOGGER.debug("Learning disabled, skipping save")
+            return
+        
+        if not hasattr(self, "_data_store") or self._data_store is None:
+            _LOGGER.warning("No data store configured, cannot save learning data")
+            return
+        
+        try:
+            # Serialize learner state
+            learning_data = self._learner.serialize_for_persistence()
+            
+            # Save to persistent storage
+            await self._data_store.async_save_learning_data(learning_data)
+            
+            _LOGGER.debug("Learning data saved successfully")
+            
+        except Exception as exc:
+            _LOGGER.error("Failed to save learning data: %s", exc)
+    
+    async def async_load_learning_data(self) -> bool:
+        """Load learning data from persistent storage.
+        
+        This method loads previously saved learning state from disk
+        and restores the learner to its previous state.
+        
+        Returns:
+            True if data was loaded successfully, False otherwise
+        """
+        if not self._enable_learning:
+            _LOGGER.debug("Learning disabled, skipping load")
+            return False
+        
+        if not hasattr(self, "_data_store") or self._data_store is None:
+            _LOGGER.warning("No data store configured, cannot load learning data")
+            return False
+        
+        try:
+            # Load from persistent storage
+            learning_data = await self._data_store.async_load_learning_data()
+            
+            if learning_data is None:
+                _LOGGER.debug("No saved learning data found")
+                return False
+            
+            # Ensure learner is initialized
+            if not self._learner:
+                self._learner = LightweightOffsetLearner()
+            
+            # Restore learner state
+            success = self._learner.restore_from_persistence(learning_data)
+            
+            if success:
+                _LOGGER.info("Learning data loaded successfully")
+                self._notify_update_callbacks()  # Notify about state change
+            else:
+                _LOGGER.warning("Failed to restore learner state from loaded data")
+            
+            return success
+            
+        except Exception as exc:
+            _LOGGER.error("Failed to load learning data: %s", exc)
+            return False
+    
+    async def async_setup_periodic_save(self, hass: "HomeAssistant") -> Callable:
+        """Set up periodic saving of learning data.
+        
+        Args:
+            hass: Home Assistant instance
+            
+        Returns:
+            Function to cancel the periodic saving
+        """
+        from homeassistant.helpers.event import async_track_time_interval
+        from datetime import timedelta
+        
+        if not self._enable_learning:
+            _LOGGER.debug("Learning disabled, skipping periodic save setup")
+            return lambda: None
+        
+        async def _periodic_save(_now=None):
+            """Periodic save callback."""
+            await self.async_save_learning_data()
+        
+        # Save every 10 minutes (600 seconds)
+        remove_listener = async_track_time_interval(
+            hass, _periodic_save, timedelta(seconds=600)
+        )
+        
+        _LOGGER.debug("Periodic learning data save configured (every 10 minutes)")
+        return remove_listener
+    
+    async def _trigger_save_callback(self) -> None:
+        """Trigger a save operation (used for testing and state changes)."""
+        await self.async_save_learning_data()

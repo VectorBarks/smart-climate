@@ -21,13 +21,22 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Smart Climate switch platform from a config entry."""
-    # Retrieve the shared OffsetEngine instance created in __init__.py
-    offset_engine = hass.data[DOMAIN][config_entry.entry_id]["offset_engine"]
-
-    # Use the config entry's title as the device name for consistency
-    climate_name = config_entry.title
-
-    async_add_entities([LearningSwitch(config_entry, offset_engine, climate_name)])
+    # Retrieve the OffsetEngine instances created in __init__.py
+    entry_data = hass.data[DOMAIN][config_entry.entry_id]
+    offset_engines = entry_data.get("offset_engines", {})
+    
+    # Create switches for each climate entity
+    switches = []
+    for entity_id, offset_engine in offset_engines.items():
+        # Use config entry title plus entity ID for unique naming
+        climate_name = f"{config_entry.title} ({entity_id})"
+        switch = LearningSwitch(config_entry, offset_engine, climate_name, entity_id)
+        switches.append(switch)
+    
+    if switches:
+        async_add_entities(switches)
+    else:
+        _LOGGER.warning("No offset engines found for switch setup in entry: %s", config_entry.entry_id)
 
 
 class LearningSwitch(SwitchEntity):
@@ -40,17 +49,21 @@ class LearningSwitch(SwitchEntity):
         config_entry: ConfigEntry,
         offset_engine: OffsetEngine,
         climate_name: str,
+        entity_id: str,
     ) -> None:
         """Initialize the switch."""
         self._offset_engine = offset_engine
+        self._entity_id = entity_id
         
         self._attr_name = "Learning"
-        self._attr_unique_id = f"{config_entry.unique_id}_learning_switch"
+        # Include entity ID in unique_id to ensure uniqueness across multiple entities
+        safe_entity_id = entity_id.replace(".", "_")
+        self._attr_unique_id = f"{config_entry.unique_id}_{safe_entity_id}_learning_switch"
         
         # This links the switch to the same device as the climate entity,
         # ensuring they are grouped together in the Home Assistant UI.
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, config_entry.unique_id)},
+            identifiers={(DOMAIN, f"{config_entry.unique_id}_{safe_entity_id}")},
             name=climate_name,
         )
 
@@ -68,17 +81,29 @@ class LearningSwitch(SwitchEntity):
         """Enable the learning system."""
         try:
             self._offset_engine.enable_learning()
-            _LOGGER.debug("Learning enabled via switch")
+            _LOGGER.debug("Learning enabled via switch for %s", self._entity_id)
+            # Trigger save to persist the learning state change
+            await self._trigger_save()
         except Exception as exc:
-            _LOGGER.error("Failed to enable learning: %s", exc)
+            _LOGGER.error("Failed to enable learning for %s: %s", self._entity_id, exc)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the learning system."""
         try:
             self._offset_engine.disable_learning()
-            _LOGGER.debug("Learning disabled via switch")
+            _LOGGER.debug("Learning disabled via switch for %s", self._entity_id)
+            # Trigger save to persist the learning state change
+            await self._trigger_save()
         except Exception as exc:
-            _LOGGER.error("Failed to disable learning: %s", exc)
+            _LOGGER.error("Failed to disable learning for %s: %s", self._entity_id, exc)
+
+    async def _trigger_save(self) -> None:
+        """Trigger save of learning data when switch state changes."""
+        try:
+            await self._offset_engine.async_save_learning_data()
+            _LOGGER.debug("Learning data saved after switch state change for %s", self._entity_id)
+        except Exception as exc:
+            _LOGGER.warning("Failed to save learning data for %s: %s", self._entity_id, exc)
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
