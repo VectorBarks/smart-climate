@@ -72,6 +72,132 @@ A power sensor helps detect when your AC is actively cooling versus idle.
 - Built-in power reporting (some smart ACs)
 - Dedicated power meters
 
+## Choosing Between Internal and Remote Sensors
+
+Many AC units support switching between their internal sensor and a remote control sensor. This section helps you choose the best option for Smart Climate Control.
+
+### Why Internal Sensors Often Work Better
+
+Counter-intuitively, internal sensors (especially those at exhaust vents) often provide better results with Smart Climate Control than "somewhat accurate" remote sensors.
+
+**Key Advantages of Internal Exhaust Sensors**:
+
+1. **Predictable Offset Patterns**: Exhaust sensors show large, consistent temperature differences
+   - During cooling: Reads 10-15°C below room temperature
+   - When idle: Gradually approaches room temperature
+   - Pattern is highly predictable and learnable
+
+2. **Clear Operating State Detection**: The large temperature swings make it obvious when the AC is running
+   - Cooling: Immediate sharp drop in temperature
+   - Idle: Steady rise back toward room temperature
+   - No ambiguity about operational state
+
+3. **Better Learning Potential**: Larger offsets provide clearer signals for the learning system
+   - More data points across a wider range
+   - Clearer correlation patterns
+   - Faster convergence to optimal offsets
+
+4. **Avoids Double Correction**: Remote sensors with small offsets risk overcorrection
+   - If remote sensor reads 23°C and room is 24°C (1°C difference)
+   - Smart Climate might add another 1-2°C offset
+   - Result: AC set to 21°C when 22°C would suffice
+
+### When to Use Internal Sensors
+
+**Recommended When**:
+- Internal sensor is at the exhaust vent (reads very cold during cooling)
+- You want the most accurate learning over time
+- The offset is large but consistent
+- You have good room temperature sensor placement
+
+**Example Configuration**:
+```yaml
+# AC unit set to use internal sensor mode
+climate:
+  - platform: your_ac_platform
+    name: "Living Room AC"
+    sensor_mode: "internal"  # Platform-specific setting
+
+smart_climate:
+  - name: "Living Room Smart AC"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temperature
+    enable_learning: true  # Works great with predictable offsets
+```
+
+### When to Consider Remote Sensors
+
+**Consider When**:
+- Remote sensor is significantly more accurate than internal
+- Internal sensor has erratic, unpredictable behavior
+- Remote sensor is in a better location than your room sensor
+- You don't plan to use the learning features
+
+**Caution**: If the remote sensor is "somewhat accurate" (within 1-2°C of actual), you may experience:
+- Overcorrection issues
+- Slower learning convergence
+- Less effective offset compensation
+
+### Real-World Example
+
+**Scenario**: AC with switchable internal/remote sensors
+- Internal sensor (at exhaust): Shows 8°C when cooling, 22°C when idle
+- Remote sensor: Shows 23°C consistently (1°C below actual room temp)
+- Actual room temperature: 24°C
+
+**With Internal Sensor**:
+- Clear offset pattern: -16°C when cooling, -2°C when idle
+- Smart Climate learns these patterns quickly
+- Accurate compensation after a few days
+
+**With Remote Sensor**:
+- Small offset: -1°C consistently
+- Risk of double correction
+- Less data for learning system
+- May oscillate around setpoint
+
+### Configuration Tips for Exhaust Sensors
+
+When using internal exhaust sensors, optimize your configuration:
+
+```yaml
+smart_climate:
+  - name: "Living Room Smart AC"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temperature
+    max_offset: 15  # Allow larger offsets for exhaust sensors
+    enable_learning: true
+    learning_rate: 0.3  # Faster learning for consistent patterns
+```
+
+**Key Settings**:
+- **Higher max_offset**: Exhaust sensors need larger offset ranges (10-20°C)
+- **Enable learning**: Predictable patterns make learning highly effective
+- **Moderate learning_rate**: 0.2-0.4 works well for consistent patterns
+
+### Making the Decision
+
+**Questions to Ask**:
+1. How large is the temperature difference between sensors?
+   - Large (>5°C) → Use internal sensor
+   - Small (<2°C) → Consider remote sensor carefully
+
+2. How consistent is the offset pattern?
+   - Very consistent → Use internal sensor
+   - Erratic → Try remote sensor
+
+3. Do you want optimal learning performance?
+   - Yes → Use internal sensor with large offsets
+   - No → Either option works
+
+4. Is the remote sensor truly more accurate?
+   - Yes (±0.5°C) → Consider remote sensor
+   - Somewhat (±1-2°C) → Stick with internal
+
+### Summary
+
+While it may seem logical to use a "more accurate" remote sensor, Smart Climate Control often performs better with predictable, large-offset internal sensors. The learning system thrives on clear patterns, and exhaust vent sensors provide exactly that. Only switch to remote sensors when they offer significant accuracy improvements without the risk of double correction.
+
 ## Sensor Availability and Behavior
 
 ### Critical Sensor: Room Temperature
