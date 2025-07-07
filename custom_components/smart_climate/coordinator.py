@@ -48,17 +48,30 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             outdoor_temp = self._sensor_manager.get_outdoor_temperature()
             power = self._sensor_manager.get_power_consumption()
             
+            # Get AC internal temperature from wrapped entity if available
+            ac_internal_temp = room_temp  # Default to room temp if unavailable
+            if hasattr(self, '_wrapped_entity_id') and self._wrapped_entity_id:
+                wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+                if wrapped_state and wrapped_state.attributes:
+                    ac_temp = wrapped_state.attributes.get("current_temperature")
+                    if ac_temp is not None and isinstance(ac_temp, (int, float)):
+                        ac_internal_temp = float(ac_temp)
+                        _LOGGER.debug(
+                            "Got AC internal temperature: %.1f°C (room: %.1f°C)",
+                            ac_internal_temp, room_temp or 0
+                        )
+            
             # Get mode adjustments
             mode_adjustments = self._mode_manager.get_adjustments()
             
             # Calculate offset if we have room temperature
             calculated_offset = 0.0
             if room_temp is not None:
-                # Create offset input - use reasonable defaults for missing data
+                # Create offset input with proper AC internal temp
                 now = datetime.now()
                 offset_input = OffsetInput(
-                    ac_internal_temp=room_temp,  # We'll use room temp as proxy
-                    room_temp=room_temp,
+                    ac_internal_temp=ac_internal_temp,  # AC's internal sensor
+                    room_temp=room_temp,  # External room sensor
                     outdoor_temp=outdoor_temp,
                     mode=self._mode_manager.current_mode,
                     power_consumption=power,
@@ -70,9 +83,10 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 calculated_offset = offset_result.offset
                 
                 _LOGGER.debug(
-                    "Updated coordinator data: room_temp=%s, outdoor_temp=%s, "
-                    "power=%s, offset=%s, reason=%s",
-                    room_temp, outdoor_temp, power, calculated_offset, offset_result.reason
+                    "Updated coordinator data: ac_internal=%.1f°C, room_temp=%.1f°C, "
+                    "outdoor_temp=%s, power=%s, offset=%.1f°C, reason=%s",
+                    ac_internal_temp, room_temp, outdoor_temp, power, 
+                    calculated_offset, offset_result.reason
                 )
             else:
                 _LOGGER.warning("No room temperature available for offset calculation")

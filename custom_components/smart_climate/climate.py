@@ -2,7 +2,8 @@
 Virtual climate entity that wraps any existing climate entity with intelligent offset compensation."""
 
 import logging
-from typing import Optional, List
+from typing import Optional, List, Callable
+from datetime import datetime
 
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
@@ -10,6 +11,7 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.event import async_call_later
 from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult
@@ -61,6 +63,15 @@ class SmartClimateEntity(ClimateEntity):
         self._config = config
         self._last_offset = 0.0
         self._manual_override = None
+        
+        # Pass wrapped entity ID to coordinator for AC internal temp access
+        self._coordinator._wrapped_entity_id = wrapped_entity_id
+        
+        # Learning feedback tracking
+        self._feedback_tasks: List[Callable] = []  # Cancel functions for scheduled feedbacks
+        self._last_predicted_offset: Optional[float] = None
+        self._last_offset_input: Optional[OffsetInput] = None
+        self._feedback_delay = config.get("learning_feedback_delay", 45)  # Default 45 seconds
         
         # Initialize Home Assistant required attributes
         self._attr_target_temperature = None
@@ -839,6 +850,29 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id
             )
             
+            # Schedule learning feedback if learning is enabled
+            if (hasattr(self._offset_engine, '_enable_learning') and 
+                self._offset_engine._enable_learning and
+                offset_result.offset != 0.0):  # Only schedule if there was an offset
+                
+                # Store current prediction data
+                self._last_predicted_offset = offset_result.offset
+                self._last_offset_input = offset_input
+                
+                # Schedule feedback collection
+                cancel_callback = async_call_later(
+                    self.hass,
+                    self._feedback_delay,
+                    self._collect_learning_feedback
+                )
+                self._feedback_tasks.append(cancel_callback)
+                
+                _LOGGER.debug(
+                    "Scheduled learning feedback in %d seconds for offset %.2f°C",
+                    self._feedback_delay,
+                    offset_result.offset
+                )
+            
         except Exception as exc:
             _LOGGER.error(
                 "Error applying temperature with offset: %s",
@@ -950,14 +984,80 @@ class SmartClimateEntity(ClimateEntity):
             )
             return False
     
+    async def _collect_learning_feedback(self, _now) -> None:
+        """Collect learning feedback after temperature adjustment settles.
+        
+        This method is called after a delay to measure how well the predicted
+        offset worked by comparing current temperatures.
+        
+        Args:
+            _now: Current time (required by async_call_later but not used)
+        """
+        if (self._last_predicted_offset is None or 
+            self._last_offset_input is None):
+            _LOGGER.debug("No prediction data available for feedback")
+            return
+        
+        try:
+            # Get current temperatures
+            current_room_temp = self._sensor_manager.get_room_temperature()
+            if current_room_temp is None:
+                _LOGGER.debug("Room temperature unavailable for feedback")
+                return
+            
+            # Get current AC internal temperature
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if not wrapped_state or not wrapped_state.attributes:
+                _LOGGER.debug("Wrapped entity unavailable for feedback")
+                return
+            
+            current_ac_temp = wrapped_state.attributes.get("current_temperature")
+            if current_ac_temp is None:
+                _LOGGER.debug("AC internal temperature unavailable for feedback")
+                return
+            
+            # Calculate actual offset that exists now
+            actual_offset = float(current_ac_temp) - current_room_temp
+            
+            # Record the performance
+            self._offset_engine.record_actual_performance(
+                predicted_offset=self._last_predicted_offset,
+                actual_offset=-actual_offset,  # Negative because offset is correction needed
+                input_data=self._last_offset_input
+            )
+            
+            _LOGGER.debug(
+                "Learning feedback collected: predicted_offset=%.2f°C, actual_offset=%.2f°C, "
+                "ac_temp=%.1f°C, room_temp=%.1f°C",
+                self._last_predicted_offset,
+                -actual_offset,
+                current_ac_temp,
+                current_room_temp
+            )
+            
+        except Exception as exc:
+            _LOGGER.warning("Error collecting learning feedback: %s", exc)
+    
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
-        await super().async_will_remove_from_hass()
+        # ClimateEntity doesn't have async_will_remove_from_hass, but Entity does
+        # Check if parent has the method before calling
+        if hasattr(super(), 'async_will_remove_from_hass'):
+            await super().async_will_remove_from_hass()
+        
+        # Cancel any pending feedback tasks
+        task_count = len(self._feedback_tasks)
+        for cancel_func in self._feedback_tasks:
+            if cancel_func:
+                cancel_func()
+        self._feedback_tasks.clear()
+        if task_count > 0:
+            _LOGGER.debug("Cancelled %d pending feedback tasks", task_count)
         
         # Stop listening to sensor updates
         await self._sensor_manager.stop_listening()
         
-        _LOGGER.debug("SmartClimateEntity removed from hass: %s", self.entity_id)
+        _LOGGER.debug("SmartClimateEntity removed from hass: %s", self.unique_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entities):
