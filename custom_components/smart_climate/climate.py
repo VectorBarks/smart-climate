@@ -117,7 +117,39 @@ class SmartClimateEntity(ClimateEntity):
     @property
     def target_temperature(self) -> Optional[float]:
         """Return the user-facing target temperature."""
-        return self._attr_target_temperature
+        # If we have a stored target temperature, use it
+        if self._attr_target_temperature is not None:
+            _LOGGER.debug(
+                "Returning stored target temperature: %.1f°C",
+                self._attr_target_temperature
+            )
+            return self._attr_target_temperature
+        
+        # Otherwise, fall back to wrapped entity's target temperature
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                wrapped_target = wrapped_state.attributes.get("target_temperature")
+                if wrapped_target is not None and isinstance(wrapped_target, (int, float)):
+                    _LOGGER.debug(
+                        "Returning wrapped entity target temperature: %.1f°C",
+                        float(wrapped_target)
+                    )
+                    return float(wrapped_target)
+            
+            _LOGGER.debug(
+                "No target temperature available from wrapped entity %s",
+                self._wrapped_entity_id
+            )
+            return None
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting target_temperature from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
     
     @property
     def preset_modes(self) -> List[str]:
@@ -522,17 +554,45 @@ class SmartClimateEntity(ClimateEntity):
             )
             return None
     
+    def debug_state(self) -> dict:
+        """Return debug information about the entity state."""
+        wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+        return {
+            "smart_climate_target_temp": self._attr_target_temperature,
+            "wrapped_entity_id": self._wrapped_entity_id,
+            "wrapped_entity_state": wrapped_state.state if wrapped_state else None,
+            "wrapped_entity_target_temp": wrapped_state.attributes.get("target_temperature") if wrapped_state and wrapped_state.attributes else None,
+            "current_temperature": self.current_temperature,
+            "target_temperature": self.target_temperature,
+            "hvac_mode": self.hvac_mode,
+            "preset_mode": self.preset_mode,
+            "room_sensor_temp": self._sensor_manager.get_room_temperature(),
+            "last_offset": self._last_offset,
+        }
+    
     async def async_set_temperature(self, **kwargs) -> None:
         """Set new target temperature."""
         if "temperature" in kwargs:
             target_temp = kwargs["temperature"]
+            
+            _LOGGER.debug(
+                "Setting target temperature to %.1f°C (was %.1f°C) for %s",
+                target_temp,
+                self._attr_target_temperature or 0,
+                self._wrapped_entity_id
+            )
+            
+            # Store the user-requested target temperature
             self._attr_target_temperature = target_temp
             
             # Calculate offset and apply to wrapped entity
             await self._apply_temperature_with_offset(target_temp)
             
+            # Schedule a state update to refresh the UI
+            self.async_write_ha_state()
+            
             _LOGGER.debug(
-                "Target temperature set to %.1f°C for %s",
+                "Target temperature successfully set to %.1f°C for %s",
                 target_temp,
                 self._wrapped_entity_id
             )
@@ -540,11 +600,21 @@ class SmartClimateEntity(ClimateEntity):
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new preset mode."""
         if preset_mode in self.preset_modes:
+            _LOGGER.debug(
+                "Setting preset mode to %s (was %s) for %s",
+                preset_mode,
+                self._mode_manager.current_mode,
+                self._wrapped_entity_id
+            )
+            
             self._mode_manager.set_mode(preset_mode)
             
             # Recalculate temperature with new mode
             if self._attr_target_temperature is not None:
                 await self._apply_temperature_with_offset(self._attr_target_temperature)
+            
+            # Schedule a state update to refresh the UI
+            self.async_write_ha_state()
             
             _LOGGER.debug(
                 "Preset mode set to %s for %s",
@@ -651,17 +721,33 @@ class SmartClimateEntity(ClimateEntity):
     
     async def _apply_temperature_with_offset(self, target_temp: float) -> None:
         """Apply target temperature with calculated offset to wrapped entity."""
+        _LOGGER.debug(
+            "Applying temperature with offset: target_temp=%.1f°C for %s",
+            target_temp,
+            self._wrapped_entity_id
+        )
+        
         try:
             # Get current sensor readings
             room_temp = self._sensor_manager.get_room_temperature()
             outdoor_temp = self._sensor_manager.get_outdoor_temperature()
             power_consumption = self._sensor_manager.get_power_consumption()
             
+            _LOGGER.debug(
+                "Sensor readings: room_temp=%s, outdoor_temp=%s, power=%s",
+                room_temp, outdoor_temp, power_consumption
+            )
+            
             # Get wrapped entity's current temperature (AC internal sensor)
             wrapped_state = self.hass.states.get(self._wrapped_entity_id)
             ac_internal_temp = None
             if wrapped_state and wrapped_state.attributes.get("current_temperature"):
                 ac_internal_temp = wrapped_state.attributes["current_temperature"]
+            
+            _LOGGER.debug(
+                "Wrapped entity current temperature: %s",
+                ac_internal_temp
+            )
             
             # Skip offset calculation if we don't have essential data
             if room_temp is None or ac_internal_temp is None:
@@ -673,6 +759,11 @@ class SmartClimateEntity(ClimateEntity):
                 await self._temperature_controller.send_temperature_command(
                     self._wrapped_entity_id,
                     target_temp
+                )
+                _LOGGER.debug(
+                    "Sent target temperature %.1f°C directly to %s (no offset)",
+                    target_temp,
+                    self._wrapped_entity_id
                 )
                 return
             
@@ -717,6 +808,12 @@ class SmartClimateEntity(ClimateEntity):
                 offset_result.reason
             )
             
+            _LOGGER.debug(
+                "Successfully sent adjusted temperature %.1f°C to %s",
+                adjusted_temp,
+                self._wrapped_entity_id
+            )
+            
         except Exception as exc:
             _LOGGER.error(
                 "Error applying temperature with offset: %s",
@@ -727,6 +824,11 @@ class SmartClimateEntity(ClimateEntity):
             await self._temperature_controller.send_temperature_command(
                 self._wrapped_entity_id,
                 target_temp
+            )
+            _LOGGER.debug(
+                "Fallback: sent target temperature %.1f°C directly to %s due to error",
+                target_temp,
+                self._wrapped_entity_id
             )
     
     async def async_added_to_hass(self) -> None:
@@ -747,6 +849,21 @@ class SmartClimateEntity(ClimateEntity):
                 wrapped_state.state,
                 list(wrapped_state.attributes.keys()) if wrapped_state.attributes else "None"
             )
+            
+            # Initialize target temperature from wrapped entity if not already set
+            if self._attr_target_temperature is None and wrapped_state.attributes:
+                wrapped_target = wrapped_state.attributes.get("target_temperature")
+                if wrapped_target is not None and isinstance(wrapped_target, (int, float)):
+                    self._attr_target_temperature = float(wrapped_target)
+                    _LOGGER.debug(
+                        "Initialized target temperature from wrapped entity: %.1f°C",
+                        self._attr_target_temperature
+                    )
+                else:
+                    _LOGGER.debug(
+                        "Wrapped entity has no target_temperature attribute or invalid value: %s",
+                        wrapped_target
+                    )
         
         # Start listening to sensor updates
         await self._sensor_manager.start_listening()
@@ -754,7 +871,11 @@ class SmartClimateEntity(ClimateEntity):
         # Register for coordinator updates
         self._coordinator.async_add_listener(self.async_write_ha_state)
         
-        _LOGGER.debug("SmartClimateEntity added to hass: %s", self.entity_id)
+        # Log full debug state for troubleshooting
+        debug_info = self.debug_state()
+        _LOGGER.debug("SmartClimateEntity added to hass: %s, debug state: %s", self.entity_id, debug_info)
+        
+        _LOGGER.debug("SmartClimateEntity fully initialized: %s", self.entity_id)
     
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
