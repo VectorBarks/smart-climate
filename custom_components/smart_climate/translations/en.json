@@ -19,7 +19,10 @@
           "boost_offset": "Boost Mode Cooling Offset (°C)",
           "gradual_adjustment_rate": "Gradual Adjustment Rate (°C per update)",
           "feedback_delay": "Learning Feedback Delay (seconds)",
-          "enable_learning": "Enable Learning System"
+          "enable_learning": "Enable Learning System",
+          "power_idle_threshold": "Power Idle Threshold (W)",
+          "power_min_threshold": "Power Minimum Threshold (W)",
+          "power_max_threshold": "Power Maximum Threshold (W)"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -36,7 +39,10 @@
           "boost_offset": "Aggressive cooling offset applied during Boost mode (negative value)",
           "gradual_adjustment_rate": "Maximum temperature change per update cycle to prevent oscillation",
           "feedback_delay": "Time to wait after temperature adjustment before recording learning feedback",
-          "enable_learning": "Enable the lightweight learning system to improve offset predictions over time"
+          "enable_learning": "Enable the lightweight learning system to improve offset predictions over time",
+          "power_idle_threshold": "Power consumption below this value indicates the AC is idle or off",
+          "power_min_threshold": "Power consumption below this value indicates the AC is running at minimum capacity",
+          "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity"
         }
       }
     },
@@ -46,7 +52,8 @@
       "no_climate_entities": "No climate entities found in your Home Assistant",
       "no_temperature_sensors": "No temperature sensors found in your Home Assistant",
       "invalid_temperature_range": "Invalid temperature range specified",
-      "away_temperature_out_of_range": "Away temperature must be between the minimum and maximum temperatures"
+      "away_temperature_out_of_range": "Away temperature must be between the minimum and maximum temperatures",
+      "power_threshold_invalid": "Power thresholds must be in order: idle < minimum < maximum"
     },
     "abort": {
       "already_configured": "This climate entity is already configured"
@@ -68,7 +75,10 @@
           "boost_offset": "Boost Mode Cooling Offset (°C)",
           "gradual_adjustment_rate": "Gradual Adjustment Rate (°C per update)",
           "feedback_delay": "Learning Feedback Delay (seconds)",
-          "enable_learning": "Enable Learning System"
+          "enable_learning": "Enable Learning System",
+          "power_idle_threshold": "Power Idle Threshold (W)",
+          "power_min_threshold": "Power Minimum Threshold (W)",
+          "power_max_threshold": "Power Maximum Threshold (W)"
         },
         "data_description": {
           "max_offset": "Maximum temperature offset to apply (safety limit)",
@@ -81,7 +91,10 @@
           "boost_offset": "Aggressive cooling offset applied during Boost mode (negative value)",
           "gradual_adjustment_rate": "Maximum temperature change per update cycle to prevent oscillation",
           "feedback_delay": "Time to wait after temperature adjustment before recording learning feedback",
-          "enable_learning": "Enable the lightweight learning system to improve offset predictions over time"
+          "enable_learning": "Enable the lightweight learning system to improve offset predictions over time",
+          "power_idle_threshold": "Power consumption below this value indicates the AC is idle or off",
+          "power_min_threshold": "Power consumption below this value indicates the AC is running at minimum capacity",
+          "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity"
         }
       }
     }

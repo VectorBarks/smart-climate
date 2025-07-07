@@ -6,6 +6,11 @@ import statistics
 from datetime import datetime
 
 from .models import OffsetInput, OffsetResult
+from .const import (
+    DEFAULT_POWER_IDLE_THRESHOLD,
+    DEFAULT_POWER_MIN_THRESHOLD,
+    DEFAULT_POWER_MAX_THRESHOLD,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -23,6 +28,7 @@ class LightweightOffsetLearner:
         self._min_samples = 20  # Minimum samples for predictions
         self._max_samples = 1000  # Maximum samples to keep in memory
         self._has_sufficient_data = False
+        self._power_min_threshold = 100  # Default, will be updated by OffsetEngine
         
     def has_sufficient_data(self) -> bool:
         """Check if learner has sufficient training data."""
@@ -135,8 +141,10 @@ class LightweightOffsetLearner:
             # Power consumption similarity (if available)
             if sample["power"] is not None and input_data.power_consumption is not None:
                 power_diff = abs(sample["power"] - input_data.power_consumption)
-                if power_diff <= 100:  # Within 100W
-                    similarity_score += 1.0 * (100 - power_diff) / 100
+                # Use min threshold as the tolerance for power similarity
+                power_tolerance = self._power_min_threshold
+                if power_diff <= power_tolerance:  # Within tolerance
+                    similarity_score += 1.0 * (power_tolerance - power_diff) / power_tolerance
                 factors += 1.0
             
             # Time of day similarity
@@ -298,6 +306,11 @@ class OffsetEngine:
         self._ml_enabled = config.get("ml_enabled", True)
         self._ml_model = None  # Loaded when available
         
+        # Power thresholds configuration
+        self._power_idle_threshold = config.get("power_idle_threshold", DEFAULT_POWER_IDLE_THRESHOLD)
+        self._power_min_threshold = config.get("power_min_threshold", DEFAULT_POWER_MIN_THRESHOLD)
+        self._power_max_threshold = config.get("power_max_threshold", DEFAULT_POWER_MAX_THRESHOLD)
+        
         # Learning configuration (disabled by default for backward compatibility)
         self._enable_learning = config.get("enable_learning", False)
         self._learner: Optional[LightweightOffsetLearner] = None
@@ -305,19 +318,43 @@ class OffsetEngine:
         
         if self._enable_learning:
             self._learner = LightweightOffsetLearner()
+            # Pass power thresholds to learner for similarity calculations
+            self._learner._power_min_threshold = self._power_min_threshold
             _LOGGER.debug("Learning enabled - LightweightOffsetLearner initialized")
         
         _LOGGER.debug(
-            "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s",
+            "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s, "
+            "power_thresholds(idle=%s, min=%s, max=%s)",
             self._max_offset,
             self._ml_enabled,
-            self._enable_learning
+            self._enable_learning,
+            self._power_idle_threshold,
+            self._power_min_threshold,
+            self._power_max_threshold
         )
     
     @property
     def is_learning_enabled(self) -> bool:
         """Return true if learning is enabled."""
         return self._enable_learning
+    
+    def _get_power_state(self, power_consumption: float) -> str:
+        """Determine power state based on consumption and thresholds.
+        
+        Args:
+            power_consumption: Current power consumption in watts
+            
+        Returns:
+            Power state: "idle", "low", "moderate", or "high"
+        """
+        if power_consumption < self._power_idle_threshold:
+            return "idle"
+        elif power_consumption < self._power_min_threshold:
+            return "low"
+        elif power_consumption < self._power_max_threshold:
+            return "moderate"
+        else:
+            return "high"
     
     def register_update_callback(self, callback: Callable) -> Callable:
         """Register a callback to be called when the learning state changes.
@@ -346,6 +383,8 @@ class OffsetEngine:
         if not self._enable_learning:
             if not self._learner:
                 self._learner = LightweightOffsetLearner()
+                # Pass power thresholds to learner for similarity calculations
+                self._learner._power_min_threshold = self._power_min_threshold
                 _LOGGER.info("LightweightOffsetLearner initialized at runtime")
             self._enable_learning = True
             _LOGGER.info("Offset learning has been enabled")
@@ -377,13 +416,16 @@ class OffsetEngine:
         """Reset all learning data and start fresh."""
         _LOGGER.info("Resetting all learning data for fresh start")
         
-        # Reset the learner if it exists
-        if self._learner:
-            self._learner.reset()
-            _LOGGER.debug("Learner reset completed")
+        # Create a fresh learner instance with current thresholds
+        if self._enable_learning:
+            self._learner = LightweightOffsetLearner()
+            # Pass power thresholds to learner for similarity calculations
+            self._learner._power_min_threshold = self._power_min_threshold
+            _LOGGER.debug("Learner reset with fresh instance")
         
         # Clear any cached learning info
-        self._last_learning_info = {}
+        if hasattr(self, '_last_learning_info'):
+            self._last_learning_info = {}
         
         # Notify callbacks about the reset
         self._notify_update_callbacks()
@@ -519,10 +561,11 @@ class OffsetEngine:
         
         # Consider power consumption
         if input_data.power_consumption is not None:
-            if input_data.power_consumption > 250:  # High power usage
+            power_state = self._get_power_state(input_data.power_consumption)
+            if power_state == "high":  # High power usage
                 # AC is working hard, might need less offset
                 adjusted_offset *= 0.9
-            elif input_data.power_consumption < 100:  # Low power usage
+            elif power_state == "low" or power_state == "idle":  # Low power usage
                 # AC is not working much, might need more offset
                 adjusted_offset *= 1.1
         
@@ -568,10 +611,13 @@ class OffsetEngine:
                 reasons.append("cold outdoor conditions")
         
         if input_data.power_consumption is not None:
-            if input_data.power_consumption > 250:
+            power_state = self._get_power_state(input_data.power_consumption)
+            if power_state == "high":
                 reasons.append("high power usage")
-            elif input_data.power_consumption < 100:
+            elif power_state == "low":
                 reasons.append("low power usage")
+            elif power_state == "idle":
+                reasons.append("AC idle/off")
         
         # Clamping reason
         if clamped:
@@ -718,10 +764,13 @@ class OffsetEngine:
         
         # Power state information
         if input_data.power_consumption is not None:
-            if input_data.power_consumption > 250:
+            power_state = self._get_power_state(input_data.power_consumption)
+            if power_state == "high":
                 reasons.append("high power usage")
-            elif input_data.power_consumption < 100:
+            elif power_state == "low":
                 reasons.append("low power usage")
+            elif power_state == "idle":
+                reasons.append("AC idle/off")
             else:
                 reasons.append("moderate power usage")
         else:
@@ -872,6 +921,8 @@ class OffsetEngine:
                     # If learning is now enabled, ensure the learner instance exists
                     if self._enable_learning and not self._learner:
                         self._learner = LightweightOffsetLearner()
+                        # Pass power thresholds to learner for similarity calculations
+                        self._learner._power_min_threshold = self._power_min_threshold
                         _LOGGER.debug("LightweightOffsetLearner initialized during data load.")
             # --- END OF KEY FIX ---
 
@@ -882,6 +933,8 @@ class OffsetEngine:
                     # Ensure learner exists before restoring data
                     if not self._learner:
                         self._learner = LightweightOffsetLearner()
+                        # Pass power thresholds to learner for similarity calculations
+                        self._learner._power_min_threshold = self._power_min_threshold
 
                     success = self._learner.restore_from_persistence(learner_data)
                     if success:

@@ -31,6 +31,9 @@ from .const import (
     CONF_GRADUAL_ADJUSTMENT_RATE,
     CONF_FEEDBACK_DELAY,
     CONF_ENABLE_LEARNING,
+    CONF_POWER_IDLE_THRESHOLD,
+    CONF_POWER_MIN_THRESHOLD,
+    CONF_POWER_MAX_THRESHOLD,
     DEFAULT_MAX_OFFSET,
     DEFAULT_MIN_TEMPERATURE,
     DEFAULT_MAX_TEMPERATURE,
@@ -42,6 +45,9 @@ from .const import (
     DEFAULT_GRADUAL_ADJUSTMENT_RATE,
     DEFAULT_FEEDBACK_DELAY,
     DEFAULT_ENABLE_LEARNING,
+    DEFAULT_POWER_IDLE_THRESHOLD,
+    DEFAULT_POWER_MIN_THRESHOLD,
+    DEFAULT_POWER_MAX_THRESHOLD,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,6 +62,40 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._errors = {}
 
+    def _add_power_threshold_fields(self, schema: vol.Schema) -> vol.Schema:
+        """Add power threshold fields to the schema."""
+        schema_dict = dict(schema.schema)
+        schema_dict.update({
+            vol.Optional(CONF_POWER_IDLE_THRESHOLD, default=DEFAULT_POWER_IDLE_THRESHOLD): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=1000,
+                    step=10,
+                    unit_of_measurement="W",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_POWER_MIN_THRESHOLD, default=DEFAULT_POWER_MIN_THRESHOLD): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=1000,
+                    step=10,
+                    unit_of_measurement="W",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_POWER_MAX_THRESHOLD, default=DEFAULT_POWER_MAX_THRESHOLD): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=1000,
+                    step=10,
+                    unit_of_measurement="W",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+        })
+        return vol.Schema(schema_dict)
+    
     async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle the initial step."""
         errors = {}
@@ -88,6 +128,8 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "invalid_temperature_range"
                 elif "away_temperature_out_of_range" in str(ex):
                     errors["away_temperature"] = "away_temperature_out_of_range"
+                elif "power threshold" in str(ex):
+                    errors["base"] = "power_threshold_invalid"
                 else:
                     errors["base"] = "unknown"
                     _LOGGER.exception("Unexpected error in config flow: %s", ex)
@@ -219,6 +261,11 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             vol.Optional(CONF_ENABLE_LEARNING, default=DEFAULT_ENABLE_LEARNING): selector.BooleanSelector(),
         })
+        
+        # Add power threshold fields if power sensor is provided in user_input
+        # These fields are conditional on power sensor selection
+        if user_input and user_input.get(CONF_POWER_SENSOR):
+            data_schema = self._add_power_threshold_fields(data_schema)
 
         return self.async_show_form(
             step_id="user",
@@ -281,6 +328,20 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         validated[CONF_GRADUAL_ADJUSTMENT_RATE] = user_input.get(CONF_GRADUAL_ADJUSTMENT_RATE, DEFAULT_GRADUAL_ADJUSTMENT_RATE)
         validated[CONF_FEEDBACK_DELAY] = user_input.get(CONF_FEEDBACK_DELAY, DEFAULT_FEEDBACK_DELAY)
         validated[CONF_ENABLE_LEARNING] = user_input.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING)
+        
+        # Validate power thresholds if power sensor is configured
+        if power_sensor:
+            idle_threshold = user_input.get(CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD)
+            min_threshold = user_input.get(CONF_POWER_MIN_THRESHOLD, DEFAULT_POWER_MIN_THRESHOLD)
+            max_threshold = user_input.get(CONF_POWER_MAX_THRESHOLD, DEFAULT_POWER_MAX_THRESHOLD)
+            
+            # Validate that idle < min < max
+            if not (idle_threshold < min_threshold < max_threshold):
+                raise vol.Invalid("power threshold order invalid: must be idle < min < max")
+            
+            validated[CONF_POWER_IDLE_THRESHOLD] = idle_threshold
+            validated[CONF_POWER_MIN_THRESHOLD] = min_threshold
+            validated[CONF_POWER_MAX_THRESHOLD] = max_threshold
         
         return validated
 
@@ -350,6 +411,49 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize Smart Climate Control options flow."""
         self.config_entry = config_entry
+    
+    def _add_power_threshold_fields_options(self, schema: vol.Schema, current_config: dict, current_options: dict) -> vol.Schema:
+        """Add power threshold fields to the options schema."""
+        schema_dict = dict(schema.schema)
+        schema_dict.update({
+            vol.Optional(
+                CONF_POWER_IDLE_THRESHOLD,
+                default=current_options.get(CONF_POWER_IDLE_THRESHOLD, current_config.get(CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=1000,
+                    step=10,
+                    unit_of_measurement="W",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_POWER_MIN_THRESHOLD,
+                default=current_options.get(CONF_POWER_MIN_THRESHOLD, current_config.get(CONF_POWER_MIN_THRESHOLD, DEFAULT_POWER_MIN_THRESHOLD))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=1000,
+                    step=10,
+                    unit_of_measurement="W",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_POWER_MAX_THRESHOLD,
+                default=current_options.get(CONF_POWER_MAX_THRESHOLD, current_config.get(CONF_POWER_MAX_THRESHOLD, DEFAULT_POWER_MAX_THRESHOLD))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0,
+                    max=1000,
+                    step=10,
+                    unit_of_measurement="W",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+        })
+        return vol.Schema(schema_dict)
 
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle options flow."""
@@ -477,6 +581,10 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 default=current_options.get(CONF_ENABLE_LEARNING, current_config.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING))
             ): selector.BooleanSelector(),
         })
+        
+        # Add power threshold fields if power sensor is configured
+        if current_config.get(CONF_POWER_SENSOR):
+            data_schema = self._add_power_threshold_fields_options(data_schema, current_config, current_options)
 
         return self.async_show_form(
             step_id="init",
