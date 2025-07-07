@@ -286,11 +286,12 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         current_config = self.config_entry.data
+        current_options = self.config_entry.options
         
         data_schema = vol.Schema({
             vol.Optional(
                 CONF_MAX_OFFSET,
-                default=current_config.get(CONF_MAX_OFFSET, DEFAULT_MAX_OFFSET)
+                default=current_options.get(CONF_MAX_OFFSET, current_config.get(CONF_MAX_OFFSET, DEFAULT_MAX_OFFSET))
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=1.0,
@@ -302,7 +303,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_MIN_TEMPERATURE,
-                default=current_config.get(CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE)
+                default=current_options.get(CONF_MIN_TEMPERATURE, current_config.get(CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE))
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=10.0,
@@ -314,7 +315,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_MAX_TEMPERATURE,
-                default=current_config.get(CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE)
+                default=current_options.get(CONF_MAX_TEMPERATURE, current_config.get(CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE))
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=20.0,
@@ -326,7 +327,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_UPDATE_INTERVAL,
-                default=current_config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+                default=current_options.get(CONF_UPDATE_INTERVAL, current_config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=30,
@@ -338,7 +339,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_ML_ENABLED,
-                default=current_config.get(CONF_ML_ENABLED, DEFAULT_ML_ENABLED)
+                default=current_options.get(CONF_ML_ENABLED, current_config.get(CONF_ML_ENABLED, DEFAULT_ML_ENABLED))
             ): selector.BooleanSelector(),
         })
 
