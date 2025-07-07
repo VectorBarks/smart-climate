@@ -85,5 +85,13 @@
         }
       }
     }
+  },
+  "entity": {
+    "button": {
+      "reset_training_data": {
+        "name": "Reset Training Data",
+        "description": "Clear all learned patterns and start fresh with training"
+      }
+    }
   }
 }

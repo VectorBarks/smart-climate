@@ -373,6 +373,23 @@ class OffsetEngine:
         else:
             _LOGGER.debug("Learning disable requested but already disabled")
     
+    def reset_learning(self) -> None:
+        """Reset all learning data and start fresh."""
+        _LOGGER.info("Resetting all learning data for fresh start")
+        
+        # Reset the learner if it exists
+        if self._learner:
+            self._learner.reset()
+            _LOGGER.debug("Learner reset completed")
+        
+        # Clear any cached learning info
+        self._last_learning_info = {}
+        
+        # Notify callbacks about the reset
+        self._notify_update_callbacks()
+        
+        _LOGGER.info("Learning data reset completed")
+    
     def calculate_offset(self, input_data: OffsetInput) -> OffsetResult:
         """Calculate temperature offset based on current conditions.
         

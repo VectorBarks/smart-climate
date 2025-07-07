@@ -224,3 +224,37 @@ class SmartClimateDataStore:
         # Use lock to prevent reading during write operations
         async with self._lock:
             return await self._hass.async_add_executor_job(_load_sync)
+    
+    async def delete_learning_data(self) -> None:
+        """Delete the learning data file.
+        
+        Used when resetting training data to start fresh.
+        """
+        def _delete_sync() -> None:
+            """Synchronous delete operation for executor."""
+            if not self._data_file_path.exists():
+                _LOGGER.debug("No learning data file to delete for %s", self._entity_id)
+                return
+            
+            try:
+                # Create backup before deletion for safety
+                backup_path = self._data_file_path.with_suffix(f"{self._data_file_path.suffix}.deleted")
+                if backup_path.exists():
+                    backup_path.unlink()
+                
+                self._data_file_path.rename(backup_path)
+                _LOGGER.info(
+                    "Learning data file deleted for %s (backed up to %s)",
+                    self._entity_id, backup_path
+                )
+                
+            except (IOError, OSError) as e:
+                _LOGGER.error(
+                    "Error deleting learning data file %s: %s",
+                    self._data_file_path, e
+                )
+                raise
+        
+        # Use lock to prevent deletion during other operations
+        async with self._lock:
+            await self._hass.async_add_executor_job(_delete_sync)

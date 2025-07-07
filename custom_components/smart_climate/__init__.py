@@ -51,6 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "config": entry.data,
         "offset_engines": {},  # Stores one engine per climate entity
+        "data_stores": {},  # Stores one data store per climate entity
         "unload_listeners": [],  # To clean up periodic save tasks
     }
 
@@ -121,6 +122,9 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
     # 2. Try to create persistence - graceful degradation if it fails
     try:
         data_store = SmartClimateDataStore(hass, entity_id)
+        
+        # Store the data store instance for the button platform to use
+        hass.data[DOMAIN][entry.entry_id]["data_stores"][entity_id] = data_store
         
         # 3. Link the data store to the engine for persistence operations
         offset_engine.set_data_store(data_store)
