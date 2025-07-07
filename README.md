@@ -10,6 +10,10 @@
 
 Smart Climate Control is a Home Assistant custom integration that creates a virtual climate entity to compensate for temperature sensor inaccuracies in any climate control device. Using a hybrid approach of immediate rule-based control with background machine learning, it maintains your desired room temperature based on external trusted sensors.
 
+## Important Notice
+
+This is a personal pet project developed for educational and personal use. While the integration has been tested and is functional, no guarantees are provided regarding reliability, compatibility, or fitness for any particular purpose. Use at your own discretion and always test thoroughly in your environment before relying on this integration for critical climate control.
+
 ### The Problem
 Many climate control devices (AC units, heat pumps, mini-splits) suffer from inaccurate internal temperature sensors with offsets that vary based on:
 - Outdoor temperature conditions
@@ -28,30 +32,30 @@ Smart Climate Control dynamically calculates and applies temperature offsets in 
 
 ## Features
 
-### 🎯 **Universal Compatibility**
+### **Universal Compatibility**
 - Works with **ANY** Home Assistant climate entity (WiFi, Zigbee, Z-Wave, IR, etc.)
 - Compatible with **ANY** temperature sensor platform
 - No device-specific dependencies or limitations
 
-### 🧠 **Intelligent Offset Compensation**
+### **Intelligent Offset Compensation**
 - **Hybrid approach**: Immediate rule-based control + background ML learning
 - **Dynamic calculations**: Offsets adapt to environmental conditions
 - **Safety limits**: Configurable temperature and offset limits prevent extremes
 - **Gradual adjustments**: Smooth transitions prevent temperature oscillation
 
-### 🎮 **Operating Modes**
+### **Operating Modes**
 - **Normal**: Standard operation with dynamic offset compensation
 - **Away**: Fixed energy-saving temperature (default 26°C, configurable)
 - **Sleep**: Reduced cooling for quieter nighttime operation  
 - **Boost**: Extra cooling for rapid temperature reduction
 
-### ⚙️ **Flexible Configuration**
+### **Flexible Configuration**
 - **UI Setup**: Easy configuration through Home Assistant interface
 - **YAML Support**: Advanced configuration for power users
 - **Entity Selectors**: Choose your climate device and sensors from dropdowns
 - **Optional Sensors**: Outdoor temperature and power monitoring for enhanced accuracy
 
-### 🛡️ **Safety & Control**
+### **Safety & Control**
 - **Manual Overrides**: Temporary offset adjustments with duration timers
 - **Safety Limits**: Configurable min/max temperatures (default 16-30°C)
 - **Offset Limits**: Maximum offset protection (default ±5°C)
@@ -263,8 +267,8 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/vector-climate/smart-climate/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/vector-climate/smart-climate/discussions)
+- **Issues**: [GitHub Issues](https://github.com/VectorBarks/smart-climate/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/VectorBarks/smart-climate/discussions)
 - **Home Assistant Community**: [Community Forum Topic](https://community.home-assistant.io/)
 
 ## Acknowledgments
@@ -275,4 +279,4 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 ---
 
-**Made with ❄️ for smarter climate control**
+**Made for smarter climate control**
