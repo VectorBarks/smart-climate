@@ -11,6 +11,7 @@ sys.path.insert(0, project_root)
 # Mock homeassistant modules before any imports
 sys.modules['homeassistant'] = MagicMock()
 sys.modules['homeassistant.core'] = MagicMock()
+sys.modules['homeassistant.exceptions'] = MagicMock()
 sys.modules['homeassistant.helpers'] = MagicMock()
 sys.modules['homeassistant.helpers.typing'] = MagicMock()
 sys.modules['homeassistant.helpers.config_validation'] = MagicMock()
@@ -39,6 +40,34 @@ sys.modules['homeassistant.components.climate.const'].HVAC_MODE_HEAT = "heat"
 sys.modules['homeassistant.components.climate.const'].HVAC_MODE_AUTO = "auto"
 sys.modules['homeassistant.components.climate.const'].SUPPORT_TARGET_TEMPERATURE = 1
 sys.modules['homeassistant.components.climate.const'].SUPPORT_PRESET_MODE = 16
+
+# Mock climate enums
+class MockHVACMode:
+    OFF = "off"
+    COOL = "cool"
+    HEAT = "heat"
+    AUTO = "auto"
+
+class MockHVACAction:
+    OFF = "off"
+    COOLING = "cooling"
+    HEATING = "heating"
+    IDLE = "idle"
+
+class MockClimateEntityFeature:
+    TARGET_TEMPERATURE = 1
+    PRESET_MODE = 16
+
+sys.modules['homeassistant.components.climate.const'].HVACMode = MockHVACMode
+sys.modules['homeassistant.components.climate.const'].HVACAction = MockHVACAction
+sys.modules['homeassistant.components.climate.const'].ClimateEntityFeature = MockClimateEntityFeature
+
+# Mock ClimateEntity
+class MockClimateEntity:
+    def __init__(self):
+        pass
+
+sys.modules['homeassistant.components.climate'].ClimateEntity = MockClimateEntity
 
 # Mock voluptuous with proper validation
 sys.modules['voluptuous'] = MagicMock()
