@@ -80,8 +80,10 @@ class LearningSwitch(SwitchEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable the learning system."""
         try:
+            old_state = self._offset_engine.is_learning_enabled
             self._offset_engine.enable_learning()
-            _LOGGER.debug("Learning enabled via switch for %s", self._entity_id)
+            new_state = self._offset_engine.is_learning_enabled
+            _LOGGER.debug("Learning enabled via switch for %s: %s -> %s", self._entity_id, old_state, new_state)
             # Trigger save to persist the learning state change
             await self._trigger_save()
         except Exception as exc:
@@ -90,8 +92,10 @@ class LearningSwitch(SwitchEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the learning system."""
         try:
+            old_state = self._offset_engine.is_learning_enabled
             self._offset_engine.disable_learning()
-            _LOGGER.debug("Learning disabled via switch for %s", self._entity_id)
+            new_state = self._offset_engine.is_learning_enabled
+            _LOGGER.debug("Learning disabled via switch for %s: %s -> %s", self._entity_id, old_state, new_state)
             # Trigger save to persist the learning state change
             await self._trigger_save()
         except Exception as exc:
@@ -100,6 +104,7 @@ class LearningSwitch(SwitchEntity):
     async def _trigger_save(self) -> None:
         """Trigger save of learning data when switch state changes."""
         try:
+            _LOGGER.debug("Triggering learning data save for %s", self._entity_id)
             await self._offset_engine.async_save_learning_data()
             _LOGGER.debug("Learning data saved after switch state change for %s", self._entity_id)
         except Exception as exc:
@@ -110,6 +115,7 @@ class LearningSwitch(SwitchEntity):
         """Return the state attributes of the learning system for diagnostics."""
         try:
             learning_info = self._offset_engine.get_learning_info()
+            _LOGGER.debug("Retrieved learning info for switch %s: %s", self._entity_id, learning_info)
             return {
                 "samples_collected": learning_info.get("samples", 0),
                 "learning_accuracy": learning_info.get("accuracy", 0.0),
@@ -135,17 +141,20 @@ class LearningSwitch(SwitchEntity):
         # This ensures the switch state updates automatically when the
         # learning state changes from any source.
         try:
+            _LOGGER.debug("Setting up learning switch %s callbacks", self._entity_id)
             unregister_callback = self._offset_engine.register_update_callback(self._handle_update)
             self.async_on_remove(unregister_callback)
-            _LOGGER.debug("Registered update callback for learning switch")
+            _LOGGER.debug("Registered update callback for learning switch %s", self._entity_id)
         except Exception as exc:
-            _LOGGER.warning("Failed to register update callback: %s", exc)
+            _LOGGER.warning("Failed to register update callback for %s: %s", self._entity_id, exc)
 
     @callback
     def _handle_update(self) -> None:
         """Handle updates from the OffsetEngine and schedule a state update."""
         try:
+            current_state = self._offset_engine.is_learning_enabled
+            _LOGGER.debug("Learning switch %s state update triggered: is_on=%s", self._entity_id, current_state)
             self.async_write_ha_state()
-            _LOGGER.debug("Learning switch state updated")
+            _LOGGER.debug("Learning switch %s state updated in HA", self._entity_id)
         except Exception as exc:
-            _LOGGER.warning("Failed to update switch state: %s", exc)
+            _LOGGER.warning("Failed to update switch state for %s: %s", self._entity_id, exc)

@@ -93,26 +93,38 @@ class LightweightOffsetLearner:
         if not 0 <= hour <= 23:
             raise ValueError(f"Hour must be between 0 and 23, got {hour}")
         
+        old_sample_count = self._sample_count
         self._sample_count += 1
         
         # Update time-of-day pattern with exponential smoothing
+        old_pattern = self._time_patterns[hour]
         if self._time_pattern_counts[hour] == 0:
             # First data point for this hour
             self._time_patterns[hour] = offset
+            _LOGGER.debug("First pattern for hour %s: offset=%s", hour, offset)
         else:
             # Apply exponential smoothing: new_value = α * new + (1-α) * old
             self._time_patterns[hour] = (
                 self._learning_rate * offset + 
                 (1 - self._learning_rate) * self._time_patterns[hour]
             )
+            _LOGGER.debug(
+                "Updated hour %s pattern: %s -> %s (smoothing rate=%s)",
+                hour, old_pattern, self._time_patterns[hour], self._learning_rate
+            )
         self._time_pattern_counts[hour] += 1
         
         # Update temperature correlation data if outdoor temp available
         if outdoor_temp is not None:
+            temp_data_before = len(self._temp_correlation_data)
             self._temp_correlation_data.append({
                 "outdoor_temp": outdoor_temp,
                 "offset": offset
             })
+            _LOGGER.debug(
+                "Added temperature correlation: outdoor_temp=%s, offset=%s (total: %s)",
+                outdoor_temp, offset, len(self._temp_correlation_data)
+            )
         
         # Update power state patterns if available
         if power_state is not None:
@@ -121,16 +133,22 @@ class LightweightOffsetLearner:
                     "avg_offset": offset,
                     "count": 1
                 }
+                _LOGGER.debug("New power state pattern: %s -> offset=%s", power_state, offset)
             else:
                 # Update running average
                 pattern = self._power_state_patterns[power_state]
+                old_avg = pattern["avg_offset"]
                 total_offset = pattern["avg_offset"] * pattern["count"] + offset
                 pattern["count"] += 1
                 pattern["avg_offset"] = total_offset / pattern["count"]
+                _LOGGER.debug(
+                    "Updated power state %s: avg_offset %s -> %s (count: %s)",
+                    power_state, old_avg, pattern["avg_offset"], pattern["count"]
+                )
         
         _LOGGER.debug(
-            "Pattern updated: hour=%d, offset=%.2f, outdoor_temp=%s, power_state=%s",
-            hour, offset, outdoor_temp, power_state
+            "Pattern update complete: hour=%s, offset=%s, outdoor_temp=%s, power_state=%s, total_samples=%s",
+            hour, offset, outdoor_temp, power_state, self._sample_count
         )
     
     def predict_offset(
@@ -232,9 +250,15 @@ class LightweightOffsetLearner:
         reason = ", ".join(reasons) if reasons else "no patterns available"
         
         _LOGGER.debug(
-            "Offset predicted: %.3f (confidence: %.2f, reason: %s)",
-            final_prediction, confidence, reason
+            "Offset prediction complete: predicted=%s, confidence=%s, components=%s, reason=%s",
+            final_prediction, confidence, len(prediction_components), reason
         )
+        
+        # Log detailed prediction breakdown if multiple components
+        if len(prediction_components) > 1:
+            component_details = [f"{name}:{pred:.3f}(w:{weight:.1f})" 
+                               for name, pred, weight in prediction_components]
+            _LOGGER.debug("Prediction components: %s", ", ".join(component_details))
         
         return OffsetPrediction(
             predicted_offset=final_prediction,
@@ -326,13 +350,21 @@ class LightweightOffsetLearner:
     
     def reset_learning(self) -> None:
         """Reset all learned patterns to initial state."""
+        old_samples = self._sample_count
+        old_patterns = sum(1 for count in self._time_pattern_counts if count > 0)
+        old_power_states = len(self._power_state_patterns)
+        old_temp_data = len(self._temp_correlation_data)
+        
         self._time_patterns = [0.0] * 24
         self._time_pattern_counts = [0] * 24
         self._temp_correlation_data.clear()
         self._power_state_patterns.clear()
         self._sample_count = 0
         
-        _LOGGER.info("All learning patterns have been reset")
+        _LOGGER.info(
+            "Learning patterns reset: cleared %s samples, %s hour patterns, %s power states, %s temp correlations",
+            old_samples, old_patterns, old_power_states, old_temp_data
+        )
     
     def save_patterns(self) -> Dict[str, Any]:
         """Save current patterns for persistence.
@@ -412,9 +444,17 @@ class LightweightOffsetLearner:
         # Load sample count
         self._sample_count = int(patterns["sample_count"])
         
+        hours_with_data = sum(1 for count in self._time_pattern_counts if count > 0)
+        power_states_loaded = len(self._power_state_patterns)
+        temp_correlations = len(self._temp_correlation_data)
+        
         _LOGGER.info(
-            "Loaded patterns: %d samples, %d hours with data, %d power states",
-            self._sample_count,
-            sum(1 for count in self._time_pattern_counts if count > 0),
-            len(self._power_state_patterns)
+            "Loaded patterns: %s samples, %s hours with data, %s power states, %s temp correlations",
+            self._sample_count, hours_with_data, power_states_loaded, temp_correlations
+        )
+        
+        _LOGGER.debug(
+            "Pattern loading details: time_patterns=%s, power_states=%s",
+            list(self._power_state_patterns.keys()),
+            [f"h{h}:{self._time_pattern_counts[h]}" for h in range(24) if self._time_pattern_counts[h] > 0]
         )

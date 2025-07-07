@@ -53,9 +53,16 @@ class LightweightOffsetLearner:
             
             # Keep only recent samples to prevent memory bloat
             if len(self._training_samples) > self._max_samples:
+                removed_count = len(self._training_samples) - self._max_samples
                 self._training_samples = self._training_samples[-self._max_samples:]
+                _LOGGER.debug("Pruned %s old training samples, keeping %s most recent", removed_count, self._max_samples)
             
             self._has_sufficient_data = self.has_sufficient_data()
+            
+            _LOGGER.debug(
+                "Recording learning sample: predicted=%s, actual=%s, samples_count=%s, sufficient_data=%s",
+                predicted_offset, actual_offset, len(self._training_samples), self._has_sufficient_data
+            )
             
         except Exception as exc:
             _LOGGER.warning("Failed to record learning sample: %s", exc)
@@ -63,6 +70,10 @@ class LightweightOffsetLearner:
     def predict_offset(self, input_data: OffsetInput) -> Dict:
         """Predict offset based on learned patterns."""
         if not self._has_sufficient_data:
+            _LOGGER.debug(
+                "Prediction request with insufficient data: have %s samples, need %s",
+                len(self._training_samples), self._min_samples
+            )
             return {"predicted_offset": 0.0, "confidence": 0.0}
         
         try:
@@ -70,6 +81,10 @@ class LightweightOffsetLearner:
             similar_samples = self._find_similar_samples(input_data)
             
             if not similar_samples:
+                _LOGGER.debug(
+                    "No similar samples found for prediction: ac_temp=%s, room_temp=%s, mode=%s",
+                    input_data.ac_internal_temp, input_data.room_temp, input_data.mode
+                )
                 return {"predicted_offset": 0.0, "confidence": 0.0}
             
             # Calculate weighted average of actual offsets
@@ -78,6 +93,11 @@ class LightweightOffsetLearner:
             
             # Calculate confidence based on sample size and consistency
             confidence = self._calculate_prediction_confidence(similar_samples)
+            
+            _LOGGER.debug(
+                "Prediction generated: offset=%s, confidence=%s, similar_samples=%s, from_total=%s",
+                predicted_offset, confidence, len(similar_samples), len(self._training_samples)
+            )
             
             return {
                 "predicted_offset": predicted_offset,
@@ -322,28 +342,36 @@ class OffsetEngine:
     
     def enable_learning(self) -> None:
         """Enable the learning system at runtime."""
+        old_state = self._enable_learning
         if not self._enable_learning:
             if not self._learner:
                 self._learner = LightweightOffsetLearner()
                 _LOGGER.info("LightweightOffsetLearner initialized at runtime")
             self._enable_learning = True
             _LOGGER.info("Offset learning has been enabled")
+            _LOGGER.debug("Learning state changed: %s -> %s", old_state, self._enable_learning)
             self._notify_update_callbacks()
             
             # Trigger save to persist the learning state change
             # Note: This is synchronous but will be handled in an async context
             # by the calling code that manages the enable/disable operations
+        else:
+            _LOGGER.debug("Learning enable requested but already enabled")
     
     def disable_learning(self) -> None:
         """Disable the learning system at runtime."""
+        old_state = self._enable_learning
         if self._enable_learning:
             self._enable_learning = False
             _LOGGER.info("Offset learning has been disabled")
+            _LOGGER.debug("Learning state changed: %s -> %s", old_state, self._enable_learning)
             self._notify_update_callbacks()
             
             # Trigger save to persist the learning state change
             # Note: This is synchronous but will be handled in an async context
             # by the calling code that manages the enable/disable operations
+        else:
+            _LOGGER.debug("Learning disable requested but already disabled")
     
     def calculate_offset(self, input_data: OffsetInput) -> OffsetResult:
         """Calculate temperature offset based on current conditions.
@@ -375,18 +403,31 @@ class OffsetEngine:
             learning_error = None
             if self._enable_learning and self._learner and self._learner.has_sufficient_data():
                 try:
+                    _LOGGER.debug("Attempting learning prediction for offset calculation")
                     learning_result = self._learner.predict_offset(input_data)
                     learned_offset = learning_result["predicted_offset"]
                     learning_confidence = learning_result["confidence"]
+                    
+                    _LOGGER.debug(
+                        "Learning prediction: rule_based=%s, learned=%s, confidence=%s",
+                        rule_based_offset, learned_offset, learning_confidence
+                    )
                     
                     if learning_confidence > 0.1:  # Only use if we have some confidence
                         # Weighted combination based on learning confidence
                         final_offset = (1 - learning_confidence) * rule_based_offset + learning_confidence * learned_offset
                         learning_used = True
+                        _LOGGER.debug("Using learning-enhanced offset: %s (weight: %s)", final_offset, learning_confidence)
+                    else:
+                        _LOGGER.debug("Learning confidence too low (%s), using rule-based only", learning_confidence)
                         
                 except Exception as exc:
                     _LOGGER.warning("Learning prediction failed, using rule-based fallback: %s", exc)
                     learning_error = str(exc)
+            elif self._enable_learning and self._learner:
+                _LOGGER.debug("Learning enabled but insufficient data for prediction")
+            elif self._enable_learning:
+                _LOGGER.debug("Learning enabled but no learner instance available")
             
             # Clamp to maximum limit
             clamped_offset, was_clamped = self._clamp_offset(final_offset)
@@ -407,9 +448,10 @@ class OffsetEngine:
             )
             
             _LOGGER.debug(
-                "Calculated offset: %.2f (clamped: %s, learning: %s, reason: %s, confidence: %.2f)",
-                clamped_offset, was_clamped, learning_used, reason, confidence
+                "Offset calculation complete: final_offset=%s, clamped=%s, learning_used=%s, confidence=%s",
+                clamped_offset, was_clamped, learning_used, confidence
             )
+            _LOGGER.debug("Offset calculation reason: %s", reason)
             
             return OffsetResult(
                 offset=clamped_offset,
@@ -733,8 +775,11 @@ class OffsetEngine:
         try:
             # Prepare learner data only if learning is enabled and learner exists
             learner_data = None
+            sample_count = 0
             if self._enable_learning and self._learner:
                 learner_data = self._learner.serialize_for_persistence()
+                sample_count = learner_data.get("statistics", {}).get("samples", 0)
+                _LOGGER.debug("Serializing learner data: %s samples, learning_enabled=%s", sample_count, self._enable_learning)
 
             # Create a comprehensive state dictionary including the engine's state
             persistent_data = {
@@ -744,6 +789,11 @@ class OffsetEngine:
                 },
                 "learner_data": learner_data
             }
+
+            _LOGGER.debug(
+                "Saving learning data: samples=%s, enabled=%s, has_learner_data=%s",
+                sample_count, self._enable_learning, learner_data is not None
+            )
 
             # Save to persistent storage
             await self._data_store.async_save_learning_data(persistent_data)
@@ -768,6 +818,7 @@ class OffsetEngine:
 
         try:
             # Load from persistent storage
+            _LOGGER.debug("Loading learning data from persistent storage")
             persistent_data = await self._data_store.async_load_learning_data()
 
             if persistent_data is None:
@@ -778,6 +829,8 @@ class OffsetEngine:
             if not isinstance(persistent_data, dict):
                 _LOGGER.warning("Invalid persistent data format: expected dict, got %s", type(persistent_data).__name__)
                 return False
+            
+            _LOGGER.debug("Loaded persistent data with keys: %s", list(persistent_data.keys()))
 
             # --- KEY FIX: Restore engine state from persistence ---
             engine_state = persistent_data.get("engine_state", {})
