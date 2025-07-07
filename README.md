@@ -137,6 +137,7 @@ smart_climate:
     # Learning settings  
     enable_learning: false  # Learning disabled by default (use UI switch to enable)
     data_retention_days: 60 # Days of data to keep for patterns
+    learning_feedback_delay: 45  # Seconds to wait before collecting feedback (default: 45)
 ```
 
 ## Usage
@@ -173,6 +174,109 @@ Use the companion number entities for temporary manual control:
 
 - **Manual Offset** (-5 to +5°C): Override the calculated offset
 - **Override Duration** (0-480 minutes): How long the manual override lasts
+
+## How the Learning System Works
+
+### Overview
+
+The learning system uses a feedback mechanism to continuously improve offset predictions by measuring how well each prediction performs in practice. This creates a self-improving system that adapts to your specific AC unit and environment.
+
+### The Feedback Loop
+
+When you adjust the temperature, here's what happens:
+
+1. **Offset Calculation** (T=0 seconds):
+   - System calculates an offset based on current conditions
+   - Example: You want 22°C, system predicts +2°C offset needed
+   - Sends 20°C to the AC unit to compensate for its sensor inaccuracy
+
+2. **Feedback Collection** (T=45 seconds default):
+   - Measures the AC's internal sensor temperature
+   - Measures the room sensor temperature
+   - Calculates the actual offset that exists between them
+   - Records this data to improve future predictions
+
+3. **Learning Process**:
+   - Compares predicted offset vs actual offset
+   - Uses the error to refine future predictions
+   - Builds patterns based on time of day, temperatures, and power usage
+
+### What the Feedback Measures
+
+**Important**: The feedback mechanism is NOT waiting for the room to reach target temperature. Instead, it's measuring:
+
+- **Sensor Drift**: How the AC's internal sensor reading differs from the room sensor
+- **AC Response**: How the AC unit's sensor responds to setpoint changes
+- **Environmental Patterns**: How conditions affect the sensor offset
+
+This typically stabilizes within 30-90 seconds after a setpoint change, which is why the default delay is 45 seconds.
+
+### Configuring the Feedback Delay
+
+The feedback delay is configurable based on your AC unit's characteristics:
+
+```yaml
+smart_climate:
+  - name: "Living Room Smart AC"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temperature
+    learning_feedback_delay: 90  # Increase to 90 seconds for slower AC units
+```
+
+#### Choosing the Right Delay
+
+- **Fast-responding units** (mini-splits, modern inverters): 30-60 seconds
+- **Standard units**: 45-90 seconds (default: 45)
+- **Slow-responding units** (older systems, large spaces): 90-180 seconds
+
+To determine the optimal delay for your system:
+1. Enable debug logging
+2. Watch how long it takes for the AC's internal temperature to stabilize after changes
+3. Set the feedback delay slightly longer than this stabilization time
+
+### Learning Data Quality
+
+The learning system includes several mechanisms to ensure data quality:
+
+- **Offset Threshold**: Only collects feedback when an offset was actually applied
+- **Sensor Validation**: Skips collection if sensors are unavailable
+- **Edge Case Handling**: Properly handles entity removal and Home Assistant restarts
+- **Outlier Detection**: Future versions will filter anomalous readings
+
+### Monitoring Learning Progress
+
+Track the learning system's performance through:
+
+1. **Debug Logs**: Show each feedback collection and learning update
+   ```
+   Learning feedback collected: predicted_offset=2.00°C, actual_offset=2.30°C
+   ```
+
+2. **Switch Attributes**: Display real-time statistics
+   - `samples_collected`: Total learning samples
+   - `accuracy`: Prediction accuracy percentage
+   - `confidence`: System confidence level
+   - `mean_error`: Average prediction error
+
+3. **Gradual Improvement**: Expect to see accuracy improve over several days as patterns emerge
+
+### Learning System Limitations
+
+Current limitations to be aware of:
+
+- **Single Sample**: Currently takes one measurement per adjustment (future versions may use multiple samples)
+- **Fixed Delay**: Uses a fixed delay rather than detecting stability (enhancement planned)
+- **Linear Learning**: Uses exponential smoothing rather than complex ML models (by design for efficiency)
+
+### Future Enhancements
+
+Planned improvements for the learning system:
+
+- **Adaptive Delays**: Automatically adjust feedback timing based on AC behavior
+- **Multi-point Sampling**: Take multiple measurements to improve accuracy
+- **Stability Detection**: Wait for temperature stability rather than fixed time
+- **Power-based Learning**: Use power consumption patterns to enhance predictions
+- **Seasonal Adaptation**: Adjust learning rates based on seasonal changes
 
 ## Sensor Availability & Behavior
 
