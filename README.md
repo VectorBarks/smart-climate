@@ -63,9 +63,13 @@ Smart Climate Control creates a virtual climate entity that:
 2. Search for "Smart Climate Control"
 3. Select your climate entity and room temperature sensor
 4. Optionally add outdoor temperature and power sensors
-5. Configure your preferences and save
+5. Configure all your preferences through the intuitive UI:
+   - Temperature limits and offset settings
+   - Mode-specific temperatures and offsets
+   - Learning system parameters
+   - Update intervals and adjustment rates
 
-That's it! Your new smart climate entity is ready to use.
+That's it! Your new smart climate entity is ready to use. No YAML editing required!
 
 ### Basic Usage
 
@@ -92,8 +96,11 @@ That's it! Your new smart climate entity is ready to use.
 
 ## Example Configuration
 
+The UI configuration now handles all settings, making YAML configuration optional:
+
 ```yaml
-# Minimal configuration (UI config recommended)
+# YAML configuration is optional - UI configuration is recommended
+# All settings below can be configured through the UI
 smart_climate:
   - name: "Living Room Smart AC"
     climate_entity: climate.living_room_ac

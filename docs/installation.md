@@ -41,7 +41,13 @@ HACS provides the easiest installation and update experience.
 1. Go to Settings → Devices & Services
 2. Click "+ Add Integration"
 3. Search for "Smart Climate Control"
-4. Follow the configuration wizard
+4. Follow the comprehensive configuration wizard which now includes:
+   - Entity selection (climate device and sensors)
+   - Basic settings (temperature limits, offsets, intervals)
+   - Mode configuration (away, sleep, boost settings)
+   - Advanced options (learning parameters, adjustment rates)
+   
+All settings are now available through the UI - no YAML editing required!
 
 ### Option 2: Manual Installation
 
@@ -90,7 +96,7 @@ Restart Home Assistant for the integration to be recognized:
 
 #### Step 4: Configure the Integration
 
-Follow the same configuration steps as HACS installation (Step 3 above).
+Follow the same configuration steps as HACS installation (Step 3 above). The comprehensive UI configuration makes setup quick and easy without any YAML editing.
 
 ## Post-Installation Setup
 
@@ -103,7 +109,7 @@ Follow the same configuration steps as HACS installation (Step 3 above).
 
 ### Initial Configuration
 
-See the [Configuration Guide](configuration.md) for detailed setup instructions.
+The UI configuration wizard provides access to all settings during initial setup. See the [Configuration Guide](configuration.md) for detailed explanations of each setting.
 
 ### Enable Debug Logging (Optional)
 
