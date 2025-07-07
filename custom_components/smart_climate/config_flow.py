@@ -1,0 +1,348 @@
+"""ABOUTME: Config flow for Smart Climate Control integration.
+Provides UI-based configuration with entity selectors and validation."""
+
+import logging
+from typing import Dict, Any, Optional
+
+import voluptuous as vol
+
+from homeassistant import config_entries
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
+from homeassistant.helpers.device_registry import async_get as async_get_device_registry
+from homeassistant.const import CONF_NAME
+
+from .const import (
+    DOMAIN,
+    CONF_CLIMATE_ENTITY,
+    CONF_ROOM_SENSOR,
+    CONF_OUTDOOR_SENSOR,
+    CONF_POWER_SENSOR,
+    CONF_MAX_OFFSET,
+    CONF_MIN_TEMPERATURE,
+    CONF_MAX_TEMPERATURE,
+    CONF_UPDATE_INTERVAL,
+    CONF_ML_ENABLED,
+    DEFAULT_MAX_OFFSET,
+    DEFAULT_MIN_TEMPERATURE,
+    DEFAULT_MAX_TEMPERATURE,
+    DEFAULT_UPDATE_INTERVAL,
+    DEFAULT_ML_ENABLED,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Smart Climate Control."""
+
+    VERSION = 1
+
+    def __init__(self):
+        """Initialize the config flow."""
+        self._errors = {}
+
+    async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
+        """Handle the initial step."""
+        errors = {}
+
+        if user_input is not None:
+            # Validate user input
+            try:
+                validated_input = await self._validate_input(user_input)
+                
+                # Check if already configured
+                if await self._already_configured(validated_input[CONF_CLIMATE_ENTITY]):
+                    errors[CONF_CLIMATE_ENTITY] = "already_configured"
+                else:
+                    # Create the config entry
+                    return self.async_create_entry(
+                        title="Smart Climate Control",
+                        data=validated_input,
+                    )
+            except vol.Invalid as ex:
+                # Handle validation errors
+                if "climate_entity" in str(ex):
+                    errors[CONF_CLIMATE_ENTITY] = "entity_not_found"
+                elif "room_sensor" in str(ex):
+                    errors[CONF_ROOM_SENSOR] = "entity_not_found"
+                elif "outdoor_sensor" in str(ex):
+                    errors[CONF_OUTDOOR_SENSOR] = "entity_not_found"
+                elif "power_sensor" in str(ex):
+                    errors[CONF_POWER_SENSOR] = "entity_not_found"
+                elif "temperature_range" in str(ex):
+                    errors["base"] = "invalid_temperature_range"
+                else:
+                    errors["base"] = "unknown"
+                    _LOGGER.exception("Unexpected error in config flow: %s", ex)
+
+        # Get available entities for selectors
+        climate_entities = await self._get_climate_entities()
+        temperature_sensors = await self._get_temperature_sensors()
+        power_sensors = await self._get_power_sensors()
+
+        # Build the form schema
+        data_schema = vol.Schema({
+            vol.Required(CONF_CLIMATE_ENTITY): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in climate_entities.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Required(CONF_ROOM_SENSOR): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in temperature_sensors.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(CONF_OUTDOOR_SENSOR): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in temperature_sensors.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(CONF_POWER_SENSOR): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in power_sensors.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(CONF_MAX_OFFSET, default=DEFAULT_MAX_OFFSET): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1.0,
+                    max=10.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_MIN_TEMPERATURE, default=DEFAULT_MIN_TEMPERATURE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10.0,
+                    max=25.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_MAX_TEMPERATURE, default=DEFAULT_MAX_TEMPERATURE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=20.0,
+                    max=35.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=30,
+                    max=600,
+                    step=30,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_ML_ENABLED, default=DEFAULT_ML_ENABLED): selector.BooleanSelector(),
+        })
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=data_schema,
+            errors=errors,
+        )
+
+    async def _validate_input(self, user_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate the user input."""
+        validated = {}
+        
+        # Validate climate entity
+        climate_entity = user_input.get(CONF_CLIMATE_ENTITY)
+        if climate_entity:
+            if not await self._entity_exists(climate_entity, "climate"):
+                raise vol.Invalid("climate_entity not found")
+            validated[CONF_CLIMATE_ENTITY] = climate_entity
+        
+        # Validate room sensor
+        room_sensor = user_input.get(CONF_ROOM_SENSOR)
+        if room_sensor:
+            if not await self._entity_exists(room_sensor, "sensor"):
+                raise vol.Invalid("room_sensor not found")
+            validated[CONF_ROOM_SENSOR] = room_sensor
+        
+        # Validate optional outdoor sensor
+        outdoor_sensor = user_input.get(CONF_OUTDOOR_SENSOR)
+        if outdoor_sensor:
+            if not await self._entity_exists(outdoor_sensor, "sensor"):
+                raise vol.Invalid("outdoor_sensor not found")
+            validated[CONF_OUTDOOR_SENSOR] = outdoor_sensor
+        
+        # Validate optional power sensor
+        power_sensor = user_input.get(CONF_POWER_SENSOR)
+        if power_sensor:
+            if not await self._entity_exists(power_sensor, "sensor"):
+                raise vol.Invalid("power_sensor not found")
+            validated[CONF_POWER_SENSOR] = power_sensor
+        
+        # Validate temperature range
+        min_temp = user_input.get(CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE)
+        max_temp = user_input.get(CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE)
+        if min_temp >= max_temp:
+            raise vol.Invalid("temperature_range invalid")
+        
+        # Copy other validated values
+        validated[CONF_MAX_OFFSET] = user_input.get(CONF_MAX_OFFSET, DEFAULT_MAX_OFFSET)
+        validated[CONF_MIN_TEMPERATURE] = min_temp
+        validated[CONF_MAX_TEMPERATURE] = max_temp
+        validated[CONF_UPDATE_INTERVAL] = user_input.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+        validated[CONF_ML_ENABLED] = user_input.get(CONF_ML_ENABLED, DEFAULT_ML_ENABLED)
+        
+        return validated
+
+    async def _entity_exists(self, entity_id: str, domain: str) -> bool:
+        """Check if an entity exists and is from the correct domain."""
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return False
+        return entity_id.startswith(f"{domain}.")
+
+    async def _already_configured(self, climate_entity: str) -> bool:
+        """Check if the climate entity is already configured."""
+        for config_entry in self.hass.config_entries.async_entries(DOMAIN):
+            if config_entry.data.get(CONF_CLIMATE_ENTITY) == climate_entity:
+                return True
+        return False
+
+    async def _get_climate_entities(self) -> Dict[str, str]:
+        """Get all climate entities."""
+        entities = {}
+        
+        for state in self.hass.states.async_all():
+            if state.entity_id.startswith("climate."):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                entities[state.entity_id] = friendly_name
+        
+        return entities
+
+    async def _get_temperature_sensors(self) -> Dict[str, str]:
+        """Get all temperature sensors."""
+        entities = {}
+        
+        for state in self.hass.states.async_all():
+            if (
+                state.entity_id.startswith("sensor.") and
+                state.attributes.get("device_class") == "temperature"
+            ):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                entities[state.entity_id] = friendly_name
+        
+        return entities
+
+    async def _get_power_sensors(self) -> Dict[str, str]:
+        """Get all power sensors."""
+        entities = {}
+        
+        for state in self.hass.states.async_all():
+            if (
+                state.entity_id.startswith("sensor.") and
+                state.attributes.get("device_class") == "power"
+            ):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                entities[state.entity_id] = friendly_name
+        
+        return entities
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> "SmartClimateOptionsFlow":
+        """Get the options flow for this handler."""
+        return SmartClimateOptionsFlow(config_entry)
+
+
+class SmartClimateOptionsFlow(config_entries.OptionsFlow):
+    """Handle Smart Climate Control options."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize Smart Climate Control options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
+        """Handle options flow."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_config = self.config_entry.data
+        
+        data_schema = vol.Schema({
+            vol.Optional(
+                CONF_MAX_OFFSET,
+                default=current_config.get(CONF_MAX_OFFSET, DEFAULT_MAX_OFFSET)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1.0,
+                    max=10.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_MIN_TEMPERATURE,
+                default=current_config.get(CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10.0,
+                    max=25.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_MAX_TEMPERATURE,
+                default=current_config.get(CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=20.0,
+                    max=35.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_UPDATE_INTERVAL,
+                default=current_config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=30,
+                    max=600,
+                    step=30,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_ML_ENABLED,
+                default=current_config.get(CONF_ML_ENABLED, DEFAULT_ML_ENABLED)
+            ): selector.BooleanSelector(),
+        })
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=data_schema,
+        )

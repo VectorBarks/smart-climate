@@ -1,0 +1,42 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Smart Climate Control Setup",
+        "description": "Configure your Smart Climate Control integration",
+        "data": {
+          "climate_entity": "Climate Entity",
+          "room_sensor": "Room Temperature Sensor",
+          "outdoor_sensor": "Outdoor Temperature Sensor (Optional)",
+          "power_sensor": "Power Sensor (Optional)",
+          "max_offset": "Maximum Temperature Offset (°C)",
+          "min_temperature": "Minimum Temperature (°C)",
+          "max_temperature": "Maximum Temperature (°C)",
+          "update_interval": "Update Interval (seconds)",
+          "ml_enabled": "Enable ML Learning"
+        },
+        "data_description": {
+          "climate_entity": "Select the climate entity you want to control",
+          "room_sensor": "Select the temperature sensor for the room",
+          "outdoor_sensor": "Select an outdoor temperature sensor for better predictions",
+          "power_sensor": "Select a power sensor to detect when the AC is running",
+          "max_offset": "Maximum temperature offset to apply (safety limit)",
+          "min_temperature": "Minimum temperature the system can set",
+          "max_temperature": "Maximum temperature the system can set",
+          "update_interval": "How often to update the offset calculation",
+          "ml_enabled": "Enable machine learning for better offset predictions"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Selected entity was not found",
+      "already_configured": "This climate entity is already configured",
+      "no_climate_entities": "No climate entities found in your Home Assistant",
+      "no_temperature_sensors": "No temperature sensors found in your Home Assistant",
+      "invalid_temperature_range": "Invalid temperature range specified"
+    },
+    "abort": {
+      "already_configured": "This climate entity is already configured"
+    }
+  }
+}

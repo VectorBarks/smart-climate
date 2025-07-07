@@ -1,0 +1,9 @@
+{
+  "name": "Smart Climate Control",
+  "hacs": "1.6.0",
+  "domains": [
+    "smart_climate"
+  ],
+  "iot_class": "Local Push",
+  "homeassistant": "2024.1.0"
+}

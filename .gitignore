@@ -1,0 +1,6 @@
+# CLAUDE CODE files - do not commit
+CLAUDE.md
+CLAUDE-AGENT.md
+c_*.md
+*.backup
+.claude_archive/

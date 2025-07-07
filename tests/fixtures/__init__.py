@@ -1,0 +1,1 @@
+"""Fixtures for testing Smart Climate Control."""
