@@ -1,11 +1,185 @@
 """Offset calculation engine for Smart Climate Control."""
 
 import logging
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
+import statistics
+from datetime import datetime
 
 from .models import OffsetInput, OffsetResult
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class LightweightOffsetLearner:
+    """Lightweight learning component for offset prediction."""
+    
+    def __init__(self):
+        """Initialize the learner."""
+        self._training_samples: List[Dict] = []
+        self._min_samples = 20  # Minimum samples for predictions
+        self._max_samples = 1000  # Maximum samples to keep in memory
+        self._has_sufficient_data = False
+        
+    def has_sufficient_data(self) -> bool:
+        """Check if learner has sufficient training data."""
+        return len(self._training_samples) >= self._min_samples
+    
+    def record_sample(
+        self,
+        predicted_offset: float,
+        actual_offset: float,
+        input_data: OffsetInput
+    ) -> None:
+        """Record a training sample."""
+        try:
+            sample = {
+                "predicted": predicted_offset,
+                "actual": actual_offset,
+                "ac_temp": input_data.ac_internal_temp,
+                "room_temp": input_data.room_temp,
+                "outdoor_temp": input_data.outdoor_temp,
+                "mode": input_data.mode,
+                "power": input_data.power_consumption,
+                "hour": input_data.time_of_day.hour,
+                "day_of_week": input_data.day_of_week,
+                "timestamp": datetime.now()
+            }
+            
+            self._training_samples.append(sample)
+            
+            # Keep only recent samples to prevent memory bloat
+            if len(self._training_samples) > self._max_samples:
+                self._training_samples = self._training_samples[-self._max_samples:]
+            
+            self._has_sufficient_data = self.has_sufficient_data()
+            
+        except Exception as exc:
+            _LOGGER.warning("Failed to record learning sample: %s", exc)
+    
+    def predict_offset(self, input_data: OffsetInput) -> Dict:
+        """Predict offset based on learned patterns."""
+        if not self._has_sufficient_data:
+            return {"predicted_offset": 0.0, "confidence": 0.0}
+        
+        try:
+            # Find similar conditions
+            similar_samples = self._find_similar_samples(input_data)
+            
+            if not similar_samples:
+                return {"predicted_offset": 0.0, "confidence": 0.0}
+            
+            # Calculate weighted average of actual offsets
+            actual_offsets = [sample["actual"] for sample in similar_samples]
+            predicted_offset = statistics.mean(actual_offsets)
+            
+            # Calculate confidence based on sample size and consistency
+            confidence = self._calculate_prediction_confidence(similar_samples)
+            
+            return {
+                "predicted_offset": predicted_offset,
+                "confidence": confidence
+            }
+            
+        except Exception as exc:
+            _LOGGER.warning("Failed to predict offset: %s", exc)
+            return {"predicted_offset": 0.0, "confidence": 0.0}
+    
+    def _find_similar_samples(self, input_data: OffsetInput) -> List[Dict]:
+        """Find samples with similar conditions."""
+        similar = []
+        
+        for sample in self._training_samples:
+            similarity_score = 0.0
+            factors = 0
+            
+            # Temperature similarity (most important)
+            temp_diff = abs(sample["ac_temp"] - input_data.ac_internal_temp)
+            if temp_diff <= 2.0:  # Within 2°C
+                similarity_score += 3.0 * (2.0 - temp_diff) / 2.0
+            factors += 3.0
+            
+            room_temp_diff = abs(sample["room_temp"] - input_data.room_temp)
+            if room_temp_diff <= 2.0:
+                similarity_score += 2.0 * (2.0 - room_temp_diff) / 2.0
+            factors += 2.0
+            
+            # Mode similarity
+            if sample["mode"] == input_data.mode:
+                similarity_score += 2.0
+            factors += 2.0
+            
+            # Power consumption similarity (if available)
+            if sample["power"] is not None and input_data.power_consumption is not None:
+                power_diff = abs(sample["power"] - input_data.power_consumption)
+                if power_diff <= 100:  # Within 100W
+                    similarity_score += 1.0 * (100 - power_diff) / 100
+                factors += 1.0
+            
+            # Time of day similarity
+            hour_diff = abs(sample["hour"] - input_data.time_of_day.hour)
+            if hour_diff <= 3:  # Within 3 hours
+                similarity_score += 0.5 * (3 - hour_diff) / 3
+            factors += 0.5
+            
+            # Outdoor temperature similarity (if available)
+            if sample["outdoor_temp"] is not None and input_data.outdoor_temp is not None:
+                outdoor_diff = abs(sample["outdoor_temp"] - input_data.outdoor_temp)
+                if outdoor_diff <= 5.0:  # Within 5°C
+                    similarity_score += 1.0 * (5.0 - outdoor_diff) / 5.0
+                factors += 1.0
+            
+            # Accept samples with >60% similarity
+            if similarity_score / factors > 0.6:
+                similar.append(sample)
+        
+        # Return most recent similar samples (max 10)
+        similar.sort(key=lambda x: x["timestamp"], reverse=True)
+        return similar[:10]
+    
+    def _calculate_prediction_confidence(self, similar_samples: List[Dict]) -> float:
+        """Calculate confidence in prediction based on sample quality."""
+        if not similar_samples:
+            return 0.0
+        
+        # Base confidence from sample size
+        sample_confidence = min(len(similar_samples) / 10, 1.0)
+        
+        # Consistency confidence from variance in actual offsets
+        actual_offsets = [sample["actual"] for sample in similar_samples]
+        if len(actual_offsets) > 1:
+            variance = statistics.variance(actual_offsets)
+            consistency_confidence = max(0.0, 1.0 - variance / 2.0)
+        else:
+            consistency_confidence = 0.5
+        
+        # Overall confidence (weighted average)
+        return 0.6 * sample_confidence + 0.4 * consistency_confidence
+    
+    def get_statistics(self) -> Dict:
+        """Get learning statistics."""
+        if not self._training_samples:
+            return {
+                "samples": 0,
+                "accuracy": 0.0,
+                "mean_error": 0.0,
+                "has_sufficient_data": False
+            }
+        
+        # Calculate prediction accuracy
+        errors = []
+        for sample in self._training_samples:
+            error = abs(sample["predicted"] - sample["actual"])
+            errors.append(error)
+        
+        mean_error = statistics.mean(errors) if errors else 0.0
+        accuracy = max(0.0, 1.0 - mean_error / 2.0)  # Normalize to 0-1
+        
+        return {
+            "samples": len(self._training_samples),
+            "accuracy": accuracy,
+            "mean_error": mean_error,
+            "has_sufficient_data": self._has_sufficient_data
+        }
 
 
 class OffsetEngine:
@@ -17,10 +191,19 @@ class OffsetEngine:
         self._ml_enabled = config.get("ml_enabled", True)
         self._ml_model = None  # Loaded when available
         
+        # Learning configuration (disabled by default for backward compatibility)
+        self._enable_learning = config.get("enable_learning", False)
+        self._learner: Optional[LightweightOffsetLearner] = None
+        
+        if self._enable_learning:
+            self._learner = LightweightOffsetLearner()
+            _LOGGER.debug("Learning enabled - LightweightOffsetLearner initialized")
+        
         _LOGGER.debug(
-            "OffsetEngine initialized with max_offset=%s, ml_enabled=%s",
+            "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s",
             self._max_offset,
-            self._ml_enabled
+            self._ml_enabled,
+            self._enable_learning
         )
     
     def calculate_offset(self, input_data: OffsetInput) -> OffsetResult:
@@ -33,7 +216,7 @@ class OffsetEngine:
             OffsetResult with calculated offset and metadata
         """
         try:
-            # Calculate basic offset from temperature difference
+            # Calculate basic rule-based offset from temperature difference
             temp_diff = input_data.ac_internal_temp - input_data.room_temp
             base_offset = -temp_diff  # Negative because we want to correct the difference
             
@@ -41,24 +224,56 @@ class OffsetEngine:
             mode_adjusted_offset = self._apply_mode_adjustments(base_offset, input_data)
             
             # Apply contextual adjustments
-            context_adjusted_offset = self._apply_contextual_adjustments(
+            rule_based_offset = self._apply_contextual_adjustments(
                 mode_adjusted_offset, input_data
             )
             
+            # Try to use learning if enabled and sufficient data available
+            final_offset = rule_based_offset
+            learning_confidence = 0.0
+            learning_used = False
+            
+            learning_error = None
+            if self._enable_learning and self._learner and self._learner.has_sufficient_data():
+                try:
+                    learning_result = self._learner.predict_offset(input_data)
+                    learned_offset = learning_result["predicted_offset"]
+                    learning_confidence = learning_result["confidence"]
+                    
+                    if learning_confidence > 0.1:  # Only use if we have some confidence
+                        # Weighted combination based on learning confidence
+                        final_offset = (1 - learning_confidence) * rule_based_offset + learning_confidence * learned_offset
+                        learning_used = True
+                        
+                except Exception as exc:
+                    _LOGGER.warning("Learning prediction failed, using rule-based fallback: %s", exc)
+                    learning_error = str(exc)
+            
             # Clamp to maximum limit
-            final_offset, was_clamped = self._clamp_offset(context_adjusted_offset)
+            clamped_offset, was_clamped = self._clamp_offset(final_offset)
             
             # Generate reason and confidence
-            reason = self._generate_reason(input_data, final_offset, was_clamped)
-            confidence = self._calculate_confidence(input_data)
+            reason = self._generate_reason_with_learning(
+                input_data, 
+                clamped_offset, 
+                was_clamped, 
+                learning_used, 
+                learning_confidence,
+                learning_error
+            )
+            confidence = self._calculate_confidence_with_learning(
+                input_data, 
+                learning_used, 
+                learning_confidence
+            )
             
             _LOGGER.debug(
-                "Calculated offset: %.2f (clamped: %s, reason: %s, confidence: %.2f)",
-                final_offset, was_clamped, reason, confidence
+                "Calculated offset: %.2f (clamped: %s, learning: %s, reason: %s, confidence: %.2f)",
+                clamped_offset, was_clamped, learning_used, reason, confidence
             )
             
             return OffsetResult(
-                offset=final_offset,
+                offset=clamped_offset,
                 clamped=was_clamped,
                 reason=reason,
                 confidence=confidence
@@ -197,3 +412,161 @@ class OffsetEngine:
         # For now, this is a placeholder
         _LOGGER.debug("ML model update is not yet implemented")
         self._ml_model = None
+    
+    def record_actual_performance(
+        self,
+        predicted_offset: float,
+        actual_offset: float,
+        input_data: OffsetInput
+    ) -> None:
+        """Record actual performance for learning feedback.
+        
+        Args:
+            predicted_offset: The offset that was predicted/used
+            actual_offset: The offset that actually worked best
+            input_data: The input conditions for this sample
+        """
+        if not self._enable_learning or not self._learner:
+            # Learning disabled, silently ignore
+            return
+        
+        try:
+            self._learner.record_sample(predicted_offset, actual_offset, input_data)
+            _LOGGER.debug(
+                "Recorded learning sample: predicted=%.2f, actual=%.2f",
+                predicted_offset, actual_offset
+            )
+        except Exception as exc:
+            _LOGGER.warning("Failed to record learning sample: %s", exc)
+    
+    def get_learning_info(self) -> Dict:
+        """Get learning information and statistics.
+        
+        Returns:
+            Dictionary containing learning status and statistics
+        """
+        if not self._enable_learning or not self._learner:
+            return {
+                "enabled": False,
+                "samples": 0,
+                "accuracy": 0.0,
+                "confidence": 0.0,
+                "has_sufficient_data": False
+            }
+        
+        try:
+            stats = self._learner.get_statistics()
+            return {
+                "enabled": True,
+                "samples": stats["samples"],
+                "accuracy": stats["accuracy"],
+                "confidence": stats["accuracy"],  # Use accuracy as overall confidence
+                "has_sufficient_data": stats["has_sufficient_data"],
+                "mean_error": stats["mean_error"]
+            }
+        except Exception as exc:
+            _LOGGER.warning("Failed to get learning info: %s", exc)
+            return {
+                "enabled": True,
+                "samples": 0,
+                "accuracy": 0.0,
+                "confidence": 0.0,
+                "has_sufficient_data": False,
+                "error": str(exc)
+            }
+    
+    def _generate_reason_with_learning(
+        self,
+        input_data: OffsetInput,
+        offset: float,
+        clamped: bool,
+        learning_used: bool,
+        learning_confidence: float,
+        learning_error: Optional[str] = None
+    ) -> str:
+        """Generate human-readable reason including learning information."""
+        if offset == 0.0:
+            return "No offset needed - AC and room temperatures match"
+        
+        reasons = []
+        
+        # Main temperature difference reason
+        if input_data.ac_internal_temp > input_data.room_temp:
+            reasons.append("AC sensor warmer than room")
+        elif input_data.ac_internal_temp < input_data.room_temp:
+            reasons.append("AC sensor cooler than room")
+        
+        # Learning information
+        if self._enable_learning and self._learner:
+            if learning_error:
+                reasons.append("learning error, fallback used")
+            elif learning_used:
+                reasons.append(f"learning-enhanced (confidence: {learning_confidence:.1f})")
+            elif self._learner.has_sufficient_data():
+                reasons.append("learning available but low confidence")
+            else:
+                reasons.append("insufficient learning data")
+        
+        # Mode-specific reasons
+        if input_data.mode == "away":
+            reasons.append("away mode adjustment")
+        elif input_data.mode == "sleep":
+            reasons.append("sleep mode adjustment")
+        elif input_data.mode == "boost":
+            reasons.append("boost mode adjustment")
+        
+        # Power state information
+        if input_data.power_consumption is not None:
+            if input_data.power_consumption > 250:
+                reasons.append("high power usage")
+            elif input_data.power_consumption < 100:
+                reasons.append("low power usage")
+            else:
+                reasons.append("moderate power usage")
+        else:
+            if self._enable_learning:
+                reasons.append("power unavailable, temperature-only")
+        
+        # Contextual reasons
+        if input_data.outdoor_temp is not None:
+            outdoor_diff = input_data.outdoor_temp - input_data.room_temp
+            if outdoor_diff > 10:
+                reasons.append("hot outdoor conditions")
+            elif outdoor_diff < -10:
+                reasons.append("cold outdoor conditions")
+        
+        # Clamping reason
+        if clamped:
+            reasons.append(f"clamped to limit (±{self._max_offset}°C)")
+        
+        return ", ".join(reasons) if reasons else "Basic offset calculation"
+    
+    def _calculate_confidence_with_learning(
+        self,
+        input_data: OffsetInput,
+        learning_used: bool,
+        learning_confidence: float
+    ) -> float:
+        """Calculate confidence level including learning factors."""
+        # Start with base confidence from original method
+        base_confidence = 0.5
+        
+        # More data points increase confidence
+        if input_data.outdoor_temp is not None:
+            base_confidence += 0.2
+        if input_data.power_consumption is not None:
+            base_confidence += 0.2
+        
+        # Mode-specific confidence adjustments
+        if input_data.mode in ["away", "sleep", "boost"]:
+            base_confidence += 0.1
+        
+        # Learning contribution
+        if learning_used:
+            # Weight learning confidence with base confidence
+            final_confidence = 0.6 * base_confidence + 0.4 * learning_confidence
+        else:
+            final_confidence = base_confidence
+        
+        # Ensure confidence is within bounds
+        return min(1.0, max(0.0, final_confidence))
