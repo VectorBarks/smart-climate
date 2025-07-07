@@ -48,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = entry.data
     
     # Set up the climate platform
-    await hass.config_entries.async_forward_entry_setup(entry, Platform.CLIMATE)
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.CLIMATE])
     
     return True
 
