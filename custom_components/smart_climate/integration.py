@@ -58,7 +58,7 @@ async def validate_climate_entity(hass: HomeAssistant, entity_id: str) -> bool:
         raise WrappedEntityError(f"Climate entity {entity_id} does not exist")
     
     # Check if entity has required climate attributes
-    required_attrs = ["temperature", "hvac_mode"]
+    required_attrs = ["temperature", "hvac_modes"]
     missing_attrs = [attr for attr in required_attrs if attr not in state.attributes]
     
     if missing_attrs:
