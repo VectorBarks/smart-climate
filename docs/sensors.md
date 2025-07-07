@@ -392,17 +392,119 @@ Understanding your AC's power patterns helps configure the system:
 
 ### Configuring Power Thresholds
 
-Future versions will support power thresholds:
+Smart Climate Control now supports configurable power thresholds to better detect AC operating states:
 
+**Power Thresholds** (configurable in UI when power sensor is present):
+- **Power Idle Threshold**: Power consumption below this indicates AC is idle or off
+- **Power Min Threshold**: Power consumption below this indicates AC running at minimum
+- **Power Max Threshold**: Power consumption above this indicates AC running at high/max
+
+**Default Values**:
+- Idle: 50W (typical standby power)
+- Min: 100W (low fan operation)
+- Max: 250W (active cooling threshold)
+
+### How Power Thresholds Work
+
+The system uses these thresholds to determine AC state:
+
+1. **Power < Idle Threshold (50W)**: AC is off or in standby
+   - No active cooling happening
+   - Learning system notes this as "idle" state
+   
+2. **Idle < Power < Min Threshold (50-100W)**: AC is on but minimal operation
+   - Usually just fan running
+   - Minimal cooling effect
+   
+3. **Min < Power < Max Threshold (100-250W)**: AC is cooling moderately
+   - Normal operation range
+   - Active temperature control
+   
+4. **Power > Max Threshold (>250W)**: AC is working hard
+   - Maximum cooling mode
+   - Usually during initial cooldown or extreme heat
+
+### Adjusting Thresholds for Your AC
+
+Different AC units have different power consumption patterns. Here's how to determine the right thresholds:
+
+**Small Window/Portable Units (5,000-8,000 BTU)**:
 ```yaml
-# Future feature example
+power_idle_threshold: 30    # Lower standby power
+power_min_threshold: 80     # Smaller compressor
+power_max_threshold: 600    # Max around 600-800W
+```
+
+**Medium Split Systems (12,000-18,000 BTU)**:
+```yaml
+power_idle_threshold: 50    # Default values work well
+power_min_threshold: 100    
+power_max_threshold: 1200   # Higher max power
+```
+
+**Large Central AC (24,000+ BTU)**:
+```yaml
+power_idle_threshold: 100   # Control circuits use more
+power_min_threshold: 300    # Larger fans
+power_max_threshold: 3000   # Much higher cooling power
+```
+
+### Determining Your AC's Thresholds
+
+1. **Enable debug logging** to see power readings:
+   ```yaml
+   logger:
+     default: info
+     logs:
+       custom_components.smart_climate: debug
+   ```
+
+2. **Monitor power consumption** in different states:
+   - AC completely off
+   - AC on but not cooling (fan only)
+   - AC cooling normally
+   - AC cooling at maximum (hot day)
+
+3. **Set thresholds** based on observations:
+   - Idle: Slightly above "off" power reading
+   - Min: Between fan-only and light cooling
+   - Max: Between normal and maximum cooling
+
+### Example Configuration
+
+**UI Configuration**: When you configure a power sensor, three new fields appear:
+- Power Idle Threshold (W): 10-500W range
+- Power Min Threshold (W): 50-1000W range  
+- Power Max Threshold (W): 100-5000W range
+
+**YAML Configuration**:
+```yaml
 smart_climate:
   - name: "Living Room Smart AC"
-    power_sensor: sensor.ac_power
-    power_thresholds:
-      idle_below: 200
-      cooling_above: 500
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temperature
+    power_sensor: sensor.ac_smart_plug_power
+    power_idle_threshold: 45     # My AC uses 40W in standby
+    power_min_threshold: 120     # Fan only is about 110W
+    power_max_threshold: 850     # Peaks at 900W on hot days
 ```
+
+### Benefits of Proper Threshold Configuration
+
+**Accurate State Detection**:
+- Know exactly when AC is cooling vs idle
+- Better learning data quality
+- More accurate offset predictions
+
+**Energy Awareness**:
+- Track actual cooling periods
+- Identify efficiency issues
+- Monitor power consumption patterns
+
+**Enhanced Learning**:
+- Correlate power states with temperature changes
+- Learn different offset patterns for different power levels
+- Adapt to AC behavior over time
 
 ## Troubleshooting Sensor Issues
 

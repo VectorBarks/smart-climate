@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Available in device configuration section
   - Creates backup before deletion for safety
   - Allows fresh start for learning system
+- Configurable power thresholds for better AC state detection
+  - Power Idle Threshold (10-500W) - Below this = AC idle/off
+  - Power Min Threshold (50-1000W) - Below this = AC at minimum
+  - Power Max Threshold (100-5000W) - Above this = AC at high/max
+  - Settings only appear in UI when power sensor is configured
+  - Validation ensures idle < min < max thresholds
 
 ### Changed
 - UI configuration is now the recommended method for all users

@@ -84,6 +84,16 @@ The UI now includes ALL configuration options:
 | **Enable Learning** | Start with learning system active | False | True/False |
 | **Data Retention Days** | Days of historical data to keep | 60 | 30 - 365 |
 
+#### Power Sensor Settings (Only visible when power sensor is configured)
+
+| Setting | Description | Default | Range |
+|---------|-------------|---------|-------|
+| **Power Idle Threshold** | Power consumption below this = AC idle/off | 50W | 10 - 500W |
+| **Power Min Threshold** | Power consumption below this = AC at minimum | 100W | 50 - 1000W |
+| **Power Max Threshold** | Power consumption above this = AC at high/max | 250W | 100 - 5000W |
+
+Note: These settings only appear in the UI when a power sensor is configured. The system validates that idle < min < max.
+
 ### Step 4: Options Flow (Modify After Setup)
 
 After initial setup, you can modify ALL settings through the Options flow:
@@ -179,6 +189,9 @@ All parameters below are available in both UI and YAML configuration:
 | `enable_learning` | boolean | No | false | Enable learning on startup |
 | `data_retention_days` | integer | No | 60 | Days to retain learning data |
 | `learning_feedback_delay` | integer | No | 45 | Delay before feedback collection (seconds) |
+| `power_idle_threshold` | integer | No | 50 | Power threshold for idle state (W) |
+| `power_min_threshold` | integer | No | 100 | Power threshold for minimum operation (W) |
+| `power_max_threshold` | integer | No | 250 | Power threshold for maximum operation (W) |
 
 ## Learning Feedback Delay Configuration
 
