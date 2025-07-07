@@ -25,11 +25,23 @@ from .const import (
     CONF_MAX_TEMPERATURE,
     CONF_UPDATE_INTERVAL,
     CONF_ML_ENABLED,
+    CONF_AWAY_TEMPERATURE,
+    CONF_SLEEP_OFFSET,
+    CONF_BOOST_OFFSET,
+    CONF_GRADUAL_ADJUSTMENT_RATE,
+    CONF_FEEDBACK_DELAY,
+    CONF_ENABLE_LEARNING,
     DEFAULT_MAX_OFFSET,
     DEFAULT_MIN_TEMPERATURE,
     DEFAULT_MAX_TEMPERATURE,
     DEFAULT_UPDATE_INTERVAL,
     DEFAULT_ML_ENABLED,
+    DEFAULT_AWAY_TEMPERATURE,
+    DEFAULT_SLEEP_OFFSET,
+    DEFAULT_BOOST_OFFSET,
+    DEFAULT_GRADUAL_ADJUSTMENT_RATE,
+    DEFAULT_FEEDBACK_DELAY,
+    DEFAULT_ENABLE_LEARNING,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,6 +86,8 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors[CONF_POWER_SENSOR] = "entity_not_found"
                 elif "temperature_range" in str(ex):
                     errors["base"] = "invalid_temperature_range"
+                elif "away_temperature_out_of_range" in str(ex):
+                    errors["away_temperature"] = "away_temperature_out_of_range"
                 else:
                     errors["base"] = "unknown"
                     _LOGGER.exception("Unexpected error in config flow: %s", ex)
@@ -158,6 +172,52 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             ),
             vol.Optional(CONF_ML_ENABLED, default=DEFAULT_ML_ENABLED): selector.BooleanSelector(),
+            vol.Optional(CONF_AWAY_TEMPERATURE, default=DEFAULT_AWAY_TEMPERATURE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10.0,
+                    max=35.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_SLEEP_OFFSET, default=DEFAULT_SLEEP_OFFSET): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-5.0,
+                    max=5.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_BOOST_OFFSET, default=DEFAULT_BOOST_OFFSET): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-10.0,
+                    max=0.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_GRADUAL_ADJUSTMENT_RATE, default=DEFAULT_GRADUAL_ADJUSTMENT_RATE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.1,
+                    max=2.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_FEEDBACK_DELAY, default=DEFAULT_FEEDBACK_DELAY): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10,
+                    max=300,
+                    step=5,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_ENABLE_LEARNING, default=DEFAULT_ENABLE_LEARNING): selector.BooleanSelector(),
         })
 
         return self.async_show_form(
@@ -204,12 +264,23 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if min_temp >= max_temp:
             raise vol.Invalid("temperature_range invalid")
         
+        # Validate away temperature is within min/max range
+        away_temp = user_input.get(CONF_AWAY_TEMPERATURE, DEFAULT_AWAY_TEMPERATURE)
+        if away_temp < min_temp or away_temp > max_temp:
+            raise vol.Invalid("away_temperature_out_of_range")
+        
         # Copy other validated values
         validated[CONF_MAX_OFFSET] = user_input.get(CONF_MAX_OFFSET, DEFAULT_MAX_OFFSET)
         validated[CONF_MIN_TEMPERATURE] = min_temp
         validated[CONF_MAX_TEMPERATURE] = max_temp
         validated[CONF_UPDATE_INTERVAL] = user_input.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
         validated[CONF_ML_ENABLED] = user_input.get(CONF_ML_ENABLED, DEFAULT_ML_ENABLED)
+        validated[CONF_AWAY_TEMPERATURE] = away_temp
+        validated[CONF_SLEEP_OFFSET] = user_input.get(CONF_SLEEP_OFFSET, DEFAULT_SLEEP_OFFSET)
+        validated[CONF_BOOST_OFFSET] = user_input.get(CONF_BOOST_OFFSET, DEFAULT_BOOST_OFFSET)
+        validated[CONF_GRADUAL_ADJUSTMENT_RATE] = user_input.get(CONF_GRADUAL_ADJUSTMENT_RATE, DEFAULT_GRADUAL_ADJUSTMENT_RATE)
+        validated[CONF_FEEDBACK_DELAY] = user_input.get(CONF_FEEDBACK_DELAY, DEFAULT_FEEDBACK_DELAY)
+        validated[CONF_ENABLE_LEARNING] = user_input.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING)
         
         return validated
 
@@ -340,6 +411,70 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_ML_ENABLED,
                 default=current_options.get(CONF_ML_ENABLED, current_config.get(CONF_ML_ENABLED, DEFAULT_ML_ENABLED))
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_AWAY_TEMPERATURE,
+                default=current_options.get(CONF_AWAY_TEMPERATURE, current_config.get(CONF_AWAY_TEMPERATURE, DEFAULT_AWAY_TEMPERATURE))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10.0,
+                    max=35.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_SLEEP_OFFSET,
+                default=current_options.get(CONF_SLEEP_OFFSET, current_config.get(CONF_SLEEP_OFFSET, DEFAULT_SLEEP_OFFSET))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-5.0,
+                    max=5.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_BOOST_OFFSET,
+                default=current_options.get(CONF_BOOST_OFFSET, current_config.get(CONF_BOOST_OFFSET, DEFAULT_BOOST_OFFSET))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-10.0,
+                    max=0.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_GRADUAL_ADJUSTMENT_RATE,
+                default=current_options.get(CONF_GRADUAL_ADJUSTMENT_RATE, current_config.get(CONF_GRADUAL_ADJUSTMENT_RATE, DEFAULT_GRADUAL_ADJUSTMENT_RATE))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.1,
+                    max=2.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_FEEDBACK_DELAY,
+                default=current_options.get(CONF_FEEDBACK_DELAY, current_config.get(CONF_FEEDBACK_DELAY, DEFAULT_FEEDBACK_DELAY))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10,
+                    max=300,
+                    step=5,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_ENABLE_LEARNING,
+                default=current_options.get(CONF_ENABLE_LEARNING, current_config.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING))
             ): selector.BooleanSelector(),
         })
 

@@ -13,7 +13,13 @@
           "min_temperature": "Minimum Temperature (°C)",
           "max_temperature": "Maximum Temperature (°C)",
           "update_interval": "Update Interval (seconds)",
-          "ml_enabled": "Enable ML Learning"
+          "ml_enabled": "Enable ML Learning",
+          "away_temperature": "Away Mode Temperature (°C)",
+          "sleep_offset": "Sleep Mode Temperature Offset (°C)",
+          "boost_offset": "Boost Mode Cooling Offset (°C)",
+          "gradual_adjustment_rate": "Gradual Adjustment Rate (°C per update)",
+          "feedback_delay": "Learning Feedback Delay (seconds)",
+          "enable_learning": "Enable Learning System"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -24,7 +30,13 @@
           "min_temperature": "Minimum temperature the system can set",
           "max_temperature": "Maximum temperature the system can set", 
           "update_interval": "How often to update the offset calculation",
-          "ml_enabled": "Enable machine learning for better offset predictions"
+          "ml_enabled": "Enable machine learning for better offset predictions",
+          "away_temperature": "Fixed temperature to maintain when Away mode is active",
+          "sleep_offset": "Additional temperature offset applied during Sleep/Night mode for quieter operation",
+          "boost_offset": "Aggressive cooling offset applied during Boost mode (negative value)",
+          "gradual_adjustment_rate": "Maximum temperature change per update cycle to prevent oscillation",
+          "feedback_delay": "Time to wait after temperature adjustment before recording learning feedback",
+          "enable_learning": "Enable the lightweight learning system to improve offset predictions over time"
         }
       }
     },
@@ -33,10 +45,45 @@
       "already_configured": "This climate entity is already configured",
       "no_climate_entities": "No climate entities found in your Home Assistant",
       "no_temperature_sensors": "No temperature sensors found in your Home Assistant",
-      "invalid_temperature_range": "Invalid temperature range specified"
+      "invalid_temperature_range": "Invalid temperature range specified",
+      "away_temperature_out_of_range": "Away temperature must be between the minimum and maximum temperatures"
     },
     "abort": {
       "already_configured": "This climate entity is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Smart Climate Control Options",
+        "description": "Adjust settings for your Smart Climate Control integration",
+        "data": {
+          "max_offset": "Maximum Temperature Offset (°C)",
+          "min_temperature": "Minimum Temperature (°C)",
+          "max_temperature": "Maximum Temperature (°C)",
+          "update_interval": "Update Interval (seconds)",
+          "ml_enabled": "Enable ML Learning",
+          "away_temperature": "Away Mode Temperature (°C)",
+          "sleep_offset": "Sleep Mode Temperature Offset (°C)",
+          "boost_offset": "Boost Mode Cooling Offset (°C)",
+          "gradual_adjustment_rate": "Gradual Adjustment Rate (°C per update)",
+          "feedback_delay": "Learning Feedback Delay (seconds)",
+          "enable_learning": "Enable Learning System"
+        },
+        "data_description": {
+          "max_offset": "Maximum temperature offset to apply (safety limit)",
+          "min_temperature": "Minimum temperature the system can set",
+          "max_temperature": "Maximum temperature the system can set", 
+          "update_interval": "How often to update the offset calculation",
+          "ml_enabled": "Enable machine learning for better offset predictions",
+          "away_temperature": "Fixed temperature to maintain when Away mode is active",
+          "sleep_offset": "Additional temperature offset applied during Sleep/Night mode for quieter operation",
+          "boost_offset": "Aggressive cooling offset applied during Boost mode (negative value)",
+          "gradual_adjustment_rate": "Maximum temperature change per update cycle to prevent oscillation",
+          "feedback_delay": "Time to wait after temperature adjustment before recording learning feedback",
+          "enable_learning": "Enable the lightweight learning system to improve offset predictions over time"
+        }
+      }
     }
   }
 }

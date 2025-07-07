@@ -71,7 +71,7 @@ class SmartClimateEntity(ClimateEntity):
         self._feedback_tasks: List[Callable] = []  # Cancel functions for scheduled feedbacks
         self._last_predicted_offset: Optional[float] = None
         self._last_offset_input: Optional[OffsetInput] = None
-        self._feedback_delay = config.get("learning_feedback_delay", 45)  # Default 45 seconds
+        self._feedback_delay = config.get("feedback_delay", 45)  # Default 45 seconds
         
         # Initialize Home Assistant required attributes
         self._attr_target_temperature = None
