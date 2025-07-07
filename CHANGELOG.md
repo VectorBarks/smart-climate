@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Options flow now includes all configuration parameters
 - Configuration validation ensures away temperature is within min/max range
 - Enhanced user experience with no YAML editing required for any setting
+- Reset Training Data button entity for clearing all learned patterns
+  - Available in device configuration section
+  - Creates backup before deletion for safety
+  - Allows fresh start for learning system
 
 ### Changed
 - UI configuration is now the recommended method for all users

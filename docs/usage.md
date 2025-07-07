@@ -121,6 +121,32 @@ prediction_quality: "good"
 - **1 week**: Good accuracy for regular conditions
 - **2-4 weeks**: Seasonal and weather patterns develop
 
+### Resetting Training Data
+
+If you need to clear all learned patterns and start fresh, use the reset training data button:
+
+**Entity**: `button.{climate_name}_reset_training_data`
+- Location: Device configuration section in Home Assistant UI
+- Icon: Database remove (mdi:database-remove)
+- Action: Clears all learning data (both in-memory and saved files)
+- Safety: Creates a backup before deletion
+
+**When to reset training data**:
+- After major changes to your AC system or room layout
+- When moving the integration to a different room or AC unit
+- If learning patterns become inaccurate due to unusual usage
+- At the start of a new season if you prefer fresh patterns
+- After significant sensor placement changes
+
+**How to reset**:
+1. Navigate to your Smart Climate device in Home Assistant
+2. Find the "Reset Training Data" button in configuration
+3. Press the button to clear all learned patterns
+4. The system creates a backup before deletion (check logs for location)
+5. Learning starts fresh with the next data collection
+
+**Note**: After resetting, the system will rely on rule-based calculations until new patterns develop. Allow 24-48 hours for basic patterns to re-emerge.
+
 ## Manual Override Controls
 
 For temporary adjustments, use the manual override number entities:
