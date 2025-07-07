@@ -157,6 +157,53 @@ Use the companion number entities for temporary manual control:
 - **Manual Offset** (-5 to +5°C): Override the calculated offset
 - **Override Duration** (0-480 minutes): How long the manual override lasts
 
+## Sensor Availability & Behavior
+
+Smart Climate Control handles sensor availability gracefully to ensure reliable operation:
+
+### Critical Sensors
+
+**Room Temperature Sensor** (Required)
+- **When Available**: Provides current room temperature for accurate offset calculations
+- **When Unavailable**: The Smart Climate entity shows no current temperature (`current_temperature` becomes `None`)
+- **Impact**: The system cannot calculate accurate offsets without room temperature data
+- **Recovery**: Automatically resumes normal operation when the sensor becomes available again
+
+### Optional Sensors
+
+**Thermostat/Climate Device** (Wrapped Entity)
+- **When Available**: Full climate control functionality with temperature setpoints and mode changes
+- **When Unavailable**: The Smart Climate entity can still show room temperature from the sensor, but cannot control the actual device
+- **Impact**: Temperature control commands will not be executed until the device becomes available
+- **Recovery**: Control commands are queued and executed when the device reconnects
+
+**Outdoor Temperature Sensor** (Optional)
+- **When Available**: Enhances offset calculations with outdoor temperature correlation
+- **When Unavailable**: System continues normal operation using only room temperature data
+- **Impact**: Slightly reduced accuracy for outdoor temperature-dependent offset patterns
+- **Recovery**: Seamlessly incorporates outdoor data when the sensor becomes available
+
+**Power Consumption Sensor** (Optional)
+- **When Available**: Provides better detection of actual cooling/heating operation
+- **When Unavailable**: System relies on HVAC mode and state for operation detection
+- **Impact**: Minimal impact on core functionality
+- **Recovery**: Enhanced state detection resumes when power sensor becomes available
+
+### Sensor Reliability Features
+
+- **Graceful Degradation**: The system continues operating with available sensors
+- **Automatic Recovery**: Full functionality resumes when sensors become available
+- **Fallback Defaults**: Sensible defaults prevent system failures
+- **Status Logging**: Sensor availability changes are logged for troubleshooting
+- **No Manual Intervention**: Recovery is automatic without requiring restarts
+
+### Important Notes
+
+- The **room temperature sensor is critical** - without it, the system cannot calculate meaningful offsets
+- All other sensors are optional and the system adapts to their availability
+- Sensor unavailability is temporary in most cases (network issues, device restarts, etc.)
+- The system is designed to be resilient and continue operating during sensor outages
+
 ## Advanced Features
 
 ### Machine Learning
