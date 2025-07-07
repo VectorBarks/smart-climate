@@ -10,6 +10,7 @@ from homeassistant.components.climate.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
+from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult
 from .const import DOMAIN
@@ -975,7 +976,16 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     
     # Get configuration and shared offset engine
     config = hass.data[DOMAIN][config_entry.entry_id]["config"]
-    offset_engine = hass.data[DOMAIN][config_entry.entry_id]["offset_engine"]
+    # Access the correct offset engine using the climate entity ID as the key
+    climate_entity_id = config["climate_entity"]
+    try:
+        offset_engine = hass.data[DOMAIN][config_entry.entry_id]["offset_engines"][climate_entity_id]
+    except KeyError as exc:
+        raise HomeAssistantError(
+            f"Offset engine not found for climate entity '{climate_entity_id}'. "
+            f"This indicates a setup issue. Available engines: "
+            f"{list(hass.data[DOMAIN][config_entry.entry_id]['offset_engines'].keys())}"
+        ) from exc
     
     _LOGGER.debug("Config entry data: %s", config)
     _LOGGER.debug("Using shared OffsetEngine instance")
