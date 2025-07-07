@@ -973,10 +973,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     
     _LOGGER.info("Setting up Smart Climate platform from config entry")
     
-    # Get configuration
-    config = config_entry.data
+    # Get configuration and shared offset engine
+    config = hass.data[DOMAIN][config_entry.entry_id]["config"]
+    offset_engine = hass.data[DOMAIN][config_entry.entry_id]["offset_engine"]
     
     _LOGGER.debug("Config entry data: %s", config)
+    _LOGGER.debug("Using shared OffsetEngine instance")
     
     try:
         # Validate configuration before proceeding
@@ -993,11 +995,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             config.get("outdoor_sensor"),
             config.get("power_sensor")
         )
-        
-        _LOGGER.debug("Creating OffsetEngine with config: %s", 
-                      {k: v for k, v in config.items() if k in ["max_offset", "ml_enabled"]})
-        
-        offset_engine = OffsetEngine(config)
         
         _LOGGER.debug("Creating ModeManager with config")
         mode_manager = ModeManager(config)

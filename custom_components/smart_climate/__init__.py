@@ -7,8 +7,9 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import Platform
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN
+from .const import DOMAIN, PLATFORMS
 from .entity_waiter import EntityWaiter, EntityNotAvailableError
+from .offset_engine import OffsetEngine
 
 # Version and basic metadata
 __version__ = "0.1.0"
@@ -46,8 +47,14 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
     
-    # Store the config entry
-    hass.data[DOMAIN][entry.entry_id] = entry.data
+    # Create a shared OffsetEngine instance for all platforms
+    offset_engine = OffsetEngine(entry.data)
+    
+    # Store the config entry and shared components
+    hass.data[DOMAIN][entry.entry_id] = {
+        "config": entry.data,
+        "offset_engine": offset_engine
+    }
     
     # Wait for required entities to become available before proceeding
     try:
@@ -70,10 +77,10 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
         _LOGGER.error(error_msg, exc_info=True)
         raise HomeAssistantError(error_msg) from exc
     
-    # Set up the climate platform
+    # Set up both climate and switch platforms
     try:
-        await hass.config_entries.async_forward_entry_setups(entry, [Platform.CLIMATE])
-        _LOGGER.info("Smart Climate Control setup completed successfully")
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        _LOGGER.info("Smart Climate Control setup completed successfully with platforms: %s", PLATFORMS)
         
     except Exception as exc:
         error_msg = f"Error setting up Smart Climate platform: {exc}"
@@ -85,7 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, [Platform.CLIMATE])
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)

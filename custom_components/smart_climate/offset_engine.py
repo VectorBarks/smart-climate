@@ -1,7 +1,7 @@
 """Offset calculation engine for Smart Climate Control."""
 
 import logging
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Callable
 import statistics
 from datetime import datetime
 
@@ -194,6 +194,7 @@ class OffsetEngine:
         # Learning configuration (disabled by default for backward compatibility)
         self._enable_learning = config.get("enable_learning", False)
         self._learner: Optional[LightweightOffsetLearner] = None
+        self._update_callbacks: List[Callable] = []  # For state update notifications
         
         if self._enable_learning:
             self._learner = LightweightOffsetLearner()
@@ -205,6 +206,49 @@ class OffsetEngine:
             self._ml_enabled,
             self._enable_learning
         )
+    
+    @property
+    def is_learning_enabled(self) -> bool:
+        """Return true if learning is enabled."""
+        return self._enable_learning
+    
+    def register_update_callback(self, callback: Callable) -> Callable:
+        """Register a callback to be called when the learning state changes.
+        
+        Args:
+            callback: Function to call when learning state changes
+            
+        Returns:
+            Function to unregister the callback
+        """
+        self._update_callbacks.append(callback)
+        # Return a function to unregister the callback
+        return lambda: self._update_callbacks.remove(callback) if callback in self._update_callbacks else None
+    
+    def _notify_update_callbacks(self) -> None:
+        """Notify all registered callbacks of a state change."""
+        for callback in self._update_callbacks:
+            try:
+                callback()
+            except Exception as exc:
+                _LOGGER.warning("Error in update callback: %s", exc)
+    
+    def enable_learning(self) -> None:
+        """Enable the learning system at runtime."""
+        if not self._enable_learning:
+            if not self._learner:
+                self._learner = LightweightOffsetLearner()
+                _LOGGER.info("LightweightOffsetLearner initialized at runtime")
+            self._enable_learning = True
+            _LOGGER.info("Offset learning has been enabled")
+            self._notify_update_callbacks()
+    
+    def disable_learning(self) -> None:
+        """Disable the learning system at runtime."""
+        if self._enable_learning:
+            self._enable_learning = False
+            _LOGGER.info("Offset learning has been disabled")
+            self._notify_update_callbacks()
     
     def calculate_offset(self, input_data: OffsetInput) -> OffsetResult:
         """Calculate temperature offset based on current conditions.

@@ -4,6 +4,9 @@ Defines domain name and configuration keys for the integration."""
 # Domain name for the integration
 DOMAIN = "smart_climate"
 
+# Platforms supported by this integration
+PLATFORMS = ["climate", "switch"]
+
 # Configuration keys
 CONF_CLIMATE_ENTITY = "climate_entity"
 CONF_ROOM_SENSOR = "room_sensor"
