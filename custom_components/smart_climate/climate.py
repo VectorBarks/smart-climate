@@ -6,8 +6,7 @@ from typing import Optional, List
 
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
-    HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT, HVAC_MODE_AUTO,
-    SUPPORT_TARGET_TEMPERATURE, SUPPORT_PRESET_MODE
+    HVACMode, ClimateEntityFeature
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
@@ -113,7 +112,7 @@ class SmartClimateEntity(ClimateEntity):
     def hvac_mode(self) -> str:
         """Forward to wrapped entity."""
         wrapped_state = self.hass.states.get(self._wrapped_entity_id)
-        return wrapped_state.state if wrapped_state else HVAC_MODE_OFF
+        return wrapped_state.state if wrapped_state else HVACMode.OFF
     
     @property
     def hvac_modes(self) -> List[str]:

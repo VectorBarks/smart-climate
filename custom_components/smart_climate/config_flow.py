@@ -278,14 +278,14 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize Smart Climate Control options flow."""
-        # Store config entry for options flow - using context method instead of direct assignment
+        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle options flow."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        current_config = self._get_entry().data
+        current_config = self.config_entry.data
         
         data_schema = vol.Schema({
             vol.Optional(

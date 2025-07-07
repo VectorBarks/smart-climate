@@ -4,8 +4,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
-    HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT, HVAC_MODE_AUTO,
-    SUPPORT_TARGET_TEMPERATURE, SUPPORT_PRESET_MODE
+    HVACMode, ClimateEntityFeature
 )
 from homeassistant.const import STATE_ON, STATE_OFF
 
@@ -132,7 +131,7 @@ class TestSmartClimateEntity:
         wrapped_state = create_mock_state(
             "climate.test_ac", 
             STATE_OFF, 
-            {"supported_features": SUPPORT_TARGET_TEMPERATURE | SUPPORT_PRESET_MODE}
+            {"supported_features": ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE}
         )
         mock_hass.states.get.return_value = wrapped_state
         
@@ -157,7 +156,7 @@ class TestSmartClimateEntity:
         )
         
         # Assert
-        assert entity.supported_features == (SUPPORT_TARGET_TEMPERATURE | SUPPORT_PRESET_MODE)
+        assert entity.supported_features == (ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE)
 
     def test_hvac_mode_forwarded_from_wrapped(self):
         """Test that hvac_mode is forwarded from wrapped entity."""
@@ -166,7 +165,7 @@ class TestSmartClimateEntity:
         config = {"name": "Test Smart Climate"}
         
         # Mock the wrapped entity state
-        wrapped_state = create_mock_state("climate.test_ac", HVAC_MODE_COOL)
+        wrapped_state = create_mock_state("climate.test_ac", HVACMode.COOL)
         mock_hass.states.get.return_value = wrapped_state
         
         # Create mock dependencies
@@ -190,7 +189,7 @@ class TestSmartClimateEntity:
         )
         
         # Assert
-        assert entity.hvac_mode == HVAC_MODE_COOL
+        assert entity.hvac_mode == HVACMode.COOL
 
     def test_hvac_modes_forwarded_from_wrapped(self):
         """Test that hvac_modes are forwarded from wrapped entity."""
@@ -201,8 +200,8 @@ class TestSmartClimateEntity:
         # Mock the wrapped entity state with hvac_modes
         wrapped_state = create_mock_state(
             "climate.test_ac", 
-            HVAC_MODE_COOL, 
-            {"hvac_modes": [HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT]}
+            HVACMode.COOL, 
+            {"hvac_modes": [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT]}
         )
         mock_hass.states.get.return_value = wrapped_state
         
@@ -227,7 +226,7 @@ class TestSmartClimateEntity:
         )
         
         # Assert
-        assert entity.hvac_modes == [HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT]
+        assert entity.hvac_modes == [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT]
 
     def test_current_temperature_returns_room_sensor_value(self):
         """Test that current_temperature returns room sensor value."""
@@ -360,10 +359,10 @@ class TestSmartClimateEntity:
         # Mock the wrapped entity state with all properties
         wrapped_state = create_mock_state(
             "climate.test_ac", 
-            HVAC_MODE_COOL, 
+            HVACMode.COOL, 
             {
-                "hvac_modes": [HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT],
-                "supported_features": SUPPORT_TARGET_TEMPERATURE | SUPPORT_PRESET_MODE,
+                "hvac_modes": [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT],
+                "supported_features": ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE,
                 "friendly_name": "Test AC",
                 "min_temp": 16.0,
                 "max_temp": 30.0,
@@ -395,9 +394,9 @@ class TestSmartClimateEntity:
         )
         
         # Assert - Check that all properties are properly wrapped
-        assert entity.hvac_mode == HVAC_MODE_COOL
-        assert entity.hvac_modes == [HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT]
-        assert entity.supported_features == (SUPPORT_TARGET_TEMPERATURE | SUPPORT_PRESET_MODE)
+        assert entity.hvac_mode == HVACMode.COOL
+        assert entity.hvac_modes == [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT]
+        assert entity.supported_features == (ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE)
         assert entity.current_temperature == 22.0  # From room sensor
         assert entity.preset_modes == ["none", "away", "sleep", "boost"]  # Smart climate modes
         assert entity.preset_mode == "none"  # From mode manager
@@ -434,6 +433,6 @@ class TestSmartClimateEntity:
         )
         
         # Assert - Should handle missing entity gracefully
-        assert entity.hvac_mode == HVAC_MODE_OFF  # Default when entity missing
+        assert entity.hvac_mode == HVACMode.OFF  # Default when entity missing
         assert entity.hvac_modes == []  # Empty when entity missing
         assert entity.supported_features == 0  # No features when entity missing
