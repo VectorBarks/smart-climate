@@ -6,7 +6,7 @@ from typing import Callable, Optional, List
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.event import async_track_state_change_event
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ class SensorManager:
         _LOGGER.debug("Starting sensor state listeners")
         
         # Track room sensor (required)
-        remove_listener = async_track_state_change(
+        remove_listener = async_track_state_change_event(
             self._hass,
             self._room_sensor_id,
             self._async_sensor_state_changed
@@ -171,7 +171,7 @@ class SensorManager:
         
         # Track outdoor sensor if configured
         if self._outdoor_sensor_id is not None:
-            remove_listener = async_track_state_change(
+            remove_listener = async_track_state_change_event(
                 self._hass,
                 self._outdoor_sensor_id,
                 self._async_sensor_state_changed
@@ -181,7 +181,7 @@ class SensorManager:
         
         # Track power sensor if configured
         if self._power_sensor_id is not None:
-            remove_listener = async_track_state_change(
+            remove_listener = async_track_state_change_event(
                 self._hass,
                 self._power_sensor_id,
                 self._async_sensor_state_changed
@@ -209,17 +209,17 @@ class SensorManager:
     
     async def _async_sensor_state_changed(
         self,
-        entity_id: str,
-        old_state: Optional[State],
-        new_state: Optional[State]
+        event
     ) -> None:
         """Handle sensor state change events.
         
         Args:
-            entity_id: Entity ID of the sensor that changed
-            old_state: Previous state
-            new_state: New state
+            event: Home Assistant event containing entity_id, old_state, new_state
         """
+        entity_id = event.data.get('entity_id')
+        old_state = event.data.get('old_state')
+        new_state = event.data.get('new_state')
+        
         _LOGGER.debug(
             "Sensor state changed: %s from %s to %s",
             entity_id,

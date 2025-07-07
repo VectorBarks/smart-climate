@@ -624,21 +624,42 @@ class SmartClimateEntity(ClimateEntity):
     
     async def async_set_hvac_mode(self, hvac_mode: str) -> None:
         """Set new HVAC mode on wrapped entity."""
-        await self.hass.services.async_call(
-            "climate",
-            "set_hvac_mode",
-            {
-                "entity_id": self._wrapped_entity_id,
-                "hvac_mode": hvac_mode
-            },
-            blocking=False
-        )
-        
-        _LOGGER.debug(
-            "HVAC mode set to %s for %s",
-            hvac_mode,
-            self._wrapped_entity_id
-        )
+        try:
+            _LOGGER.debug(
+                "Setting HVAC mode to %s (was %s) for %s",
+                hvac_mode,
+                self.hvac_mode,
+                self._wrapped_entity_id
+            )
+            
+            await self.hass.services.async_call(
+                "climate",
+                "set_hvac_mode",
+                {
+                    "entity_id": self._wrapped_entity_id,
+                    "hvac_mode": hvac_mode
+                },
+                blocking=False
+            )
+            
+            # Schedule immediate state update to refresh the UI
+            self.async_write_ha_state()
+            
+            _LOGGER.debug(
+                "HVAC mode set to %s for %s with immediate UI update",
+                hvac_mode,
+                self._wrapped_entity_id
+            )
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error setting HVAC mode %s for %s: %s",
+                hvac_mode,
+                self._wrapped_entity_id,
+                exc
+            )
+            # Still trigger UI update for consistency
+            self.async_write_ha_state()
     
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new fan mode on wrapped entity."""

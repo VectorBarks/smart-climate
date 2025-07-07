@@ -5,8 +5,10 @@ from typing import Any, Dict, List
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import Platform
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN
+from .entity_waiter import EntityWaiter, EntityNotAvailableError
 
 # Version and basic metadata
 __version__ = "0.1.0"
@@ -47,8 +49,36 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     # Store the config entry
     hass.data[DOMAIN][entry.entry_id] = entry.data
     
+    # Wait for required entities to become available before proceeding
+    try:
+        _LOGGER.debug("Checking availability of required entities before setup")
+        entity_waiter = EntityWaiter()
+        await entity_waiter.wait_for_required_entities(
+            hass, 
+            entry.data, 
+            timeout=60  # Give up to 60 seconds for entities to become available
+        )
+        _LOGGER.info("All required entities are available, proceeding with platform setup")
+        
+    except EntityNotAvailableError as exc:
+        error_msg = f"Required entities not available for Smart Climate setup: {exc}"
+        _LOGGER.error(error_msg)
+        raise HomeAssistantError(error_msg) from exc
+    
+    except Exception as exc:
+        error_msg = f"Unexpected error while waiting for entities: {exc}"
+        _LOGGER.error(error_msg, exc_info=True)
+        raise HomeAssistantError(error_msg) from exc
+    
     # Set up the climate platform
-    await hass.config_entries.async_forward_entry_setups(entry, [Platform.CLIMATE])
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, [Platform.CLIMATE])
+        _LOGGER.info("Smart Climate Control setup completed successfully")
+        
+    except Exception as exc:
+        error_msg = f"Error setting up Smart Climate platform: {exc}"
+        _LOGGER.error(error_msg, exc_info=True)
+        raise HomeAssistantError(error_msg) from exc
     
     return True
 

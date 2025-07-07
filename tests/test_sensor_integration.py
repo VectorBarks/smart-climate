@@ -200,7 +200,7 @@ class TestSensorManager:
         # Mock the async_track_state_change function
         mock_remove_listener = Mock()
         
-        with patch('custom_components.smart_climate.sensor_manager.async_track_state_change') as mock_track:
+        with patch('custom_components.smart_climate.sensor_manager.async_track_state_change_event') as mock_track:
             mock_track.return_value = mock_remove_listener
             
             await sensor_manager.start_listening()
@@ -224,7 +224,7 @@ class TestSensorManager:
         """Test starting listeners for minimal sensor configuration."""
         mock_remove_listener = Mock()
         
-        with patch('custom_components.smart_climate.sensor_manager.async_track_state_change') as mock_track:
+        with patch('custom_components.smart_climate.sensor_manager.async_track_state_change_event') as mock_track:
             mock_track.return_value = mock_remove_listener
             
             await sensor_manager_minimal.start_listening()
@@ -281,24 +281,31 @@ class TestSensorManager:
         sensor_manager.register_update_callback(callback1)
         sensor_manager.register_update_callback(callback2)
         
-        with patch('custom_components.smart_climate.sensor_manager.async_track_state_change') as mock_track:
+        with patch('custom_components.smart_climate.sensor_manager.async_track_state_change_event') as mock_track:
             mock_track.return_value = Mock()
             
             await sensor_manager.start_listening()
             
-            # Get the callback function passed to async_track_state_change
+            # Get the callback function passed to async_track_state_change_event
             # This will be the third argument (index 2) in the first call
             call_args = mock_track.call_args_list[0]
             state_change_callback = call_args[0][2]  # Third positional argument
             
-            # Mock old and new states
+            # Mock event with old and new states
             old_state = Mock()
             old_state.state = "20.0"
             new_state = Mock()
             new_state.state = "22.0"
             
+            mock_event = Mock()
+            mock_event.data = {
+                'entity_id': 'sensor.room_temperature',
+                'old_state': old_state,
+                'new_state': new_state
+            }
+            
             # Call the state change callback
-            await state_change_callback("sensor.room_temperature", old_state, new_state)
+            await state_change_callback(mock_event)
             
             # Both callbacks should have been called
             callback1.assert_called_once()
@@ -307,20 +314,27 @@ class TestSensorManager:
     @pytest.mark.asyncio
     async def test_state_change_callback_no_callbacks_registered(self, mock_hass, sensor_manager):
         """Test state change when no callbacks are registered."""
-        with patch('custom_components.smart_climate.sensor_manager.async_track_state_change') as mock_track:
+        with patch('custom_components.smart_climate.sensor_manager.async_track_state_change_event') as mock_track:
             mock_track.return_value = Mock()
             
             await sensor_manager.start_listening()
             
-            # Get the callback function passed to async_track_state_change
+            # Get the callback function passed to async_track_state_change_event
             call_args = mock_track.call_args_list[0]
             state_change_callback = call_args[0][2]
             
-            # Mock old and new states
+            # Mock event with old and new states
             old_state = Mock()
             old_state.state = "20.0"
             new_state = Mock()
             new_state.state = "22.0"
             
+            mock_event = Mock()
+            mock_event.data = {
+                'entity_id': 'sensor.room_temperature',
+                'old_state': old_state,
+                'new_state': new_state
+            }
+            
             # This should not raise an exception
-            await state_change_callback("sensor.room_temperature", old_state, new_state)
+            await state_change_callback(mock_event)
