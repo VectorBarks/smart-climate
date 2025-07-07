@@ -2,12 +2,12 @@
   "domain": "smart_climate",
   "name": "Smart Climate Control",
   "version": "1.0.0",
-  "documentation": "https://github.com/vector-climate/smart-climate",
-  "issue_tracker": "https://github.com/vector-climate/smart-climate/issues",
+  "documentation": "https://github.com/VectorBarks/smart-climate",
+  "issue_tracker": "https://github.com/VectorBarks/smart-climate/issues",
   "dependencies": [],
   "requirements": [],
   "codeowners": [
-    "@vector-climate"
+    "@VectorBarks"
   ],
   "config_flow": true,
   "iot_class": "local_push"
