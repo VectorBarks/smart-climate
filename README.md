@@ -8,7 +8,9 @@
 
 ## Overview
 
-Smart Climate Control is a Home Assistant custom integration that creates a virtual climate entity to compensate for temperature sensor inaccuracies in any climate control device. Using a hybrid approach of immediate rule-based control with background machine learning, it maintains your desired room temperature based on external trusted sensors.
+Smart Climate Control is a Home Assistant custom integration that creates a virtual climate entity to compensate for temperature sensor inaccuracies in any climate control device. Using a hybrid approach of immediate rule-based control with **lightweight learning intelligence**, it maintains your desired room temperature based on external trusted sensors.
+
+**🎉 Phase 2A Complete**: Now includes intelligent pattern learning, UI controls, and persistent learning across Home Assistant restarts!
 
 ## Important Notice
 
@@ -26,8 +28,9 @@ Simple fixed offset corrections are inadequate for these dynamic conditions.
 ### The Solution
 Smart Climate Control dynamically calculates and applies temperature offsets in real-time, learning from your environment to provide:
 - **Accurate climate control** - Maintains your desired temperature within ±0.5°C
-- **Energy efficiency** - Reduces unnecessary cycling and energy waste
-- **Adaptive learning** - Improves performance over time
+- **Intelligent learning** - Learns time-of-day patterns and environmental effects
+- **Energy efficiency** - Reduces unnecessary cycling and energy waste  
+- **User-friendly controls** - Easy learning toggle and rich status information
 - **Universal compatibility** - Works with any Home Assistant climate entity
 
 ## Features
@@ -38,10 +41,12 @@ Smart Climate Control dynamically calculates and applies temperature offsets in 
 - No device-specific dependencies or limitations
 
 ### **Intelligent Offset Compensation**
-- **Hybrid approach**: Immediate rule-based control + background ML learning
-- **Dynamic calculations**: Offsets adapt to environmental conditions
+- **Lightweight learning**: Incremental pattern learning with <1ms predictions
+- **Hybrid approach**: Immediate rule-based control + adaptive learning
+- **Dynamic calculations**: Offsets adapt to time-of-day and environmental conditions
+- **Power awareness**: Optional power monitoring for enhanced accuracy
 - **Safety limits**: Configurable temperature and offset limits prevent extremes
-- **Gradual adjustments**: Smooth transitions prevent temperature oscillation
+- **Gradual adjustments**: Smooth transitions prevent temperature oscillation (0.5°C per 3-minute cycle)
 
 ### **Operating Modes**
 - **Normal**: Standard operation with dynamic offset compensation
@@ -51,15 +56,18 @@ Smart Climate Control dynamically calculates and applies temperature offsets in 
 
 ### **Flexible Configuration**
 - **UI Setup**: Easy configuration through Home Assistant interface
+- **Learning Controls**: Simple switch entity to enable/disable learning with progress monitoring
 - **YAML Support**: Advanced configuration for power users
 - **Entity Selectors**: Choose your climate device and sensors from dropdowns
 - **Optional Sensors**: Outdoor temperature and power monitoring for enhanced accuracy
 
 ### **Safety & Control**
 - **Manual Overrides**: Temporary offset adjustments with duration timers
+- **Learning Toggle**: Easy on/off control with status monitoring
 - **Safety Limits**: Configurable min/max temperatures (default 16-30°C)
 - **Offset Limits**: Maximum offset protection (default ±5°C)
 - **Graceful Fallbacks**: Continues operation if sensors become unavailable
+- **Data Persistence**: Learning patterns survive Home Assistant restarts
 
 ## Installation
 
@@ -126,9 +134,9 @@ smart_climate:
     sleep_offset: 1.0       # Extra offset for sleep mode
     boost_offset: -2.0      # Extra cooling for boost mode
     
-    # ML settings  
-    ml_enabled: true        # Enable machine learning
-    data_retention_days: 60 # Days of data to keep for training
+    # Learning settings  
+    enable_learning: false  # Learning disabled by default (use UI switch to enable)
+    data_retention_days: 60 # Days of data to keep for patterns
 ```
 
 ## Usage
@@ -138,8 +146,9 @@ smart_climate:
 Once configured, the Smart Climate Control entity appears in Home Assistant as a standard climate entity with enhanced intelligence:
 
 1. **Set Temperature**: Use the normal climate controls - the system automatically applies offset compensation
-2. **Monitor Performance**: Watch as the system learns your environment and improves accuracy over time
-3. **Check Logs**: Review detailed logs showing offset calculations and system decisions
+2. **Enable Learning**: Use the "{Climate Name} Learning" switch to turn on intelligent pattern learning
+3. **Monitor Progress**: Watch learning statistics in the switch entity attributes (samples collected, accuracy, confidence)
+4. **Check Logs**: Enable debug logging to see detailed offset calculations and learning progress
 
 ### Operating Modes
 
@@ -149,6 +158,14 @@ Switch between modes using the preset selector:
 - **Away**: Fixed temperature for energy savings while away from home
 - **Sleep**: Quieter operation with reduced cooling demand for nighttime
 - **Boost**: Temporary extra cooling for rapid temperature reduction
+
+### Learning Controls
+
+The integration creates a learning switch entity for easy control:
+
+- **Learning Switch**: Turn learning on/off with a simple toggle
+- **Learning Statistics**: View samples collected, accuracy, and confidence in entity attributes
+- **Persistent Learning**: Patterns are automatically saved and restored across Home Assistant restarts
 
 ### Manual Overrides
 
@@ -206,21 +223,25 @@ Smart Climate Control handles sensor availability gracefully to ensure reliable 
 
 ## Advanced Features
 
-### Machine Learning
+### Lightweight Learning Intelligence
 
-The system continuously learns from your environment to improve offset predictions:
+The system uses intelligent pattern learning to improve offset predictions over time:
 
-- **Training Data**: Collects temperature readings, weather conditions, and system performance
-- **Online Learning**: Updates predictions without requiring restarts
+- **Incremental Learning**: Learns patterns one data point at a time without heavy processing
+- **Time-of-Day Patterns**: Adapts to daily temperature variation patterns
+- **Environmental Correlation**: Learns how outdoor temperature affects offset accuracy
+- **Performance Optimized**: <1ms prediction time, <1MB memory usage
 - **Confidence Scoring**: Provides transparency into prediction reliability
-- **Fallback Protection**: Rule-based control ensures functionality during ML training
+- **Automatic Persistence**: Learning data automatically saved and restored
+- **Fallback Protection**: Rule-based control ensures functionality during learning
 
 ### Power Monitoring
 
 If you have a power sensor monitoring your climate device:
 
+- **Enhanced Learning**: Power state data improves pattern learning accuracy
 - **State Detection**: Confirms when the device is actively cooling vs. idle
-- **Improved Accuracy**: Better offset calculations based on actual operation
+- **Better Predictions**: Learning system understands AC operation cycles
 - **Energy Insights**: Understanding of power consumption patterns
 
 ### Data Privacy
@@ -242,9 +263,10 @@ All data processing occurs locally on your Home Assistant instance:
 - **Solution**: Verify the climate entity and room sensor are working correctly
 - **Check**: Review logs for error messages or sensor communication issues
 
-**Problem**: ML predictions seem poor
-- **Solution**: Allow more time for data collection (48-72 hours minimum)
-- **Option**: Disable ML temporarily and rely on rule-based calculations
+**Problem**: Learning predictions seem poor
+- **Solution**: Allow more time for data collection (20+ samples minimum, 48-72 hours typical)
+- **Check**: Monitor learning statistics in switch entity attributes
+- **Option**: Disable learning temporarily using the switch and rely on rule-based calculations
 
 ### Logs and Debugging
 
@@ -260,19 +282,24 @@ logger:
 
 This will show:
 - Offset calculations and reasoning
+- Learning data collection and pattern updates
 - Sensor readings and state changes
 - Mode switches and manual overrides
-- ML model predictions and confidence levels
+- Learning system predictions and confidence levels
+- Data persistence operations
 
 ## Architecture
 
 The integration follows a modular design with clearly separated concerns:
 
 - **SmartClimateEntity**: Main climate entity that users interact with
-- **OffsetEngine**: Calculates temperature offsets using rules and ML
+- **OffsetEngine**: Calculates temperature offsets using rules and lightweight learning
+- **LightweightOffsetLearner**: Incremental pattern learning with exponential smoothing
 - **SensorManager**: Handles all sensor reading and state monitoring
 - **ModeManager**: Manages operating modes and their specific behaviors
 - **TemperatureController**: Applies offsets and enforces safety limits
+- **DataStore**: Atomic JSON persistence with backup safety
+- **Switch Platform**: UI controls for learning enable/disable
 
 This architecture ensures:
 - **Reliability**: Component failures don't crash the entire system
@@ -290,11 +317,17 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## Roadmap
 
-### Phase 2: Enhanced ML Features
+### Phase 2A: Lightweight Learning ✅ Complete
+- [x] Incremental pattern learning system
+- [x] UI switch controls for learning
+- [x] Data persistence across restarts
+- [x] Debug logging and troubleshooting
+
+### Phase 2B: Enhanced Learning Features
+- [ ] Power pattern analysis and AC operation detection
 - [ ] Mode-specific learning models
 - [ ] Weather forecast integration
 - [ ] Seasonal pattern recognition
-- [ ] Multi-zone coordination
 
 ### Phase 3: Visualization & Analytics
 - [ ] Custom Lovelace cards for monitoring
@@ -303,10 +336,10 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [ ] Energy usage analytics
 
 ### Phase 4: Advanced Features  
+- [ ] Multi-zone coordination
 - [ ] Occupancy-based automation
 - [ ] Integration with utility time-of-use rates
 - [ ] Predictive pre-cooling/heating
-- [ ] Advanced scheduling with machine learning
 
 ## License
 
