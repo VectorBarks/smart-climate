@@ -1,5 +1,6 @@
 # Smart Climate Control for Home Assistant
 
+[![Version](https://img.shields.io/badge/Version-1.0.0-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
@@ -114,7 +115,7 @@ smart_climate:
 
 ## Project Status
 
-**Production Ready**: Phase 2A complete with intelligent learning, all critical bugs fixed, and comprehensive documentation.
+**Version 1.0.0 Released**: Production-ready with intelligent learning, all critical bugs fixed, and comprehensive documentation.
 
 Recent improvements:
 - Fixed learning data collection with feedback mechanism
