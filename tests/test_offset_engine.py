@@ -73,8 +73,8 @@ class TestOffsetEngine:
         
         result = engine.calculate_offset(input_data)
         
-        # AC reads warmer, so we need negative offset to cool more
-        assert result.offset < 0
+        # AC reads warmer than room, so we need positive offset to cool less
+        assert result.offset > 0
         assert not result.clamped
         assert "AC sensor warmer than room" in result.reason
 
@@ -95,8 +95,8 @@ class TestOffsetEngine:
         
         result = engine.calculate_offset(input_data)
         
-        # AC reads cooler, so we need positive offset to heat less
-        assert result.offset > 0
+        # AC reads cooler than room, so we need negative offset to cool more
+        assert result.offset < 0
         assert not result.clamped
         assert "AC sensor cooler than room" in result.reason
 

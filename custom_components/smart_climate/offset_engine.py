@@ -384,8 +384,9 @@ class OffsetEngine:
         """
         try:
             # Calculate basic rule-based offset from temperature difference
-            temp_diff = input_data.ac_internal_temp - input_data.room_temp
-            base_offset = -temp_diff  # Negative because we want to correct the difference
+            # When room_temp > ac_internal_temp: AC thinks it's cooler than reality, needs negative offset to cool more
+            # When room_temp < ac_internal_temp: AC thinks it's warmer than reality, needs positive offset to cool less
+            base_offset = input_data.ac_internal_temp - input_data.room_temp
             
             # Apply mode-specific adjustments
             mode_adjusted_offset = self._apply_mode_adjustments(base_offset, input_data)
@@ -527,6 +528,7 @@ class OffsetEngine:
         reasons = []
         
         # Main temperature difference reason
+        # Positive offset = cool less, negative offset = cool more
         if input_data.ac_internal_temp > input_data.room_temp:
             reasons.append("AC sensor warmer than room")
         elif input_data.ac_internal_temp < input_data.room_temp:
@@ -672,6 +674,7 @@ class OffsetEngine:
         reasons = []
         
         # Main temperature difference reason
+        # Positive offset = cool less, negative offset = cool more
         if input_data.ac_internal_temp > input_data.room_temp:
             reasons.append("AC sensor warmer than room")
         elif input_data.ac_internal_temp < input_data.room_temp:
