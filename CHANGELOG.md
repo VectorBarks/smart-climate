@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configuration flexibility without requiring technical knowledge
 - Ability to fine-tune all parameters through the interface
 
-## [1.0.0] - 2024-01-07
+## [1.0.0] - 2025-07-07
 
 ### Added
 - Initial release with production-ready features
