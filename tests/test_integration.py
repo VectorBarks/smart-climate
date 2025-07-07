@@ -65,7 +65,7 @@ class TestFullSystemIntegration:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 24.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         hass.states.async_set("sensor.room_temp", "23.5")
         hass.states.async_set("sensor.outdoor_temp", "30.0")
@@ -159,7 +159,7 @@ class TestClimateControlWithOffset:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 22.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         
         # Create entity
@@ -216,7 +216,7 @@ class TestClimateControlWithOffset:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 22.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         
         # Create entity
@@ -281,7 +281,7 @@ class TestModeSwitchingEffects:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 22.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         
         # Create entity
@@ -348,7 +348,7 @@ class TestModeSwitchingEffects:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 24.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         
         # Create entity
@@ -400,7 +400,7 @@ class TestManualOverrides:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 22.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         
         # Create entity with manual override
@@ -572,7 +572,7 @@ class TestSystemEndToEndFunctionality:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 22.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         
         # Create entity
@@ -639,7 +639,7 @@ class TestSystemEndToEndFunctionality:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 22.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         
         # Create entity
@@ -699,7 +699,7 @@ class TestSystemEndToEndFunctionality:
         hass.states.async_set("climate.test_ac", "cool", {
             "current_temperature": 22.0,
             "temperature": 22.0,
-            "hvac_mode": "cool"
+            "hvac_modes": ["off", "cool", "heat", "auto"]
         })
         
         # Create entity
