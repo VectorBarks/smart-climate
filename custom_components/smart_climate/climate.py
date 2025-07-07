@@ -6,7 +6,7 @@ from typing import Optional, List
 
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
-    HVACMode, ClimateEntityFeature
+    HVACMode, HVACAction, ClimateEntityFeature
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
@@ -61,8 +61,29 @@ class SmartClimateEntity(ClimateEntity):
         self._last_offset = 0.0
         self._manual_override = None
         
-        # Initialize attributes
+        # Initialize Home Assistant required attributes
         self._attr_target_temperature = None
+        self._attr_current_temperature = None
+        self._attr_hvac_mode = None
+        self._attr_hvac_modes = None
+        self._attr_hvac_action = None
+        self._attr_fan_mode = None
+        self._attr_fan_modes = None
+        self._attr_swing_mode = None
+        self._attr_swing_modes = None
+        self._attr_preset_mode = None
+        self._attr_preset_modes = None
+        self._attr_supported_features = None
+        self._attr_temperature_unit = None
+        self._attr_min_temp = None
+        self._attr_max_temp = None
+        self._attr_target_temperature_step = None
+        self._attr_current_humidity = None
+        self._attr_target_humidity = None
+        self._attr_min_humidity = None
+        self._attr_max_humidity = None
+        self._attr_target_temperature_high = None
+        self._attr_target_temperature_low = None
         self.hass = hass
         
         _LOGGER.debug(
@@ -166,7 +187,8 @@ class SmartClimateEntity(ClimateEntity):
             if wrapped_state and wrapped_state.attributes:
                 supported_features = wrapped_state.attributes.get("supported_features")
                 if supported_features is not None and isinstance(supported_features, int):
-                    return supported_features
+                    # Always add preset mode support since we manage our own presets
+                    return supported_features | ClimateEntityFeature.PRESET_MODE
                     
             # Log warning if wrapped entity doesn't have supported_features
             _LOGGER.warning(
@@ -176,7 +198,21 @@ class SmartClimateEntity(ClimateEntity):
             )
             
             # Return reasonable defaults for climate entities
-            return int(ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE)
+            base_features = int(ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE)
+            
+            # Dynamically add features based on wrapped entity capabilities
+            if wrapped_state and wrapped_state.attributes:
+                if wrapped_state.attributes.get("fan_modes"):
+                    base_features |= ClimateEntityFeature.FAN_MODE
+                if wrapped_state.attributes.get("swing_modes"):
+                    base_features |= ClimateEntityFeature.SWING_MODE
+                if wrapped_state.attributes.get("target_humidity") is not None:
+                    base_features |= ClimateEntityFeature.TARGET_HUMIDITY
+                if (wrapped_state.attributes.get("target_temperature_high") is not None or
+                    wrapped_state.attributes.get("target_temperature_low") is not None):
+                    base_features |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+                    
+            return base_features
             
         except Exception as exc:
             _LOGGER.error(
@@ -246,6 +282,246 @@ class SmartClimateEntity(ClimateEntity):
             )
             return "°C"
     
+    @property
+    def hvac_action(self) -> Optional[str]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                hvac_action = wrapped_state.attributes.get("hvac_action")
+                if hvac_action and isinstance(hvac_action, str):
+                    return hvac_action
+                    
+            return None  # No action if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting hvac_action from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def fan_mode(self) -> Optional[str]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                fan_mode = wrapped_state.attributes.get("fan_mode")
+                if fan_mode and isinstance(fan_mode, str):
+                    return fan_mode
+                    
+            return None  # No fan mode if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting fan_mode from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def fan_modes(self) -> Optional[List[str]]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                fan_modes = wrapped_state.attributes.get("fan_modes")
+                if fan_modes and isinstance(fan_modes, list):
+                    return fan_modes
+                    
+            return None  # No fan modes if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting fan_modes from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def swing_mode(self) -> Optional[str]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                swing_mode = wrapped_state.attributes.get("swing_mode")
+                if swing_mode and isinstance(swing_mode, str):
+                    return swing_mode
+                    
+            return None  # No swing mode if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting swing_mode from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def swing_modes(self) -> Optional[List[str]]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                swing_modes = wrapped_state.attributes.get("swing_modes")
+                if swing_modes and isinstance(swing_modes, list):
+                    return swing_modes
+                    
+            return None  # No swing modes if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting swing_modes from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def target_temperature_step(self) -> Optional[float]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                temp_step = wrapped_state.attributes.get("target_temperature_step")
+                if temp_step is not None and isinstance(temp_step, (int, float)):
+                    return float(temp_step)
+                    
+            return 0.5  # Default step
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting target_temperature_step from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return 0.5
+    
+    @property
+    def current_humidity(self) -> Optional[float]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                humidity = wrapped_state.attributes.get("current_humidity")
+                if humidity is not None and isinstance(humidity, (int, float)):
+                    return float(humidity)
+                    
+            return None  # No humidity if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting current_humidity from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def target_humidity(self) -> Optional[float]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                humidity = wrapped_state.attributes.get("target_humidity")
+                if humidity is not None and isinstance(humidity, (int, float)):
+                    return float(humidity)
+                    
+            return None  # No target humidity if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting target_humidity from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def min_humidity(self) -> Optional[float]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                min_humidity = wrapped_state.attributes.get("min_humidity")
+                if min_humidity is not None and isinstance(min_humidity, (int, float)):
+                    return float(min_humidity)
+                    
+            return None  # No min humidity if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting min_humidity from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def max_humidity(self) -> Optional[float]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                max_humidity = wrapped_state.attributes.get("max_humidity")
+                if max_humidity is not None and isinstance(max_humidity, (int, float)):
+                    return float(max_humidity)
+                    
+            return None  # No max humidity if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting max_humidity from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def target_temperature_high(self) -> Optional[float]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                temp_high = wrapped_state.attributes.get("target_temperature_high")
+                if temp_high is not None and isinstance(temp_high, (int, float)):
+                    return float(temp_high)
+                    
+            return None  # No high temp if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting target_temperature_high from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
+    @property
+    def target_temperature_low(self) -> Optional[float]:
+        """Forward to wrapped entity with defensive programming."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                temp_low = wrapped_state.attributes.get("target_temperature_low")
+                if temp_low is not None and isinstance(temp_low, (int, float)):
+                    return float(temp_low)
+                    
+            return None  # No low temp if not available
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error getting target_temperature_low from wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return None
+    
     async def async_set_temperature(self, **kwargs) -> None:
         """Set new target temperature."""
         if "temperature" in kwargs:
@@ -293,6 +569,85 @@ class SmartClimateEntity(ClimateEntity):
             hvac_mode,
             self._wrapped_entity_id
         )
+    
+    async def async_set_fan_mode(self, fan_mode: str) -> None:
+        """Set new fan mode on wrapped entity."""
+        # Check if wrapped entity supports fan modes
+        if self.fan_modes and fan_mode in self.fan_modes:
+            await self.hass.services.async_call(
+                "climate",
+                "set_fan_mode",
+                {
+                    "entity_id": self._wrapped_entity_id,
+                    "fan_mode": fan_mode
+                },
+                blocking=False
+            )
+            
+            _LOGGER.debug(
+                "Fan mode set to %s for %s",
+                fan_mode,
+                self._wrapped_entity_id
+            )
+        else:
+            _LOGGER.warning(
+                "Fan mode %s not supported by wrapped entity %s (supported: %s)",
+                fan_mode,
+                self._wrapped_entity_id,
+                self.fan_modes
+            )
+    
+    async def async_set_swing_mode(self, swing_mode: str) -> None:
+        """Set new swing mode on wrapped entity."""
+        # Check if wrapped entity supports swing modes
+        if self.swing_modes and swing_mode in self.swing_modes:
+            await self.hass.services.async_call(
+                "climate",
+                "set_swing_mode",
+                {
+                    "entity_id": self._wrapped_entity_id,
+                    "swing_mode": swing_mode
+                },
+                blocking=False
+            )
+            
+            _LOGGER.debug(
+                "Swing mode set to %s for %s",
+                swing_mode,
+                self._wrapped_entity_id
+            )
+        else:
+            _LOGGER.warning(
+                "Swing mode %s not supported by wrapped entity %s (supported: %s)",
+                swing_mode,
+                self._wrapped_entity_id,
+                self.swing_modes
+            )
+    
+    async def async_set_humidity(self, humidity: float) -> None:
+        """Set new target humidity on wrapped entity."""
+        # Check if wrapped entity supports humidity
+        if self.target_humidity is not None:
+            await self.hass.services.async_call(
+                "climate",
+                "set_humidity",
+                {
+                    "entity_id": self._wrapped_entity_id,
+                    "humidity": humidity
+                },
+                blocking=False
+            )
+            
+            _LOGGER.debug(
+                "Humidity set to %s for %s",
+                humidity,
+                self._wrapped_entity_id
+            )
+        else:
+            _LOGGER.warning(
+                "Humidity control not supported by wrapped entity %s",
+                self._wrapped_entity_id
+            )
     
     async def _apply_temperature_with_offset(self, target_temp: float) -> None:
         """Apply target temperature with calculated offset to wrapped entity."""
