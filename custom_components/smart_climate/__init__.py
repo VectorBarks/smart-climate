@@ -125,10 +125,13 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
         # 3. Link the data store to the engine for persistence operations
         offset_engine.set_data_store(data_store)
         
-        # 4. Load saved learning data asynchronously
+        # 4. Load saved learning data and restore engine state
         try:
-            await offset_engine.async_load_learning_data()
-            _LOGGER.debug("Learning data loaded for entity: %s", entity_id)
+            learning_data_loaded = await offset_engine.async_load_learning_data()
+            if learning_data_loaded:
+                _LOGGER.debug("Learning data and engine state restored for entity: %s", entity_id)
+            else:
+                _LOGGER.debug("No learning data to restore for entity: %s", entity_id)
         except Exception as exc:
             _LOGGER.warning("Failed to load learning data for %s: %s", entity_id, exc)
             # Continue setup without loaded data

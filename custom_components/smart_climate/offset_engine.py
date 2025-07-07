@@ -720,71 +720,109 @@ class OffsetEngine:
         _LOGGER.debug("Data store configured for OffsetEngine")
     
     async def async_save_learning_data(self) -> None:
-        """Save learning data to persistent storage.
-        
-        This method serializes the current learning state and saves it
-        to disk so it survives Home Assistant restarts.
+        """Save learning data and engine state to persistent storage.
+
+        This method serializes the current engine state (including whether
+        learning is enabled) and the learner's data, saving it to disk
+        to survive Home Assistant restarts.
         """
-        if not self._enable_learning or not self._learner:
-            _LOGGER.debug("Learning disabled, skipping save")
-            return
-        
         if not hasattr(self, "_data_store") or self._data_store is None:
             _LOGGER.warning("No data store configured, cannot save learning data")
             return
-        
+
         try:
-            # Serialize learner state
-            learning_data = self._learner.serialize_for_persistence()
-            
+            # Prepare learner data only if learning is enabled and learner exists
+            learner_data = None
+            if self._enable_learning and self._learner:
+                learner_data = self._learner.serialize_for_persistence()
+
+            # Create a comprehensive state dictionary including the engine's state
+            persistent_data = {
+                "version": 1,  # For future schema migrations
+                "engine_state": {
+                    "enable_learning": self._enable_learning
+                },
+                "learner_data": learner_data
+            }
+
             # Save to persistent storage
-            await self._data_store.async_save_learning_data(learning_data)
-            
-            _LOGGER.debug("Learning data saved successfully")
-            
+            await self._data_store.async_save_learning_data(persistent_data)
+            _LOGGER.debug("Learning data and engine state saved successfully")
+
         except Exception as exc:
             _LOGGER.error("Failed to save learning data: %s", exc)
     
     async def async_load_learning_data(self) -> bool:
-        """Load learning data from persistent storage.
-        
-        This method loads previously saved learning state from disk
-        and restores the learner to its previous state.
-        
+        """Load engine state and learning data from persistent storage.
+
+        This method loads the previously saved state from disk. It first
+        restores the engine's configuration (like enable_learning) and then,
+        if applicable, restores the learner's state.
+
         Returns:
-            True if data was loaded successfully, False otherwise
+            True if data was loaded and state was restored, False otherwise.
         """
-        if not self._enable_learning:
-            _LOGGER.debug("Learning disabled, skipping load")
-            return False
-        
         if not hasattr(self, "_data_store") or self._data_store is None:
             _LOGGER.warning("No data store configured, cannot load learning data")
             return False
-        
+
         try:
             # Load from persistent storage
-            learning_data = await self._data_store.async_load_learning_data()
-            
-            if learning_data is None:
-                _LOGGER.debug("No saved learning data found")
+            persistent_data = await self._data_store.async_load_learning_data()
+
+            if persistent_data is None:
+                _LOGGER.debug("No saved learning data found, using config defaults.")
                 return False
+
+            # Validate that persistent_data is a dictionary
+            if not isinstance(persistent_data, dict):
+                _LOGGER.warning("Invalid persistent data format: expected dict, got %s", type(persistent_data).__name__)
+                return False
+
+            # --- KEY FIX: Restore engine state from persistence ---
+            engine_state = persistent_data.get("engine_state", {})
             
-            # Ensure learner is initialized
-            if not self._learner:
-                self._learner = LightweightOffsetLearner()
-            
-            # Restore learner state
-            success = self._learner.restore_from_persistence(learning_data)
-            
-            if success:
-                _LOGGER.info("Learning data loaded successfully")
-                self._notify_update_callbacks()  # Notify about state change
+            # Validate engine_state is a dictionary before accessing
+            if isinstance(engine_state, dict):
+                persisted_learning_enabled = engine_state.get("enable_learning")
             else:
-                _LOGGER.warning("Failed to restore learner state from loaded data")
-            
-            return success
-            
+                _LOGGER.warning("Invalid engine_state format: expected dict, got %s", type(engine_state).__name__)
+                persisted_learning_enabled = None
+
+            if persisted_learning_enabled is not None:
+                if self._enable_learning != persisted_learning_enabled:
+                    _LOGGER.info(
+                        "Restoring learning state from persistence: %s (was %s from config)",
+                        persisted_learning_enabled, self._enable_learning
+                    )
+                    self._enable_learning = persisted_learning_enabled
+                    # If learning is now enabled, ensure the learner instance exists
+                    if self._enable_learning and not self._learner:
+                        self._learner = LightweightOffsetLearner()
+                        _LOGGER.debug("LightweightOffsetLearner initialized during data load.")
+            # --- END OF KEY FIX ---
+
+            # If learning is enabled (either from config or restored from persistence), load learner data
+            if self._enable_learning:
+                learner_data = persistent_data.get("learner_data")
+                if learner_data:
+                    # Ensure learner exists before restoring data
+                    if not self._learner:
+                        self._learner = LightweightOffsetLearner()
+
+                    success = self._learner.restore_from_persistence(learner_data)
+                    if success:
+                        _LOGGER.info("Learning data loaded successfully.")
+                    else:
+                        _LOGGER.warning("Failed to restore learner state from loaded data.")
+                else:
+                    _LOGGER.debug("Learning is enabled, but no learner data found in persistence.")
+            else:
+                _LOGGER.debug("Learning is disabled based on persisted state, skipping learner data load.")
+
+            self._notify_update_callbacks()  # Notify listeners of the restored state
+            return True
+
         except Exception as exc:
             _LOGGER.error("Failed to load learning data: %s", exc)
             return False
