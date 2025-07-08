@@ -254,18 +254,26 @@ Monitor through the learning switch attributes:
 
 ```yaml
 switch.living_room_ac_learning:
-  learning_enabled: true
   samples_collected: 245
   learning_accuracy: 0.91
   confidence_level: 0.82
-  last_update: "2024-01-15 14:30:00"
-  average_error: 0.25
-  prediction_quality: "excellent"
-  patterns_detected:
-    - "morning_warmup"
-    - "afternoon_peak"
-    - "evening_stable"
+  patterns_learned: 18
+  has_sufficient_data: true
+  enabled: true
+  last_sample_collected: "2025-07-08 14:30:00"
 ```
+
+### Learning Switch Attributes
+
+The learning switch provides comprehensive diagnostic information:
+
+- **samples_collected**: Total number of learning samples gathered
+- **learning_accuracy**: Prediction accuracy from 0.0 to 1.0
+- **confidence_level**: Overall system confidence in predictions
+- **patterns_learned**: Number of distinct patterns recognized
+- **has_sufficient_data**: Whether enough samples exist for reliable learning (≥10)
+- **enabled**: Current learning system status
+- **last_sample_collected**: Timestamp of most recent learning sample or "Never"
 
 ### Performance Indicators
 
