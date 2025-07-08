@@ -28,6 +28,7 @@ class LearningStats:
     samples_collected: int  # Total number of data points collected
     patterns_learned: int  # Number of distinct patterns learned
     avg_accuracy: float  # Average accuracy of predictions (0.0 to 1.0)
+    last_sample_time: Optional[str] = None  # ISO timestamp of last sample collected
 
 
 class LightweightOffsetLearner:
@@ -536,10 +537,17 @@ class LightweightOffsetLearner:
             else:
                 avg_accuracy = 0.5  # Default moderate accuracy
         
+        # Get last sample timestamp from enhanced samples
+        last_sample_time = None
+        if self._enhanced_samples:
+            # Get the most recent sample's timestamp
+            last_sample_time = self._enhanced_samples[-1].get("timestamp")
+        
         return LearningStats(
             samples_collected=self._sample_count,
             patterns_learned=patterns_learned,
-            avg_accuracy=avg_accuracy
+            avg_accuracy=avg_accuracy,
+            last_sample_time=last_sample_time
         )
     
     def reset_learning(self) -> None:

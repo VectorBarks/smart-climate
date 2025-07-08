@@ -116,13 +116,27 @@ class LearningSwitch(SwitchEntity):
         try:
             learning_info = self._offset_engine.get_learning_info()
             _LOGGER.debug("Retrieved learning info for switch %s: %s", self._entity_id, learning_info)
+            
+            # Format last sample time for display
+            last_sample_display = "Never"
+            last_sample_time = learning_info.get("last_sample_time")
+            if last_sample_time:
+                try:
+                    # Parse ISO timestamp and format for display
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(last_sample_time.replace('Z', '+00:00'))
+                    last_sample_display = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    last_sample_display = str(last_sample_time)
+            
             return {
                 "samples_collected": learning_info.get("samples", 0),
                 "learning_accuracy": learning_info.get("accuracy", 0.0),
                 "confidence_level": learning_info.get("confidence", 0.0),
                 "patterns_learned": learning_info.get("samples", 0),  # Use samples as patterns count
                 "has_sufficient_data": learning_info.get("has_sufficient_data", False),
-                "enabled": learning_info.get("enabled", False)
+                "enabled": learning_info.get("enabled", False),
+                "last_sample_collected": last_sample_display
             }
         except Exception as exc:
             _LOGGER.warning("Failed to get learning info for switch attributes: %s", exc)
@@ -133,6 +147,7 @@ class LearningSwitch(SwitchEntity):
                 "patterns_learned": 0,
                 "has_sufficient_data": False,
                 "enabled": False,
+                "last_sample_collected": "Error",
                 "error": str(exc)
             }
 

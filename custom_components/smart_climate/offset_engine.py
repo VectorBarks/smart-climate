@@ -654,7 +654,8 @@ class OffsetEngine:
                 "samples": 0,
                 "accuracy": 0.0,
                 "confidence": 0.0,
-                "has_sufficient_data": False
+                "has_sufficient_data": False,
+                "last_sample_time": None
             }
         
         try:
@@ -666,6 +667,7 @@ class OffsetEngine:
                 "accuracy": stats.avg_accuracy,
                 "confidence": stats.avg_accuracy,  # Use accuracy as overall confidence
                 "has_sufficient_data": stats.samples_collected >= 10,  # Consider 10+ samples sufficient
+                "last_sample_time": stats.last_sample_time,
             }
         except Exception as exc:
             _LOGGER.warning("Failed to get learning info: %s", exc)
@@ -675,6 +677,7 @@ class OffsetEngine:
                 "accuracy": 0.0,
                 "confidence": 0.0,
                 "has_sufficient_data": False,
+                "last_sample_time": None,
                 "error": str(exc)
             }
     
