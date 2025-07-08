@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1-beta1] - 2025-07-08 [Pre-release]
+
+### Added
+- **Enhanced Learning Switch Display**
+  - Shows learned AC temperature thresholds directly in switch attributes
+  - Displays AC start temperature and stop temperature when learned
+  - Shows temperature window size and hysteresis sample count
+  - Human-readable hysteresis state descriptions
+- **Improved Documentation**
+  - Comprehensive troubleshooting guide for overcooling during learning phase
+  - New learning system guide explaining how the system adapts to AC behavior
+  - Clearer explanations of power monitoring benefits
+
+### Improved
+- Learning switch now provides better visibility into hysteresis learning progress
+- More intuitive attribute names for AC temperature window display
+- Enhanced diagnostic information for troubleshooting learning behavior
+
 ## [1.1.0] - 2025-07-08
 
 ### Added
@@ -117,7 +135,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Safe temperature limits to prevent extreme settings
 - Atomic file operations for data persistence
 
-[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.1.1-beta1...HEAD
+[1.1.1-beta1]: https://github.com/VectorBarks/smart-climate/compare/v1.1.0...v1.1.1-beta1
 [1.1.0]: https://github.com/VectorBarks/smart-climate/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/VectorBarks/smart-climate/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/VectorBarks/smart-climate/releases/tag/v1.0.0

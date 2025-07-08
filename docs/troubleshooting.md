@@ -143,6 +143,95 @@ This guide helps you diagnose and resolve common issues with Smart Climate Contr
 - Avoid frequent manual overrides during learning
 - Verify offset is actually being applied (non-zero)
 
+#### AC Overcooling During Learning Phase
+
+**Symptoms**: AC cools room well below target temperature during initial learning period
+
+**Real Example**: 
+- Room temperature: 24.6°C
+- Target temperature: 25°C
+- AC internal sensor: 20.8°C
+- Smart Climate sets AC to: 20.6°C (trying to compensate)
+- Result: Room becomes too cold as AC runs continuously
+
+**Why This Happens**:
+
+The Smart Climate system detects a large difference between your room sensor (24.6°C) and the AC's internal sensor (20.8°C) - nearly 4°C difference. To compensate, it applies an aggressive negative offset, setting the AC even lower (20.6°C) thinking this will help reach the target.
+
+However, this creates a "chicken-and-egg" problem:
+- The AC can't reach such a low temperature (20.6°C is extremely cold)
+- Because it can't reach the setpoint, it never turns off
+- Since it never cycles off, the HysteresisLearner can't learn the AC's behavior
+- Without learning data, the system can't optimize its approach
+
+**This is Normal and Temporary**
+
+Don't worry - this behavior is expected during the initial learning phase when there's a large sensor discrepancy. The system will gradually learn and improve once it collects enough data.
+
+**Practical Solutions**:
+
+1. **Temporary Manual Control** (Recommended for first 24-48 hours):
+   ```yaml
+   # Use manual override to set a reasonable offset
+   service: smart_climate.set_manual_offset
+   target:
+     entity_id: climate.your_smart_ac
+   data:
+     offset: -2  # Start with a smaller offset
+     duration: 1440  # 24 hours
+   ```
+
+2. **Adjust Learning Parameters**:
+   - Increase `min_offset` to prevent extreme compensations (e.g., -3°C instead of -5°C)
+   - Reduce `learning_rate` to make adjustments more gradual
+   - Decrease `update_interval` to allow more frequent corrections
+
+3. **Help the System Learn**:
+   - Manually set the AC to a reachable temperature (e.g., 22-23°C)
+   - Let it run until the room reaches your target
+   - Turn it off manually when comfortable
+   - Repeat this cycle several times to generate learning data
+
+4. **Use Power Monitoring** (Best long-term solution):
+   - Configure a power sensor for your AC
+   - This enables HysteresisLearner to detect on/off cycles even without temperature cycling
+   - The system will learn optimal temperatures within a few days
+
+**What NOT to Do**:
+
+- **Don't use Boost Mode**: This makes the problem worse by setting even lower temperatures
+- **Don't use Night/Sleep Mode**: These apply positive offsets, making the room warmer
+- **Don't constantly adjust the target**: Let the system stabilize with one target temperature
+- **Don't disable learning**: The system needs to learn to improve
+
+**Timeline for Improvement**:
+
+- **Day 1-2**: May experience overcooling, use manual overrides as needed
+- **Day 3-5**: System begins learning patterns, overcooling reduces
+- **Week 1-2**: HysteresisLearner (if power sensor configured) optimizes thresholds
+- **Week 2+**: System should maintain comfortable temperatures automatically
+
+**Monitor Progress**:
+
+Check the learning switch attributes to see improvement:
+```yaml
+# Developer Tools → States → switch.your_climate_learning
+samples_collected: 156  # Should increase over time
+current_accuracy: 0.72  # Should improve toward 1.0
+hysteresis_state: "learning_hysteresis"  # Shows learning progress
+```
+
+**When to Be Concerned**:
+
+If after 1 week you still experience severe overcooling:
+1. Verify your sensors are accurate (compare with a thermometer)
+2. Check that the AC's internal sensor isn't faulty
+3. Consider if the AC unit is oversized for your room
+4. Review debug logs for any error patterns
+5. Reset training data and try with adjusted parameters
+
+Remember: The learning system is designed to handle these scenarios. Give it time to adapt to your specific AC's behavior and sensor characteristics.
+
 #### AC Heating When It Should Cool
 
 **Symptoms**: AC set to higher temperature when room is warmer than target

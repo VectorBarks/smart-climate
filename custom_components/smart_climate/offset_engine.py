@@ -660,8 +660,11 @@ class OffsetEngine:
         Returns:
             Dictionary containing learning status and statistics
         """
+        # Build base learning info first
+        base_info = {}
+        
         if not self._enable_learning or not self._learner:
-            return {
+            base_info = {
                 "enabled": False,
                 "samples": 0,
                 "accuracy": 0.0,
@@ -669,29 +672,101 @@ class OffsetEngine:
                 "has_sufficient_data": False,
                 "last_sample_time": None
             }
+        else:
+            try:
+                stats = self._learner.get_statistics()
+                # Handle LearningStats dataclass from LightweightOffsetLearner
+                base_info = {
+                    "enabled": True,
+                    "samples": stats.samples_collected,
+                    "accuracy": stats.avg_accuracy,
+                    "confidence": stats.avg_accuracy,  # Use accuracy as overall confidence
+                    "has_sufficient_data": stats.samples_collected >= 10,  # Consider 10+ samples sufficient
+                    "last_sample_time": stats.last_sample_time,
+                }
+            except Exception as exc:
+                _LOGGER.warning("Failed to get learning info: %s", exc)
+                base_info = {
+                    "enabled": True,
+                    "samples": 0,
+                    "accuracy": 0.0,
+                    "confidence": 0.0,
+                    "has_sufficient_data": False,
+                    "last_sample_time": None,
+                    "error": str(exc)
+                }
         
+        # Add hysteresis information
         try:
-            stats = self._learner.get_statistics()
-            # Handle LearningStats dataclass from LightweightOffsetLearner
-            return {
-                "enabled": True,
-                "samples": stats.samples_collected,
-                "accuracy": stats.avg_accuracy,
-                "confidence": stats.avg_accuracy,  # Use accuracy as overall confidence
-                "has_sufficient_data": stats.samples_collected >= 10,  # Consider 10+ samples sufficient
-                "last_sample_time": stats.last_sample_time,
-            }
+            if not self._hysteresis_enabled:
+                # No power sensor configured
+                base_info.update({
+                    "hysteresis_enabled": False,
+                    "hysteresis_state": "disabled",
+                    "learned_start_threshold": None,
+                    "learned_stop_threshold": None,
+                    "temperature_window": None,
+                    "start_samples_collected": 0,
+                    "stop_samples_collected": 0,
+                    "hysteresis_ready": False
+                })
+            else:
+                # Power sensor configured - get hysteresis data
+                start_samples = len(self._hysteresis_learner._start_temps)
+                stop_samples = len(self._hysteresis_learner._stop_temps)
+                has_sufficient = self._hysteresis_learner.has_sufficient_data
+                
+                # Determine hysteresis state
+                if has_sufficient:
+                    hysteresis_state = "ready"
+                else:
+                    hysteresis_state = "learning_hysteresis"
+                
+                # Get learned thresholds (may be None if insufficient data)
+                start_threshold = self._hysteresis_learner.learned_start_threshold
+                stop_threshold = self._hysteresis_learner.learned_stop_threshold
+                
+                # Format thresholds to 2 decimal places if they exist
+                if start_threshold is not None:
+                    start_threshold = round(start_threshold, 2)
+                if stop_threshold is not None:
+                    stop_threshold = round(stop_threshold, 2)
+                
+                # Calculate temperature window if both thresholds exist
+                temperature_window = None
+                if start_threshold is not None and stop_threshold is not None:
+                    temperature_window = round(start_threshold - stop_threshold, 2)
+                
+                base_info.update({
+                    "hysteresis_enabled": True,
+                    "hysteresis_state": hysteresis_state,
+                    "learned_start_threshold": start_threshold,
+                    "learned_stop_threshold": stop_threshold,
+                    "temperature_window": temperature_window,
+                    "start_samples_collected": start_samples,
+                    "stop_samples_collected": stop_samples,
+                    "hysteresis_ready": has_sufficient
+                })
+                
         except Exception as exc:
-            _LOGGER.warning("Failed to get learning info: %s", exc)
-            return {
-                "enabled": True,
-                "samples": 0,
-                "accuracy": 0.0,
-                "confidence": 0.0,
-                "has_sufficient_data": False,
-                "last_sample_time": None,
-                "error": str(exc)
-            }
+            _LOGGER.warning("Failed to get hysteresis info: %s", exc)
+            # Add safe defaults on error
+            base_info.update({
+                "hysteresis_enabled": self._hysteresis_enabled,
+                "hysteresis_state": "error",
+                "learned_start_threshold": None,
+                "learned_stop_threshold": None,
+                "temperature_window": None,
+                "start_samples_collected": 0,
+                "stop_samples_collected": 0,
+                "hysteresis_ready": False,
+                "hysteresis_error": str(exc)
+            })
+            # Also add to main error key if no other error exists
+            if "error" not in base_info:
+                base_info["error"] = f"Hysteresis: {exc}"
+        
+        return base_info
     
     def _generate_reason_with_learning(
         self,

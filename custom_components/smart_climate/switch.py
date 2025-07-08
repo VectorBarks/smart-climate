@@ -129,6 +129,35 @@ class LearningSwitch(SwitchEntity):
                 except Exception:
                     last_sample_display = str(last_sample_time)
             
+            # Format hysteresis thresholds
+            start_threshold = learning_info.get("learned_start_threshold")
+            stop_threshold = learning_info.get("learned_stop_threshold")
+            temperature_window = learning_info.get("temperature_window")
+            hysteresis_state = learning_info.get("hysteresis_state", "no_power_sensor")
+            
+            # Show "Learning..." when actively learning, otherwise "Not available"
+            if hysteresis_state == "learning_hysteresis":
+                start_threshold_display = f"{start_threshold:.2f}°C" if start_threshold is not None else "Learning..."
+                stop_threshold_display = f"{stop_threshold:.2f}°C" if stop_threshold is not None else "Learning..."
+                temperature_window_display = f"{temperature_window:.2f}°C" if temperature_window is not None else "Learning..."
+            else:
+                start_threshold_display = f"{start_threshold:.2f}°C" if start_threshold is not None else "Not available"
+                stop_threshold_display = f"{stop_threshold:.2f}°C" if stop_threshold is not None else "Not available"
+                temperature_window_display = f"{temperature_window:.2f}°C" if temperature_window is not None else "Not available"
+            
+            # Map hysteresis state to human-readable description
+            hysteresis_state_display = {
+                "learning_hysteresis": "Learning AC behavior",
+                "active_phase": "AC actively cooling",
+                "idle_above_start_threshold": "AC should start soon",
+                "idle_below_stop_threshold": "AC recently stopped",
+                "idle_stable_zone": "Temperature stable",
+                "ready": "Ready",
+                "disabled": "No power sensor",
+                "no_power_sensor": "No power sensor",
+                "error": "Error"
+            }.get(hysteresis_state, hysteresis_state)
+            
             return {
                 "samples_collected": learning_info.get("samples", 0),
                 "learning_accuracy": learning_info.get("accuracy", 0.0),
@@ -136,7 +165,15 @@ class LearningSwitch(SwitchEntity):
                 "patterns_learned": learning_info.get("samples", 0),  # Use samples as patterns count
                 "has_sufficient_data": learning_info.get("has_sufficient_data", False),
                 "enabled": learning_info.get("enabled", False),
-                "last_sample_collected": last_sample_display
+                "last_sample_collected": last_sample_display,
+                "hysteresis_enabled": learning_info.get("hysteresis_enabled", False),
+                "hysteresis_state": hysteresis_state_display,
+                "learned_start_threshold": start_threshold_display,
+                "learned_stop_threshold": stop_threshold_display,
+                "temperature_window": temperature_window_display,
+                "start_samples_collected": learning_info.get("start_samples_collected", 0),
+                "stop_samples_collected": learning_info.get("stop_samples_collected", 0),
+                "hysteresis_ready": learning_info.get("hysteresis_ready", False)
             }
         except Exception as exc:
             _LOGGER.warning("Failed to get learning info for switch attributes: %s", exc)
@@ -148,6 +185,14 @@ class LearningSwitch(SwitchEntity):
                 "has_sufficient_data": False,
                 "enabled": False,
                 "last_sample_collected": "Error",
+                "hysteresis_enabled": False,
+                "hysteresis_state": "Error",
+                "learned_start_threshold": "Not available",
+                "learned_stop_threshold": "Not available",
+                "temperature_window": "Not available",
+                "start_samples_collected": 0,
+                "stop_samples_collected": 0,
+                "hysteresis_ready": False,
                 "error": str(exc)
             }
 
