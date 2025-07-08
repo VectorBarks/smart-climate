@@ -84,6 +84,41 @@ The UI now includes ALL configuration options:
 | **Enable Learning** | Start with learning system active | False | True/False |
 | **Data Retention Days** | Days of historical data to keep | 60 | 30 - 365 |
 
+#### Understanding Gradual Adjustment Rate
+
+The gradual adjustment rate controls how quickly Smart Climate adjusts the AC's target temperature to reach your desired room temperature. This setting balances comfort with AC efficiency.
+
+**When to Use Lower Values (0.1 - 0.3°C):**
+- **Sensitive environments**: Bedrooms, nurseries, or home offices where sudden temperature changes are uncomfortable
+- **Efficient inverter ACs**: Modern units that work best with small, gradual adjustments
+- **Stable conditions**: Well-insulated rooms with minimal heat gain/loss
+- **Energy savings priority**: Smaller adjustments reduce AC cycling and power consumption
+
+**When to Use Default Value (0.5°C):**
+- **Most homes**: Works well for typical residential settings
+- **Balanced approach**: Good compromise between response time and stability
+- **Standard AC units**: Suitable for most non-inverter systems
+
+**When to Use Higher Values (0.8 - 2.0°C):**
+- **Quick response needed**: Rooms with rapid temperature changes (kitchens, sunrooms)
+- **Older AC units**: Systems that respond slowly to small adjustments
+- **Poor insulation**: Spaces that gain/lose heat quickly
+- **Coming home comfort**: When you want the room to cool down quickly after being away
+
+**Examples:**
+```yaml
+# Bedroom - comfort priority
+gradual_adjustment_rate: 0.2  # Gentle adjustments for sleep
+
+# Living room - balanced
+gradual_adjustment_rate: 0.5  # Default works well
+
+# Kitchen - quick response
+gradual_adjustment_rate: 1.0  # Faster adjustments for heat from cooking
+```
+
+**Note**: The adjustment rate works with your update interval (default 180s). For example, with a 0.5°C rate and 180s interval, the maximum temperature change is 0.5°C every 3 minutes, or 10°C per hour.
+
 #### Power Sensor Settings (Only visible when power sensor is configured)
 
 | Setting | Description | Default | Range |
