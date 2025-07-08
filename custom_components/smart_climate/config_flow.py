@@ -414,15 +414,11 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> "SmartClimateOptionsFlow":
         """Get the options flow for this handler."""
-        return SmartClimateOptionsFlow(config_entry)
+        return SmartClimateOptionsFlow()
 
 
 class SmartClimateOptionsFlow(config_entries.OptionsFlow):
     """Handle Smart Climate Control options."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize Smart Climate Control options flow."""
-        super().__init__(config_entry)
     
     def _add_power_threshold_fields_options(self, schema: vol.Schema, current_config: dict, current_options: dict) -> vol.Schema:
         """Add power threshold fields to the options schema."""

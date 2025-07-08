@@ -94,6 +94,178 @@ The UI now includes ALL configuration options:
 
 Note: These settings only appear in the UI when a power sensor is configured. The system validates that idle < min < max.
 
+## Power Threshold Configuration Guide
+
+Power thresholds are crucial for accurate AC state detection and optimal HysteresisLearner performance. This section helps you determine appropriate values for your specific AC unit.
+
+### Understanding Power Thresholds
+
+The Smart Climate Control uses power consumption patterns to understand your AC's behavior:
+
+- **Idle Threshold**: Power consumption when the AC is in standby or off
+- **Min Threshold**: Power consumption when the AC is running at minimum capacity
+- **Max Threshold**: Power consumption when the AC is running at high or maximum capacity
+
+These thresholds enable the system to:
+1. Detect when your AC turns on/off
+2. Understand cooling intensity levels
+3. Learn temperature hysteresis patterns (with HysteresisLearner)
+4. Improve offset predictions based on AC operating state
+
+### How to Determine Your AC's Power Values
+
+#### Method 1: Using Home Assistant History (Recommended)
+
+1. Enable your power sensor and let it run for a few cooling cycles
+2. Go to Developer Tools → Statistics
+3. Select your power sensor
+4. Observe the patterns:
+   - **Lowest values** (when AC is off) = Idle power
+   - **Consistent low values** (when AC just started) = Minimum power
+   - **Highest sustained values** = Maximum power
+
+#### Method 2: Real-time Observation
+
+1. Turn off your AC completely and wait 1 minute
+2. Check power sensor reading = **Idle power**
+3. Set AC to cool with a high temperature difference
+4. Note initial running power = **Minimum power**
+5. Wait for AC to reach full cooling (hot day helps)
+6. Note peak sustained power = **Maximum power**
+
+### Configuration Examples by AC Type
+
+#### Small Window/Portable Units (500-800W)
+```yaml
+power_idle_threshold: 5      # Standby: 3-5W
+power_min_threshold: 80     # Minimum cooling: 80-120W
+power_max_threshold: 600    # Maximum cooling: 500-800W
+```
+
+#### Medium Split Systems (1000-2000W)
+```yaml
+power_idle_threshold: 10     # Standby: 5-15W
+power_min_threshold: 150    # Minimum cooling: 150-300W
+power_max_threshold: 1500   # Maximum cooling: 1200-2000W
+```
+
+#### Large Central/Multi-zone Systems (2000-5000W)
+```yaml
+power_idle_threshold: 20     # Standby: 10-30W
+power_min_threshold: 400    # Minimum cooling: 400-800W
+power_max_threshold: 4000   # Maximum cooling: 3000-5000W
+```
+
+#### High-Power Mini-Split Example (User's AC)
+Based on a real user's AC with these characteristics:
+- Idle/standby: 3-4W
+- Running at minimum: 230W
+- Running at full power: 1200W
+
+Recommended configuration:
+```yaml
+power_idle_threshold: 10     # Set slightly above idle (3-4W) for stability
+power_min_threshold: 200    # Set slightly below minimum running (230W)
+power_max_threshold: 1000   # Set below maximum (1200W) to catch high power states
+```
+
+### Setting Optimal Thresholds
+
+#### General Guidelines
+
+1. **Idle Threshold**: Set 2-3x higher than actual standby power
+   - Prevents false "on" detection from power sensor noise
+   - Example: If standby is 3W, set threshold to 8-10W
+
+2. **Min Threshold**: Set 10-20% below typical minimum running power
+   - Ensures reliable detection when AC starts
+   - Example: If min running is 230W, set threshold to 190-210W
+
+3. **Max Threshold**: Set at 70-80% of actual maximum power
+   - Captures "high power" state without requiring absolute peak
+   - Example: If max is 1200W, set threshold to 850-1000W
+
+#### Safety Margins
+
+Always leave margins between thresholds:
+- Idle to Min: At least 50W gap
+- Min to Max: At least 200W gap
+
+This prevents threshold overlap and ensures clear state detection.
+
+### Impact on HysteresisLearner
+
+Accurate power thresholds are essential for the HysteresisLearner feature:
+
+- **Too Low Idle**: May miss AC turn-on events
+- **Too High Min**: May not detect low-power cooling states
+- **Too Low Max**: May not distinguish between moderate and high cooling
+
+The HysteresisLearner uses power transitions to learn:
+- When your AC starts cooling (temperature threshold)
+- When your AC stops cooling (temperature threshold)
+- The temperature "window" your AC maintains
+
+### Troubleshooting Power Thresholds
+
+#### Symptoms of Incorrect Thresholds
+
+1. **Learning not collecting data**: Idle threshold too high
+2. **Constant "high power" state**: Max threshold too low
+3. **Never sees "idle" state**: Idle threshold too low
+4. **Erratic state changes**: Thresholds too close together
+
+#### Debug Mode
+
+Enable debug logging to see power state detection:
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.smart_climate.offset_engine: debug
+```
+
+Look for messages like:
+```
+Power state: idle (3W < 10W threshold)
+Power state: moderate (450W between 200W and 1000W)
+Power transition detected: idle -> moderate
+```
+
+### Advanced Configuration
+
+#### Variable Speed Compressors
+
+Modern inverter ACs have highly variable power consumption:
+```yaml
+# Inverter AC with 100-1500W range
+power_idle_threshold: 15
+power_min_threshold: 80     # Catches ultra-low speed operation
+power_max_threshold: 1200   # Below peak but captures high demand
+```
+
+#### Multi-Stage Systems
+
+For systems with discrete stages:
+```yaml
+# 2-stage system: 800W (stage 1) or 1600W (stage 2)
+power_idle_threshold: 20
+power_min_threshold: 700    # Below stage 1
+power_max_threshold: 1400   # Between stage 1 and 2
+```
+
+### Quick Reference Table
+
+| AC Type | Typical Range | Idle | Min | Max |
+|---------|--------------|------|-----|-----|
+| Small Window | 500-800W | 5-10W | 80-120W | 400-600W |
+| Portable | 800-1200W | 5-15W | 100-200W | 600-1000W |
+| Split System | 1000-3000W | 10-20W | 150-400W | 800-2500W |
+| Central AC | 2000-5000W | 20-50W | 400-800W | 1500-4000W |
+| Mini-Split | 600-2000W | 3-15W | 100-300W | 500-1800W |
+
+Remember: These are starting points. Always verify with your actual power sensor readings!
+
 ### Step 4: Options Flow (Modify After Setup)
 
 After initial setup, you can modify ALL settings through the Options flow:
