@@ -28,8 +28,9 @@ Smart Climate Control creates a virtual climate entity that:
 
 **Intelligent Learning**
 - Lightweight ML learns your AC's behavior patterns
+- AC temperature window detection (HysteresisLearner) for enhanced accuracy
 - Adapts to time-of-day and seasonal changes
-- Optional power monitoring for enhanced accuracy
+- Optional power monitoring for cycle detection and learning
 - Learning can be enabled/disabled with a simple switch
 
 **Smart Operation**

@@ -92,12 +92,23 @@ Counter-intuitively, internal sensors (especially those at exhaust vents) often 
    - Idle: Steady rise back toward room temperature
    - No ambiguity about operational state
 
-3. **Better Learning Potential**: Larger offsets provide clearer signals for the learning system
+3. **Thermal Dynamics Explained**: Understanding why internal sensors behave this way helps optimize configuration
+   - **During Active Cooling**: Internal fan mixes warm room air with cold evaporator, sensor reads averaged temperature
+   - **After Cooling Stops**: No airflow mixing, sensor reads pure evaporator coil temperature (much colder)
+   - **Example**: AC target 20.8°C shows 20.8°C while running, drops to 16°C when stopped
+   - **Why This Happens**: Evaporator coil stays very cold after compressor stops, gradually warms to room temperature
+
+4. **Better Learning Potential**: Larger offsets provide clearer signals for the learning system
    - More data points across a wider range
    - Clearer correlation patterns
    - Faster convergence to optimal offsets
 
-4. **Avoids Double Correction**: Remote sensors with small offsets risk overcorrection
+5. **Perfect for HysteresisLearner**: The new AC temperature window detection feature thrives on these patterns
+   - **Clear Transitions**: 4-5°C difference between cooling/idle makes state detection trivial
+   - **Reliable Thresholds**: Consistent temperature drops enable robust learning of start/stop points
+   - **Enhanced Predictions**: System quickly learns your AC's cooling cycle behavior
+
+6. **Avoids Double Correction**: Remote sensors with small offsets risk overcorrection
    - If remote sensor reads 23°C and room is 24°C (1°C difference)
    - Smart Climate might add another 1-2°C offset
    - Result: AC set to 21°C when 22°C would suffice
