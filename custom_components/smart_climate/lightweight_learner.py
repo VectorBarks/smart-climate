@@ -576,6 +576,17 @@ class LightweightOffsetLearner:
         Returns:
             Dictionary containing all pattern data for JSON serialization
         """
+        # Ensure sample count is synchronized with enhanced samples before saving
+        # This prevents future mismatches when loading
+        if self._enhanced_samples:
+            actual_count = len(self._enhanced_samples)
+            if self._sample_count != actual_count:
+                _LOGGER.debug(
+                    "Synchronizing sample count before save: current=%s, actual enhanced samples=%s",
+                    self._sample_count, actual_count
+                )
+                self._sample_count = actual_count
+        
         return {
             "version": "1.1",  # Bumped version for hysteresis support
             "time_patterns": {
@@ -650,22 +661,52 @@ class LightweightOffsetLearner:
         self._enhanced_samples = []
         if version == "1.1" and "enhanced_samples" in patterns:
             enhanced_samples = patterns["enhanced_samples"]
+            valid_samples_loaded = 0
             for sample in enhanced_samples:
-                # Validate and load enhanced sample
-                self._enhanced_samples.append({
-                    "predicted": float(sample["predicted"]),
-                    "actual": float(sample["actual"]),
-                    "ac_temp": float(sample["ac_temp"]),
-                    "room_temp": float(sample["room_temp"]),
-                    "outdoor_temp": sample.get("outdoor_temp"),  # May be None
-                    "mode": str(sample.get("mode", "cool")),
-                    "power": sample.get("power"),  # May be None
-                    "hysteresis_state": str(sample.get("hysteresis_state", "no_power_sensor")),
-                    "timestamp": str(sample.get("timestamp", ""))
-                })
+                try:
+                    # Validate and load enhanced sample
+                    self._enhanced_samples.append({
+                        "predicted": float(sample["predicted"]),
+                        "actual": float(sample["actual"]),
+                        "ac_temp": float(sample["ac_temp"]),
+                        "room_temp": float(sample["room_temp"]),
+                        "outdoor_temp": sample.get("outdoor_temp"),  # May be None
+                        "mode": str(sample.get("mode", "cool")),
+                        "power": sample.get("power"),  # May be None
+                        "hysteresis_state": str(sample.get("hysteresis_state", "no_power_sensor")),
+                        "timestamp": str(sample.get("timestamp", ""))
+                    })
+                    valid_samples_loaded += 1
+                except (KeyError, ValueError, TypeError) as exc:
+                    _LOGGER.warning(
+                        "Skipping invalid enhanced sample during load: %s. Error: %s",
+                        sample, exc
+                    )
+            
+            if valid_samples_loaded < len(enhanced_samples):
+                _LOGGER.warning(
+                    "Loaded %s valid enhanced samples out of %s total",
+                    valid_samples_loaded, len(enhanced_samples)
+                )
         
         # Load sample count
-        self._sample_count = int(patterns["sample_count"])
+        stored_sample_count = int(patterns["sample_count"])
+        
+        # Synchronize sample count with actual enhanced samples if available
+        # This fixes cases where the stored count doesn't match actual data
+        if version == "1.1" and self._enhanced_samples:
+            actual_sample_count = len(self._enhanced_samples)
+            if stored_sample_count != actual_sample_count:
+                _LOGGER.warning(
+                    "Sample count mismatch detected: stored=%s, actual enhanced samples=%s. Using actual count.",
+                    stored_sample_count, actual_sample_count
+                )
+                self._sample_count = actual_sample_count
+            else:
+                self._sample_count = stored_sample_count
+        else:
+            # For version 1.0 or when no enhanced samples, use stored count
+            self._sample_count = stored_sample_count
         
         hours_with_data = sum(1 for count in self._time_pattern_counts if count > 0)
         power_states_loaded = len(self._power_state_patterns)
@@ -678,8 +719,9 @@ class LightweightOffsetLearner:
         )
         
         _LOGGER.debug(
-            "Pattern loading details: version=%s, power_states=%s, enhanced_samples=%s",
-            version, list(self._power_state_patterns.keys()), enhanced_samples_loaded
+            "Pattern loading details: version=%s, power_states=%s, enhanced_samples=%s, sample_count_synced=%s",
+            version, list(self._power_state_patterns.keys()), enhanced_samples_loaded, 
+            self._sample_count == enhanced_samples_loaded
         )
 
     # Compatibility aliases for OffsetEngine API
