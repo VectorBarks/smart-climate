@@ -21,7 +21,7 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**🌟 NEW in v1.1.0: HysteresisLearner - AC Temperature Window Detection**
+**NEW in v1.1.0: HysteresisLearner - AC Temperature Window Detection**
 - Automatically learns your AC's start/stop temperature thresholds
 - Understands when your AC actually turns on and off
 - Adapts predictions based on real power consumption patterns
@@ -143,7 +143,7 @@ smart_climate:
 **Version 1.1.0 Released**: Production-ready with HysteresisLearner and enhanced learning capabilities!
 
 **New in v1.1.0:**
-- 🌟 HysteresisLearner: Automatic AC temperature window detection
+- HysteresisLearner: Automatic AC temperature window detection
 - Enhanced learning system with power monitoring integration
 - Learning switch with timestamp tracking
 - Configurable default target temperature
