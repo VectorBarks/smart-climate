@@ -659,13 +659,13 @@ class OffsetEngine:
         
         try:
             stats = self._learner.get_statistics()
+            # Handle LearningStats dataclass from LightweightOffsetLearner
             return {
                 "enabled": True,
-                "samples": stats["samples"],
-                "accuracy": stats["accuracy"],
-                "confidence": stats["accuracy"],  # Use accuracy as overall confidence
-                "has_sufficient_data": stats["has_sufficient_data"],
-                "mean_error": stats["mean_error"]
+                "samples": stats.samples_collected,
+                "accuracy": stats.avg_accuracy,
+                "confidence": stats.avg_accuracy,  # Use accuracy as overall confidence
+                "has_sufficient_data": stats.samples_collected >= 10,  # Consider 10+ samples sufficient
             }
         except Exception as exc:
             _LOGGER.warning("Failed to get learning info: %s", exc)
