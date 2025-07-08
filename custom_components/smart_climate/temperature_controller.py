@@ -22,22 +22,29 @@ class TemperatureLimits:
 class TemperatureController:
     """Controls temperature commands with offset and limits."""
     
-    def __init__(self, hass: HomeAssistant, limits: TemperatureLimits):
+    def __init__(
+        self, 
+        hass: HomeAssistant, 
+        limits: TemperatureLimits,
+        gradual_adjustment_rate: Optional[float] = None
+    ):
         """Initialize TemperatureController.
         
         Args:
             hass: Home Assistant instance
             limits: Temperature safety limits
+            gradual_adjustment_rate: Rate of gradual adjustment (default: 0.5°C per update)
         """
         self._hass = hass
         self._limits = limits
-        self._gradual_adjustment_rate = 0.5
+        self._gradual_adjustment_rate = gradual_adjustment_rate if gradual_adjustment_rate is not None else 0.5
         self._last_adjustment = 0.0
         
         _LOGGER.debug(
-            "TemperatureController initialized with limits: %.1f-%.1f°C",
+            "TemperatureController initialized with limits: %.1f-%.1f°C, gradual_adjustment_rate: %.1f°C",
             limits.min_temperature,
-            limits.max_temperature
+            limits.max_temperature,
+            self._gradual_adjustment_rate
         )
     
     def apply_offset_and_limits(

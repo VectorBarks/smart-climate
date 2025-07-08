@@ -1158,14 +1158,19 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
         _LOGGER.debug("Creating ModeManager with config")
         mode_manager = ModeManager(config)
         
-        _LOGGER.debug("Creating TemperatureController with limits: min=%s, max=%s", 
-                      config.get("min_temperature", 16), config.get("max_temperature", 30))
+        _LOGGER.debug("Creating TemperatureController with limits: min=%s, max=%s, gradual_rate=%s", 
+                      config.get("min_temperature", 16), config.get("max_temperature", 30),
+                      config.get("gradual_adjustment_rate", 0.5))
         
         limits = TemperatureLimits(
             min_temperature=config.get("min_temperature", 16),
             max_temperature=config.get("max_temperature", 30)
         )
-        temperature_controller = TemperatureController(hass, limits)
+        temperature_controller = TemperatureController(
+            hass, 
+            limits,
+            gradual_adjustment_rate=config.get("gradual_adjustment_rate", 0.5)
+        )
         
         _LOGGER.debug("Creating SmartClimateCoordinator with update interval: %s", 
                       config.get("update_interval", 180))
