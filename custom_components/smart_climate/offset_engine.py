@@ -335,15 +335,21 @@ class OffsetEngine:
             self._detect_power_transitions(input_data)
             
             # Get hysteresis state for enhanced learning
-            hysteresis_state = "no_power_sensor"
-            if self._hysteresis_enabled and self._hysteresis_learner.has_sufficient_data:
+            if not self._hysteresis_enabled:
+                # No power sensor configured
+                hysteresis_state = "no_power_sensor"
+            elif not self._hysteresis_learner.has_sufficient_data:
+                # Power sensor configured but still learning
+                hysteresis_state = "learning_hysteresis"
+            else:
+                # Power sensor configured with sufficient data
                 try:
                     current_power_state = self._get_power_state(input_data.power_consumption or 0)
                     hysteresis_state = self._hysteresis_learner.get_hysteresis_state(
                         current_power_state, input_data.room_temp
                     )
                 except Exception:
-                    hysteresis_state = "no_power_sensor"  # Graceful fallback
+                    hysteresis_state = "learning_hysteresis"  # Graceful fallback
             
             # Try to use learning if enabled and sufficient data available
             final_offset = rule_based_offset
@@ -614,15 +620,21 @@ class OffsetEngine:
         
         try:
             # Get hysteresis state for enhanced learning
-            hysteresis_state = "no_power_sensor"
-            if self._hysteresis_enabled and self._hysteresis_learner.has_sufficient_data:
+            if not self._hysteresis_enabled:
+                # No power sensor configured
+                hysteresis_state = "no_power_sensor"
+            elif not self._hysteresis_learner.has_sufficient_data:
+                # Power sensor configured but still learning
+                hysteresis_state = "learning_hysteresis"
+            else:
+                # Power sensor configured with sufficient data
                 try:
                     current_power_state = self._get_power_state(input_data.power_consumption or 0)
                     hysteresis_state = self._hysteresis_learner.get_hysteresis_state(
                         current_power_state, input_data.room_temp
                     )
                 except Exception:
-                    hysteresis_state = "no_power_sensor"
+                    hysteresis_state = "learning_hysteresis"  # Graceful fallback
             
             # Record sample with hysteresis context
             self._learner.add_sample(
