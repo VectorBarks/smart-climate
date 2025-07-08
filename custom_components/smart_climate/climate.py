@@ -1024,12 +1024,15 @@ class SmartClimateEntity(ClimateEntity):
                 return
             
             # Calculate actual offset that exists now
+            # The offset is: AC internal temp - Room temp
+            # When room is warmer than AC (cooling): AC=22, Room=25 -> offset = -3 (need to cool MORE)
+            # When room is cooler than AC (overcooled): AC=25, Room=22 -> offset = 3 (need to cool LESS)
             actual_offset = float(current_ac_temp) - current_room_temp
             
             # Record the performance
             self._offset_engine.record_actual_performance(
                 predicted_offset=self._last_predicted_offset,
-                actual_offset=-actual_offset,  # Negative because offset is correction needed
+                actual_offset=actual_offset,  # Use the offset directly without negation
                 input_data=self._last_offset_input
             )
             
@@ -1037,7 +1040,7 @@ class SmartClimateEntity(ClimateEntity):
                 "Learning feedback collected: predicted_offset=%.2f°C, actual_offset=%.2f°C, "
                 "ac_temp=%.1f°C, room_temp=%.1f°C",
                 self._last_predicted_offset,
-                -actual_offset,
+                actual_offset,
                 current_ac_temp,
                 current_room_temp
             )
