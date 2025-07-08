@@ -9,7 +9,7 @@ from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     HVACMode, HVACAction, ClimateEntityFeature
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_call_later
 from homeassistant.exceptions import HomeAssistantError
@@ -18,6 +18,10 @@ from .models import OffsetInput, OffsetResult
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+# Define a threshold for triggering automatic updates.
+# This prevents tiny, insignificant fluctuations from causing unnecessary adjustments.
+OFFSET_UPDATE_THRESHOLD = 0.3  # degrees Celsius
 
 
 class SmartClimateEntity(ClimateEntity):
@@ -944,8 +948,11 @@ class SmartClimateEntity(ClimateEntity):
         # Start listening to sensor updates
         await self._sensor_manager.start_listening()
         
-        # Register for coordinator updates
-        self._coordinator.async_add_listener(self.async_write_ha_state)
+        # Register our new handler for coordinator updates.
+        # This replaces the old listener and ensures automatic cleanup on removal.
+        self.async_on_remove(
+            self._coordinator.async_add_listener(self._handle_coordinator_update)
+        )
         
         # Log full debug state for troubleshooting
         debug_info = self.debug_state()
@@ -1037,6 +1044,45 @@ class SmartClimateEntity(ClimateEntity):
             
         except Exception as exc:
             _LOGGER.warning("Error collecting learning feedback: %s", exc)
+    
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator to apply periodic adjustments."""
+        if not self._coordinator.data:
+            _LOGGER.debug("Coordinator update skipped: no data available.")
+            return
+
+        # Only apply automatic adjustments if the climate entity is active (not OFF)
+        if self.hvac_mode == HVACMode.OFF:
+            _LOGGER.debug("Skipping automatic adjustment: HVAC mode is OFF.")
+            self.async_write_ha_state()  # Update state even if off
+            return
+
+        new_offset = self._coordinator.data.calculated_offset
+        
+        # Check if the calculated offset has changed significantly since the last application
+        if abs(new_offset - self._last_offset) > OFFSET_UPDATE_THRESHOLD:
+            _LOGGER.info(
+                "Significant offset change detected (last applied: %.2f°C, new: %.2f°C). "
+                "Triggering automatic temperature adjustment.",
+                self._last_offset,
+                new_offset,
+            )
+            
+            # To call an async method from this synchronous callback, schedule it as a task.
+            # This re-applies the current target temperature with the new offset.
+            if self.target_temperature is not None:
+                self.hass.async_create_task(
+                    self._apply_temperature_with_offset(self.target_temperature)
+                )
+        else:
+            _LOGGER.debug(
+                "Offset change (%.2f°C -> %.2f°C) is within threshold (%.2f°C). No automatic adjustment needed.",
+                self._last_offset, new_offset, OFFSET_UPDATE_THRESHOLD
+            )
+
+        # Always update the state to reflect the latest sensor values from the coordinator
+        self.async_write_ha_state()
     
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""

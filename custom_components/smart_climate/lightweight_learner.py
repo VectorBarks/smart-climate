@@ -9,6 +9,7 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from collections import deque
+from datetime import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,10 +68,203 @@ class LightweightOffsetLearner:
         # Overall statistics
         self._sample_count: int = 0
         
+        # Enhanced samples storage for hysteresis-aware learning
+        self._enhanced_samples: List[Dict[str, Any]] = []
+        
         _LOGGER.debug(
             "LightweightOffsetLearner initialized: max_history=%d, learning_rate=%.3f",
             max_history, learning_rate
         )
+    
+    def add_sample(
+        self,
+        predicted: float,
+        actual: float,
+        ac_temp: float,
+        room_temp: float,
+        outdoor_temp: Optional[float] = None,
+        mode: str = "cool",
+        power: Optional[float] = None,
+        hysteresis_state: str = "no_power_sensor"
+    ) -> None:
+        """Add a learning sample with hysteresis context.
+        
+        Args:
+            predicted: The predicted offset value
+            actual: The actual offset that worked
+            ac_temp: AC internal temperature
+            room_temp: Room temperature  
+            outdoor_temp: Outdoor temperature if available
+            mode: Operating mode (cool, heat, etc.)
+            power: Power consumption if available
+            hysteresis_state: Current hysteresis state for enhanced learning
+        """
+        sample = {
+            "predicted": predicted,
+            "actual": actual,
+            "ac_temp": ac_temp,
+            "room_temp": room_temp,
+            "outdoor_temp": outdoor_temp,
+            "mode": mode,
+            "power": power,
+            "hysteresis_state": hysteresis_state,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self._enhanced_samples.append(sample)
+        
+        # Keep only recent samples to prevent memory bloat
+        if len(self._enhanced_samples) > self._max_history:
+            removed_count = len(self._enhanced_samples) - self._max_history
+            self._enhanced_samples = self._enhanced_samples[-self._max_history:]
+            _LOGGER.debug(
+                "Pruned %s old enhanced samples, keeping %s most recent", 
+                removed_count, self._max_history
+            )
+        
+        self._sample_count += 1
+        
+        _LOGGER.debug(
+            "Added enhanced sample: predicted=%.2f, actual=%.2f, hysteresis_state=%s, total_samples=%d",
+            predicted, actual, hysteresis_state, len(self._enhanced_samples)
+        )
+    
+    def predict(
+        self,
+        ac_temp: float,
+        room_temp: float,
+        outdoor_temp: Optional[float] = None,
+        mode: str = "cool",
+        power: Optional[float] = None,
+        hysteresis_state: str = "no_power_sensor"
+    ) -> float:
+        """Predict offset based on learned patterns with hysteresis context.
+        
+        Args:
+            ac_temp: AC internal temperature
+            room_temp: Room temperature
+            outdoor_temp: Outdoor temperature if available
+            mode: Operating mode (cool, heat, etc.)
+            power: Power consumption if available
+            hysteresis_state: Current hysteresis state for enhanced prediction
+            
+        Returns:
+            Predicted offset value
+        """
+        if not self._enhanced_samples:
+            _LOGGER.debug("No enhanced samples available for prediction")
+            return 0.0
+        
+        # Calculate similarity-weighted prediction
+        similarities = []
+        weights = []
+        actual_offsets = []
+        
+        for sample in self._enhanced_samples:
+            similarity = self._calculate_similarity_with_hysteresis(
+                ac_temp, room_temp, outdoor_temp, mode, power, hysteresis_state, sample
+            )
+            
+            if similarity > 0.0:
+                similarities.append(similarity)
+                weights.append(similarity)
+                actual_offsets.append(sample["actual"])
+        
+        if not weights:
+            _LOGGER.debug("No similar samples found for prediction")
+            return 0.0
+        
+        # Calculate weighted average
+        total_weight = sum(weights)
+        if total_weight == 0.0:
+            return 0.0
+        
+        weighted_prediction = sum(
+            offset * weight for offset, weight in zip(actual_offsets, weights)
+        ) / total_weight
+        
+        _LOGGER.debug(
+            "Enhanced prediction: %.3f based on %d similar samples (hysteresis_state=%s)",
+            weighted_prediction, len(weights), hysteresis_state
+        )
+        
+        return weighted_prediction
+    
+    def _calculate_similarity_with_hysteresis(
+        self,
+        ac_temp: float,
+        room_temp: float,
+        outdoor_temp: Optional[float],
+        mode: str,
+        power: Optional[float],
+        hysteresis_state: str,
+        sample: Dict[str, Any]
+    ) -> float:
+        """Calculate similarity between current conditions and a sample, including hysteresis context.
+        
+        Args:
+            ac_temp: Current AC temperature
+            room_temp: Current room temperature
+            outdoor_temp: Current outdoor temperature (if available)
+            mode: Current mode
+            power: Current power (if available)
+            hysteresis_state: Current hysteresis state
+            sample: Sample to compare against
+            
+        Returns:
+            Similarity score (0.0 to 1.0)
+        """
+        similarity_factors = []
+        
+        # Temperature similarity (AC and room)
+        ac_temp_diff = abs(ac_temp - sample["ac_temp"])
+        room_temp_diff = abs(room_temp - sample["room_temp"])
+        
+        # Use exponential decay for temperature similarity
+        ac_temp_similarity = max(0.0, 1.0 - (ac_temp_diff / 5.0))  # 5°C range
+        room_temp_similarity = max(0.0, 1.0 - (room_temp_diff / 5.0))
+        
+        similarity_factors.append(ac_temp_similarity)
+        similarity_factors.append(room_temp_similarity)
+        
+        # Outdoor temperature similarity (if available for both)
+        if outdoor_temp is not None and sample.get("outdoor_temp") is not None:
+            outdoor_temp_diff = abs(outdoor_temp - sample["outdoor_temp"])
+            outdoor_temp_similarity = max(0.0, 1.0 - (outdoor_temp_diff / 10.0))  # 10°C range
+            similarity_factors.append(outdoor_temp_similarity)
+        
+        # Mode similarity
+        mode_similarity = 1.0 if mode == sample.get("mode") else 0.3
+        similarity_factors.append(mode_similarity)
+        
+        # Power similarity (if available for both)
+        if power is not None and sample.get("power") is not None:
+            power_diff = abs(power - sample["power"])
+            power_similarity = max(0.0, 1.0 - (power_diff / 500.0))  # 500W range
+            similarity_factors.append(power_similarity)
+        
+        # Hysteresis state similarity (key enhancement)
+        sample_hysteresis_state = sample.get("hysteresis_state", "no_power_sensor")
+        if hysteresis_state == sample_hysteresis_state:
+            # Strong bonus for matching hysteresis state
+            hysteresis_similarity = 1.0
+        else:
+            # Reduced similarity for non-matching hysteresis states
+            hysteresis_similarity = 0.2
+        
+        # Weight hysteresis state heavily in similarity calculation
+        similarity_factors.append(hysteresis_similarity)
+        similarity_factors.append(hysteresis_similarity)  # Double weight
+        
+        # Calculate geometric mean for conservative similarity estimation
+        if not similarity_factors:
+            return 0.0
+        
+        similarity = 1.0
+        for factor in similarity_factors:
+            similarity *= max(0.01, factor)  # Prevent zero factors
+        
+        return similarity ** (1.0 / len(similarity_factors))
     
     def update_pattern(
         self,
@@ -354,16 +548,18 @@ class LightweightOffsetLearner:
         old_patterns = sum(1 for count in self._time_pattern_counts if count > 0)
         old_power_states = len(self._power_state_patterns)
         old_temp_data = len(self._temp_correlation_data)
+        old_enhanced_samples = len(self._enhanced_samples)
         
         self._time_patterns = [0.0] * 24
         self._time_pattern_counts = [0] * 24
         self._temp_correlation_data.clear()
         self._power_state_patterns.clear()
+        self._enhanced_samples.clear()
         self._sample_count = 0
         
         _LOGGER.info(
-            "Learning patterns reset: cleared %s samples, %s hour patterns, %s power states, %s temp correlations",
-            old_samples, old_patterns, old_power_states, old_temp_data
+            "Learning patterns reset: cleared %s samples, %s hour patterns, %s power states, %s temp correlations, %s enhanced samples",
+            old_samples, old_patterns, old_power_states, old_temp_data, old_enhanced_samples
         )
     
     def save_patterns(self) -> Dict[str, Any]:
@@ -373,7 +569,7 @@ class LightweightOffsetLearner:
             Dictionary containing all pattern data for JSON serialization
         """
         return {
-            "version": "1.0",
+            "version": "1.1",  # Bumped version for hysteresis support
             "time_patterns": {
                 hour: offset for hour, offset in enumerate(self._time_patterns)
                 if self._time_pattern_counts[hour] > 0
@@ -384,6 +580,7 @@ class LightweightOffsetLearner:
             },
             "temp_correlation_data": list(self._temp_correlation_data),
             "power_state_patterns": dict(self._power_state_patterns),
+            "enhanced_samples": self._enhanced_samples,
             "sample_count": self._sample_count
         }
     
@@ -397,9 +594,9 @@ class LightweightOffsetLearner:
             ValueError: If pattern data is invalid or incompatible
             KeyError: If required fields are missing
         """
-        # Validate version
+        # Validate version (support both 1.0 and 1.1 for backward compatibility)
         version = patterns.get("version")
-        if version != "1.0":
+        if version not in ["1.0", "1.1"]:
             raise ValueError(f"Unsupported pattern data version: {version}")
         
         # Validate and load time patterns
@@ -441,20 +638,38 @@ class LightweightOffsetLearner:
                 "count": int(pattern["count"])
             }
         
+        # Load enhanced samples (version 1.1 feature, optional for backward compatibility)
+        self._enhanced_samples = []
+        if version == "1.1" and "enhanced_samples" in patterns:
+            enhanced_samples = patterns["enhanced_samples"]
+            for sample in enhanced_samples:
+                # Validate and load enhanced sample
+                self._enhanced_samples.append({
+                    "predicted": float(sample["predicted"]),
+                    "actual": float(sample["actual"]),
+                    "ac_temp": float(sample["ac_temp"]),
+                    "room_temp": float(sample["room_temp"]),
+                    "outdoor_temp": sample.get("outdoor_temp"),  # May be None
+                    "mode": str(sample.get("mode", "cool")),
+                    "power": sample.get("power"),  # May be None
+                    "hysteresis_state": str(sample.get("hysteresis_state", "no_power_sensor")),
+                    "timestamp": str(sample.get("timestamp", ""))
+                })
+        
         # Load sample count
         self._sample_count = int(patterns["sample_count"])
         
         hours_with_data = sum(1 for count in self._time_pattern_counts if count > 0)
         power_states_loaded = len(self._power_state_patterns)
         temp_correlations = len(self._temp_correlation_data)
+        enhanced_samples_loaded = len(self._enhanced_samples)
         
         _LOGGER.info(
-            "Loaded patterns: %s samples, %s hours with data, %s power states, %s temp correlations",
-            self._sample_count, hours_with_data, power_states_loaded, temp_correlations
+            "Loaded patterns: %s samples, %s hours with data, %s power states, %s temp correlations, %s enhanced samples",
+            self._sample_count, hours_with_data, power_states_loaded, temp_correlations, enhanced_samples_loaded
         )
         
         _LOGGER.debug(
-            "Pattern loading details: time_patterns=%s, power_states=%s",
-            list(self._power_state_patterns.keys()),
-            [f"h{h}:{self._time_pattern_counts[h]}" for h in range(24) if self._time_pattern_counts[h] > 0]
+            "Pattern loading details: version=%s, power_states=%s, enhanced_samples=%s",
+            version, list(self._power_state_patterns.keys()), enhanced_samples_loaded
         )

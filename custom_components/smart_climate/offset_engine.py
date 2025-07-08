@@ -1,11 +1,13 @@
 """Offset calculation engine for Smart Climate Control."""
 
 import logging
-from typing import Optional, Dict, List, Tuple, Callable, TYPE_CHECKING
+from typing import Optional, Dict, List, Tuple, Callable, TYPE_CHECKING, Literal
 import statistics
 from datetime import datetime
+from collections import deque
 
 from .models import OffsetInput, OffsetResult
+from .lightweight_learner import LightweightOffsetLearner as EnhancedLightweightOffsetLearner
 from .const import (
     DEFAULT_POWER_IDLE_THRESHOLD,
     DEFAULT_POWER_MIN_THRESHOLD,
@@ -19,282 +21,150 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
-class LightweightOffsetLearner:
-    """Lightweight learning component for offset prediction."""
-    
-    def __init__(self):
-        """Initialize the learner."""
-        self._training_samples: List[Dict] = []
-        self._min_samples = 20  # Minimum samples for predictions
-        self._max_samples = 1000  # Maximum samples to keep in memory
-        self._has_sufficient_data = False
-        self._power_min_threshold = 100  # Default, will be updated by OffsetEngine
-        
-    def has_sufficient_data(self) -> bool:
-        """Check if learner has sufficient training data."""
-        return len(self._training_samples) >= self._min_samples
-    
-    def record_sample(
-        self,
-        predicted_offset: float,
-        actual_offset: float,
-        input_data: OffsetInput
-    ) -> None:
-        """Record a training sample."""
-        try:
-            sample = {
-                "predicted": predicted_offset,
-                "actual": actual_offset,
-                "ac_temp": input_data.ac_internal_temp,
-                "room_temp": input_data.room_temp,
-                "outdoor_temp": input_data.outdoor_temp,
-                "mode": input_data.mode,
-                "power": input_data.power_consumption,
-                "hour": input_data.time_of_day.hour,
-                "day_of_week": input_data.day_of_week,
-                "timestamp": datetime.now()
-            }
-            
-            self._training_samples.append(sample)
-            
-            # Keep only recent samples to prevent memory bloat
-            if len(self._training_samples) > self._max_samples:
-                removed_count = len(self._training_samples) - self._max_samples
-                self._training_samples = self._training_samples[-self._max_samples:]
-                _LOGGER.debug("Pruned %s old training samples, keeping %s most recent", removed_count, self._max_samples)
-            
-            self._has_sufficient_data = self.has_sufficient_data()
-            
-            _LOGGER.debug(
-                "Recording learning sample: predicted=%s, actual=%s, samples_count=%s, sufficient_data=%s",
-                predicted_offset, actual_offset, len(self._training_samples), self._has_sufficient_data
-            )
-            
-        except Exception as exc:
-            _LOGGER.warning("Failed to record learning sample: %s", exc)
-    
-    def predict_offset(self, input_data: OffsetInput) -> Dict:
-        """Predict offset based on learned patterns."""
-        if not self._has_sufficient_data:
-            _LOGGER.debug(
-                "Prediction request with insufficient data: have %s samples, need %s",
-                len(self._training_samples), self._min_samples
-            )
-            return {"predicted_offset": 0.0, "confidence": 0.0}
-        
-        try:
-            # Find similar conditions
-            similar_samples = self._find_similar_samples(input_data)
-            
-            if not similar_samples:
-                _LOGGER.debug(
-                    "No similar samples found for prediction: ac_temp=%s, room_temp=%s, mode=%s",
-                    input_data.ac_internal_temp, input_data.room_temp, input_data.mode
-                )
-                return {"predicted_offset": 0.0, "confidence": 0.0}
-            
-            # Calculate weighted average of actual offsets
-            actual_offsets = [sample["actual"] for sample in similar_samples]
-            predicted_offset = statistics.mean(actual_offsets)
-            
-            # Calculate confidence based on sample size and consistency
-            confidence = self._calculate_prediction_confidence(similar_samples)
-            
-            _LOGGER.debug(
-                "Prediction generated: offset=%s, confidence=%s, similar_samples=%s, from_total=%s",
-                predicted_offset, confidence, len(similar_samples), len(self._training_samples)
-            )
-            
-            return {
-                "predicted_offset": predicted_offset,
-                "confidence": confidence
-            }
-            
-        except Exception as exc:
-            _LOGGER.warning("Failed to predict offset: %s", exc)
-            return {"predicted_offset": 0.0, "confidence": 0.0}
-    
-    def _find_similar_samples(self, input_data: OffsetInput) -> List[Dict]:
-        """Find samples with similar conditions."""
-        similar = []
-        
-        for sample in self._training_samples:
-            similarity_score = 0.0
-            factors = 0
-            
-            # Temperature similarity (most important)
-            temp_diff = abs(sample["ac_temp"] - input_data.ac_internal_temp)
-            if temp_diff <= 2.0:  # Within 2°C
-                similarity_score += 3.0 * (2.0 - temp_diff) / 2.0
-            factors += 3.0
-            
-            room_temp_diff = abs(sample["room_temp"] - input_data.room_temp)
-            if room_temp_diff <= 2.0:
-                similarity_score += 2.0 * (2.0 - room_temp_diff) / 2.0
-            factors += 2.0
-            
-            # Mode similarity
-            if sample["mode"] == input_data.mode:
-                similarity_score += 2.0
-            factors += 2.0
-            
-            # Power consumption similarity (if available)
-            if sample["power"] is not None and input_data.power_consumption is not None:
-                power_diff = abs(sample["power"] - input_data.power_consumption)
-                # Use min threshold as the tolerance for power similarity
-                power_tolerance = self._power_min_threshold
-                if power_diff <= power_tolerance:  # Within tolerance
-                    similarity_score += 1.0 * (power_tolerance - power_diff) / power_tolerance
-                factors += 1.0
-            
-            # Time of day similarity
-            hour_diff = abs(sample["hour"] - input_data.time_of_day.hour)
-            if hour_diff <= 3:  # Within 3 hours
-                similarity_score += 0.5 * (3 - hour_diff) / 3
-            factors += 0.5
-            
-            # Outdoor temperature similarity (if available)
-            if sample["outdoor_temp"] is not None and input_data.outdoor_temp is not None:
-                outdoor_diff = abs(sample["outdoor_temp"] - input_data.outdoor_temp)
-                if outdoor_diff <= 5.0:  # Within 5°C
-                    similarity_score += 1.0 * (5.0 - outdoor_diff) / 5.0
-                factors += 1.0
-            
-            # Accept samples with >60% similarity
-            if similarity_score / factors > 0.6:
-                similar.append(sample)
-        
-        # Return most recent similar samples (max 10)
-        similar.sort(key=lambda x: x["timestamp"], reverse=True)
-        return similar[:10]
-    
-    def _calculate_prediction_confidence(self, similar_samples: List[Dict]) -> float:
-        """Calculate confidence in prediction based on sample quality."""
-        if not similar_samples:
-            return 0.0
-        
-        # Base confidence from sample size
-        sample_confidence = min(len(similar_samples) / 10, 1.0)
-        
-        # Consistency confidence from variance in actual offsets
-        actual_offsets = [sample["actual"] for sample in similar_samples]
-        if len(actual_offsets) > 1:
-            variance = statistics.variance(actual_offsets)
-            consistency_confidence = max(0.0, 1.0 - variance / 2.0)
-        else:
-            consistency_confidence = 0.5
-        
-        # Overall confidence (weighted average)
-        return 0.6 * sample_confidence + 0.4 * consistency_confidence
-    
-    def get_statistics(self) -> Dict:
-        """Get learning statistics."""
-        if not self._training_samples:
-            return {
-                "samples": 0,
-                "accuracy": 0.0,
-                "mean_error": 0.0,
-                "has_sufficient_data": False
-            }
-        
-        # Calculate prediction accuracy
-        errors = []
-        for sample in self._training_samples:
-            error = abs(sample["predicted"] - sample["actual"])
-            errors.append(error)
-        
-        mean_error = statistics.mean(errors) if errors else 0.0
-        accuracy = max(0.0, 1.0 - mean_error / 2.0)  # Normalize to 0-1
-        
-        return {
-            "samples": len(self._training_samples),
-            "accuracy": accuracy,
-            "mean_error": mean_error,
-            "has_sufficient_data": self._has_sufficient_data
-        }
-    
-    def serialize_for_persistence(self) -> Dict:
-        """Serialize learner state for persistence.
-        
-        Returns:
-            Dictionary containing all learner state that can be saved to JSON
+# HysteresisState defines the possible states of the AC cycle.
+HysteresisState = Literal[
+    "learning_hysteresis",      # Not enough data to determine thresholds.
+    "active_phase",             # AC is actively cooling/heating (high power).
+    "idle_above_start_threshold", # AC is off, but room temp is above the point where it should start.
+    "idle_below_stop_threshold",  # AC is off, and room temp is below the point where it just stopped.
+    "idle_stable_zone"          # AC is off, room temp is between stop and start thresholds.
+]
+
+
+class HysteresisLearner:
+    """Learns the operational temperature thresholds of an AC unit based on power transitions."""
+
+    def __init__(self, min_samples: int = 5, max_samples: int = 50) -> None:
         """
-        # Convert datetime objects to ISO strings for JSON serialization
-        serializable_samples = []
-        for sample in self._training_samples:
-            serializable_sample = sample.copy()
-            if isinstance(serializable_sample.get("timestamp"), datetime):
-                serializable_sample["timestamp"] = serializable_sample["timestamp"].isoformat()
-            serializable_samples.append(serializable_sample)
-        
-        return {
-            "samples": serializable_samples,
-            "min_samples": self._min_samples,
-            "max_samples": self._max_samples,
-            "has_sufficient_data": self._has_sufficient_data,
-            "statistics": self.get_statistics()
-        }
-    
-    def restore_from_persistence(self, data: Dict) -> bool:
-        """Restore learner state from persisted data.
-        
+        Initializes the HysteresisLearner.
+
         Args:
-            data: Dictionary containing serialized learner state
-            
-        Returns:
-            True if restoration was successful, False otherwise
+            min_samples: The minimum number of start and stop samples required before thresholds are considered reliable.
+            max_samples: The maximum number of recent samples to keep for calculating thresholds.
         """
-        try:
-            # Validate data structure
-            if not isinstance(data, dict):
-                _LOGGER.warning("Invalid persistence data: not a dictionary")
-                return False
+        # Internal state attributes
+        self._min_samples: int = min_samples
+        self._start_temps: deque[float] = deque(maxlen=max_samples)
+        self._stop_temps: deque[float] = deque(maxlen=max_samples)
+
+        # Publicly accessible learned thresholds
+        self.learned_start_threshold: Optional[float] = None
+        self.learned_stop_threshold: Optional[float] = None
+
+    @property
+    def has_sufficient_data(self) -> bool:
+        """
+        Checks if enough data has been collected to provide reliable thresholds.
+
+        Returns:
+            True if both start and stop sample counts meet the minimum requirement.
+        """
+        return len(self._start_temps) >= self._min_samples and len(self._stop_temps) >= self._min_samples
+
+    def record_transition(self, transition_type: Literal['start', 'stop'], room_temp: float) -> None:
+        """
+        Records the room temperature during a power state transition. This is the primary data input method.
+
+        Args:
+            transition_type: 'start' for idle->high power, 'stop' for high->idle power.
+            room_temp: The current room temperature at the moment of transition.
+        """
+        if transition_type == 'start':
+            self._start_temps.append(room_temp)
+        elif transition_type == 'stop':
+            self._stop_temps.append(room_temp)
+        
+        # Update thresholds after recording new data
+        self._update_thresholds()
+
+    def get_hysteresis_state(self, power_state: str, room_temp: float) -> HysteresisState:
+        """
+        Determines the current position within the hysteresis cycle based on learned thresholds.
+
+        Args:
+            power_state: The current power state ("idle", "low", "moderate", "high").
+            room_temp: The current room temperature.
+
+        Returns:
+            A HysteresisState string representing the current phase of the cycle.
+        """
+        # Check if we have sufficient data to determine thresholds
+        if not self.has_sufficient_data:
+            return "learning_hysteresis"
+        
+        # Handle edge case where thresholds are None despite sufficient data
+        if self.learned_start_threshold is None or self.learned_stop_threshold is None:
+            return "learning_hysteresis"
+        
+        # If power state indicates active operation (moderate or high), return active_phase
+        if power_state in ("moderate", "high"):
+            return "active_phase"
+        
+        # For idle/low power states, compare room temperature against learned thresholds
+        # Default to idle behavior for any unknown power states (defensive programming)
+        
+        # Room temperature above start threshold - AC should be starting but isn't
+        if room_temp > self.learned_start_threshold:
+            return "idle_above_start_threshold"
+        
+        # Room temperature below stop threshold - AC has stopped and room is cooling down
+        if room_temp < self.learned_stop_threshold:
+            return "idle_below_stop_threshold"
+        
+        # Room temperature between stop and start thresholds (stable zone)
+        # This includes the case where room_temp equals either threshold
+        return "idle_stable_zone"
+
+    def serialize_for_persistence(self) -> Dict[str, List[float]]:
+        """
+        Serializes the learner's state into a JSON-compatible dictionary.
+
+        Returns:
+            A dictionary containing the lists of start and stop temperatures.
+        """
+        return {
+            "start_temps": list(self._start_temps),
+            "stop_temps": list(self._stop_temps)
+        }
+
+    def restore_from_persistence(self, data: Dict) -> None:
+        """
+        Restores the learner's state from a dictionary.
+
+        Args:
+            data: A dictionary conforming to the persistence schema.
+        """
+        if isinstance(data, dict):
+            start_temps = data.get("start_temps", [])
+            stop_temps = data.get("stop_temps", [])
             
-            samples = data.get("samples", [])
-            if not isinstance(samples, list):
-                _LOGGER.warning("Invalid samples data in persistence: not a list")
-                return False
+            if isinstance(start_temps, list):
+                self._start_temps.clear()
+                for temp in start_temps:
+                    if isinstance(temp, (int, float)):
+                        self._start_temps.append(float(temp))
             
-            # Restore samples, converting timestamp strings back to datetime objects
-            restored_samples = []
-            for sample in samples:
-                if not isinstance(sample, dict):
-                    continue
-                
-                # Validate required fields exist
-                required_fields = ["predicted", "actual", "ac_temp", "room_temp", "mode", "hour", "day_of_week"]
-                if not all(field in sample for field in required_fields):
-                    # Skip samples missing required fields
-                    continue
-                
-                # Convert timestamp string back to datetime
-                timestamp_str = sample.get("timestamp")
-                if isinstance(timestamp_str, str):
-                    try:
-                        sample["timestamp"] = datetime.fromisoformat(timestamp_str)
-                    except ValueError:
-                        # Skip samples with invalid timestamps
-                        continue
-                elif not isinstance(timestamp_str, datetime):
-                    # Skip samples with invalid timestamp types
-                    continue
-                
-                restored_samples.append(sample)
+            if isinstance(stop_temps, list):
+                self._stop_temps.clear()
+                for temp in stop_temps:
+                    if isinstance(temp, (int, float)):
+                        self._stop_temps.append(float(temp))
             
-            # Restore state
-            self._training_samples = restored_samples[-self._max_samples:]  # Keep only recent samples
-            self._has_sufficient_data = len(self._training_samples) >= self._min_samples
-            
-            _LOGGER.debug(
-                "Restored %d learning samples, sufficient_data=%s",
-                len(self._training_samples), self._has_sufficient_data
-            )
-            
-            return True
-            
-        except Exception as exc:
-            _LOGGER.warning("Failed to restore learner state from persistence: %s", exc)
-            return False
+            # Update thresholds after restoring data
+            self._update_thresholds()
+
+    def _update_thresholds(self) -> None:
+        """
+        (Private) Recalculates the learned thresholds using the median of collected samples.
+        The median is used for robustness against outlier temperature readings.
+        """
+        if self.has_sufficient_data:
+            self.learned_start_threshold = statistics.median(self._start_temps)
+            self.learned_stop_threshold = statistics.median(self._stop_temps)
+        else:
+            self.learned_start_threshold = None
+            self.learned_stop_threshold = None
+
 
 
 class OffsetEngine:
@@ -313,21 +183,26 @@ class OffsetEngine:
         
         # Learning configuration (disabled by default for backward compatibility)
         self._enable_learning = config.get("enable_learning", False)
-        self._learner: Optional[LightweightOffsetLearner] = None
+        self._learner: Optional[EnhancedLightweightOffsetLearner] = None
         self._update_callbacks: List[Callable] = []  # For state update notifications
         
+        # Hysteresis learning configuration
+        power_sensor = config.get("power_sensor")
+        self._hysteresis_enabled = power_sensor is not None and power_sensor != ""
+        self._hysteresis_learner = HysteresisLearner()
+        self._last_power_state: Optional[str] = None
+        
         if self._enable_learning:
-            self._learner = LightweightOffsetLearner()
-            # Pass power thresholds to learner for similarity calculations
-            self._learner._power_min_threshold = self._power_min_threshold
-            _LOGGER.debug("Learning enabled - LightweightOffsetLearner initialized")
+            self._learner = EnhancedLightweightOffsetLearner()
+            _LOGGER.debug("Learning enabled - EnhancedLightweightOffsetLearner initialized")
         
         _LOGGER.debug(
             "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s, "
-            "power_thresholds(idle=%s, min=%s, max=%s)",
+            "hysteresis_enabled=%s, power_thresholds(idle=%s, min=%s, max=%s)",
             self._max_offset,
             self._ml_enabled,
             self._enable_learning,
+            self._hysteresis_enabled,
             self._power_idle_threshold,
             self._power_min_threshold,
             self._power_max_threshold
@@ -382,10 +257,8 @@ class OffsetEngine:
         old_state = self._enable_learning
         if not self._enable_learning:
             if not self._learner:
-                self._learner = LightweightOffsetLearner()
-                # Pass power thresholds to learner for similarity calculations
-                self._learner._power_min_threshold = self._power_min_threshold
-                _LOGGER.info("LightweightOffsetLearner initialized at runtime")
+                self._learner = EnhancedLightweightOffsetLearner()
+                _LOGGER.info("EnhancedLightweightOffsetLearner initialized at runtime")
             self._enable_learning = True
             _LOGGER.info("Offset learning has been enabled")
             _LOGGER.debug("Learning state changed: %s -> %s", old_state, self._enable_learning)
@@ -418,10 +291,13 @@ class OffsetEngine:
         
         # Create a fresh learner instance with current thresholds
         if self._enable_learning:
-            self._learner = LightweightOffsetLearner()
-            # Pass power thresholds to learner for similarity calculations
-            self._learner._power_min_threshold = self._power_min_threshold
+            self._learner = EnhancedLightweightOffsetLearner()
             _LOGGER.debug("Learner reset with fresh instance")
+        
+        # Reset hysteresis learner
+        self._hysteresis_learner = HysteresisLearner()
+        self._last_power_state = None
+        _LOGGER.debug("Hysteresis learner reset with fresh instance")
         
         # Clear any cached learning info
         if hasattr(self, '_last_learning_info'):
@@ -455,18 +331,39 @@ class OffsetEngine:
                 mode_adjusted_offset, input_data
             )
             
+            # Hysteresis learning: detect power state transitions
+            self._detect_power_transitions(input_data)
+            
+            # Get hysteresis state for enhanced learning
+            hysteresis_state = "no_power_sensor"
+            if self._hysteresis_enabled and self._hysteresis_learner.has_sufficient_data:
+                try:
+                    current_power_state = self._get_power_state(input_data.power_consumption or 0)
+                    hysteresis_state = self._hysteresis_learner.get_hysteresis_state(
+                        current_power_state, input_data.room_temp
+                    )
+                except Exception:
+                    hysteresis_state = "no_power_sensor"  # Graceful fallback
+            
             # Try to use learning if enabled and sufficient data available
             final_offset = rule_based_offset
             learning_confidence = 0.0
             learning_used = False
             
             learning_error = None
-            if self._enable_learning and self._learner and self._learner.has_sufficient_data():
+            if self._enable_learning and self._learner and self._learner._enhanced_samples:
                 try:
                     _LOGGER.debug("Attempting learning prediction for offset calculation")
-                    learning_result = self._learner.predict_offset(input_data)
-                    learned_offset = learning_result["predicted_offset"]
-                    learning_confidence = learning_result["confidence"]
+                    # Use enhanced predict method with hysteresis context
+                    learned_offset = self._learner.predict(
+                        ac_temp=input_data.ac_internal_temp,
+                        room_temp=input_data.room_temp,
+                        outdoor_temp=input_data.outdoor_temp,
+                        mode=input_data.mode,
+                        power=input_data.power_consumption,
+                        hysteresis_state=hysteresis_state
+                    )
+                    learning_confidence = 0.8  # High confidence for hysteresis-aware prediction
                     
                     _LOGGER.debug(
                         "Learning prediction: rule_based=%s, learned=%s, confidence=%s",
@@ -580,6 +477,45 @@ class OffsetEngine:
         clamped_offset = max(-self._max_offset, min(self._max_offset, offset))
         return clamped_offset, True
     
+    def _detect_power_transitions(self, input_data: OffsetInput) -> None:
+        """Detect power state transitions and record them in hysteresis learner."""
+        # Early return if hysteresis is disabled
+        if not self._hysteresis_enabled:
+            return
+        
+        # Early return if no power data available
+        if input_data.power_consumption is None:
+            return
+        
+        try:
+            current_power_state = self._get_power_state(input_data.power_consumption)
+            
+            # Check for transitions if we have a previous state
+            if self._last_power_state is not None and self._last_power_state != current_power_state:
+                # Detect transitions from idle/low to moderate/high (AC starting)
+                if (self._last_power_state in ("idle", "low") and 
+                    current_power_state in ("moderate", "high")):
+                    self._hysteresis_learner.record_transition('start', input_data.room_temp)
+                    _LOGGER.debug(
+                        "Hysteresis transition detected: %s -> %s (start at %.1f°C)",
+                        self._last_power_state, current_power_state, input_data.room_temp
+                    )
+                
+                # Detect transitions from moderate/high to idle/low (AC stopping)
+                elif (self._last_power_state in ("moderate", "high") and 
+                      current_power_state in ("idle", "low")):
+                    self._hysteresis_learner.record_transition('stop', input_data.room_temp)
+                    _LOGGER.debug(
+                        "Hysteresis transition detected: %s -> %s (stop at %.1f°C)",
+                        self._last_power_state, current_power_state, input_data.room_temp
+                    )
+            
+            # Update the last power state
+            self._last_power_state = current_power_state
+            
+        except Exception as exc:
+            _LOGGER.warning("Error in hysteresis transition detection: %s", exc)
+    
     def _generate_reason(self, input_data: OffsetInput, offset: float, clamped: bool) -> str:
         """Generate human-readable reason for the offset."""
         if offset == 0.0:
@@ -677,10 +613,31 @@ class OffsetEngine:
             return
         
         try:
-            self._learner.record_sample(predicted_offset, actual_offset, input_data)
+            # Get hysteresis state for enhanced learning
+            hysteresis_state = "no_power_sensor"
+            if self._hysteresis_enabled and self._hysteresis_learner.has_sufficient_data:
+                try:
+                    current_power_state = self._get_power_state(input_data.power_consumption or 0)
+                    hysteresis_state = self._hysteresis_learner.get_hysteresis_state(
+                        current_power_state, input_data.room_temp
+                    )
+                except Exception:
+                    hysteresis_state = "no_power_sensor"
+            
+            # Record sample with hysteresis context
+            self._learner.add_sample(
+                predicted=predicted_offset,
+                actual=actual_offset,
+                ac_temp=input_data.ac_internal_temp,
+                room_temp=input_data.room_temp,
+                outdoor_temp=input_data.outdoor_temp,
+                mode=input_data.mode,
+                power=input_data.power_consumption,
+                hysteresis_state=hysteresis_state
+            )
             _LOGGER.debug(
-                "Recorded learning sample: predicted=%.2f, actual=%.2f",
-                predicted_offset, actual_offset
+                "Recorded enhanced learning sample: predicted=%.2f, actual=%.2f, hysteresis_state=%s",
+                predicted_offset, actual_offset, hysteresis_state
             )
         except Exception as exc:
             _LOGGER.warning("Failed to record learning sample: %s", exc)
@@ -749,7 +706,7 @@ class OffsetEngine:
                 reasons.append("learning error, fallback used")
             elif learning_used:
                 reasons.append(f"learning-enhanced (confidence: {learning_confidence:.1f})")
-            elif self._learner.has_sufficient_data():
+            elif self._learner._enhanced_samples:
                 reasons.append("learning available but low confidence")
             else:
                 reasons.append("insufficient learning data")
@@ -850,14 +807,26 @@ class OffsetEngine:
                 sample_count = learner_data.get("statistics", {}).get("samples", 0)
                 _LOGGER.debug("Serializing learner data: %s samples, learning_enabled=%s", sample_count, self._enable_learning)
 
+            # Prepare hysteresis data only if hysteresis is enabled
+            hysteresis_data = None
+            if self._hysteresis_enabled:
+                hysteresis_data = self._hysteresis_learner.serialize_for_persistence()
+                _LOGGER.debug("Serializing hysteresis data: %s start samples, %s stop samples", 
+                            len(hysteresis_data.get("start_temps", [])), 
+                            len(hysteresis_data.get("stop_temps", [])))
+
             # Create a comprehensive state dictionary including the engine's state
             persistent_data = {
-                "version": 1,  # For future schema migrations
+                "version": 2,  # Updated for v2 schema with hysteresis support
                 "engine_state": {
                     "enable_learning": self._enable_learning
                 },
                 "learner_data": learner_data
             }
+            
+            # Only include hysteresis_data if hysteresis is enabled
+            if hysteresis_data is not None:
+                persistent_data["hysteresis_data"] = hysteresis_data
 
             _LOGGER.debug(
                 "Saving learning data: samples=%s, enabled=%s, has_learner_data=%s",
@@ -920,10 +889,8 @@ class OffsetEngine:
                     self._enable_learning = persisted_learning_enabled
                     # If learning is now enabled, ensure the learner instance exists
                     if self._enable_learning and not self._learner:
-                        self._learner = LightweightOffsetLearner()
-                        # Pass power thresholds to learner for similarity calculations
-                        self._learner._power_min_threshold = self._power_min_threshold
-                        _LOGGER.debug("LightweightOffsetLearner initialized during data load.")
+                        self._learner = EnhancedLightweightOffsetLearner()
+                        _LOGGER.debug("EnhancedLightweightOffsetLearner initialized during data load.")
             # --- END OF KEY FIX ---
 
             # If learning is enabled (either from config or restored from persistence), load learner data
@@ -932,9 +899,7 @@ class OffsetEngine:
                 if learner_data:
                     # Ensure learner exists before restoring data
                     if not self._learner:
-                        self._learner = LightweightOffsetLearner()
-                        # Pass power thresholds to learner for similarity calculations
-                        self._learner._power_min_threshold = self._power_min_threshold
+                        self._learner = EnhancedLightweightOffsetLearner()
 
                     success = self._learner.restore_from_persistence(learner_data)
                     if success:
@@ -945,6 +910,20 @@ class OffsetEngine:
                     _LOGGER.debug("Learning is enabled, but no learner data found in persistence.")
             else:
                 _LOGGER.debug("Learning is disabled based on persisted state, skipping learner data load.")
+
+            # Load hysteresis data if available (v2 schema) and hysteresis is enabled
+            if self._hysteresis_enabled:
+                hysteresis_data = persistent_data.get("hysteresis_data")
+                if hysteresis_data:
+                    try:
+                        self._hysteresis_learner.restore_from_persistence(hysteresis_data)
+                        _LOGGER.info("Hysteresis data loaded successfully.")
+                    except Exception as exc:
+                        _LOGGER.warning("Failed to restore hysteresis data: %s", exc)
+                else:
+                    _LOGGER.debug("Hysteresis is enabled, but no hysteresis data found in persistence (v1 data or fresh start).")
+            else:
+                _LOGGER.debug("Hysteresis is disabled, skipping hysteresis data load.")
 
             self._notify_update_callbacks()  # Notify listeners of the restored state
             return True
