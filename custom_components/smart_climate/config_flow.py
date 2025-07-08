@@ -34,6 +34,7 @@ from .const import (
     CONF_POWER_IDLE_THRESHOLD,
     CONF_POWER_MIN_THRESHOLD,
     CONF_POWER_MAX_THRESHOLD,
+    CONF_DEFAULT_TARGET_TEMPERATURE,
     DEFAULT_MAX_OFFSET,
     DEFAULT_MIN_TEMPERATURE,
     DEFAULT_MAX_TEMPERATURE,
@@ -48,6 +49,7 @@ from .const import (
     DEFAULT_POWER_IDLE_THRESHOLD,
     DEFAULT_POWER_MIN_THRESHOLD,
     DEFAULT_POWER_MAX_THRESHOLD,
+    DEFAULT_TARGET_TEMPERATURE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -260,6 +262,15 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             ),
             vol.Optional(CONF_ENABLE_LEARNING, default=DEFAULT_ENABLE_LEARNING): selector.BooleanSelector(),
+            vol.Optional(CONF_DEFAULT_TARGET_TEMPERATURE, default=DEFAULT_TARGET_TEMPERATURE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=16.0,
+                    max=30.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
         })
         
         # Add power threshold fields if power sensor is provided in user_input
@@ -328,6 +339,7 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         validated[CONF_GRADUAL_ADJUSTMENT_RATE] = user_input.get(CONF_GRADUAL_ADJUSTMENT_RATE, DEFAULT_GRADUAL_ADJUSTMENT_RATE)
         validated[CONF_FEEDBACK_DELAY] = user_input.get(CONF_FEEDBACK_DELAY, DEFAULT_FEEDBACK_DELAY)
         validated[CONF_ENABLE_LEARNING] = user_input.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING)
+        validated[CONF_DEFAULT_TARGET_TEMPERATURE] = user_input.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)
         
         # Validate power thresholds if power sensor is configured
         if power_sensor:
@@ -580,6 +592,18 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 CONF_ENABLE_LEARNING,
                 default=current_options.get(CONF_ENABLE_LEARNING, current_config.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING))
             ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_DEFAULT_TARGET_TEMPERATURE,
+                default=current_options.get(CONF_DEFAULT_TARGET_TEMPERATURE, current_config.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=16.0,
+                    max=30.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
         })
         
         # Add power threshold fields if power sensor is configured

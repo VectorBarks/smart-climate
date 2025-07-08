@@ -22,7 +22,8 @@
           "enable_learning": "Enable Learning System",
           "power_idle_threshold": "Power Idle Threshold (W)",
           "power_min_threshold": "Power Minimum Threshold (W)",
-          "power_max_threshold": "Power Maximum Threshold (W)"
+          "power_max_threshold": "Power Maximum Threshold (W)",
+          "default_target_temperature": "Default Target Temperature (°C)"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -42,7 +43,8 @@
           "enable_learning": "Enable the lightweight learning system to improve offset predictions over time",
           "power_idle_threshold": "Power consumption below this value indicates the AC is idle or off",
           "power_min_threshold": "Power consumption below this value indicates the AC is running at minimum capacity",
-          "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity"
+          "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity",
+          "default_target_temperature": "Initial temperature setting when wrapped entity has no target temperature or is unavailable"
         }
       }
     },
@@ -78,7 +80,8 @@
           "enable_learning": "Enable Learning System",
           "power_idle_threshold": "Power Idle Threshold (W)",
           "power_min_threshold": "Power Minimum Threshold (W)",
-          "power_max_threshold": "Power Maximum Threshold (W)"
+          "power_max_threshold": "Power Maximum Threshold (W)",
+          "default_target_temperature": "Default Target Temperature (°C)"
         },
         "data_description": {
           "max_offset": "Maximum temperature offset to apply (safety limit)",
@@ -94,7 +97,8 @@
           "enable_learning": "Enable the lightweight learning system to improve offset predictions over time",
           "power_idle_threshold": "Power consumption below this value indicates the AC is idle or off",
           "power_min_threshold": "Power consumption below this value indicates the AC is running at minimum capacity",
-          "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity"
+          "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity",
+          "default_target_temperature": "Initial temperature setting when wrapped entity has no target temperature or is unavailable"
         }
       }
     }

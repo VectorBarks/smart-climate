@@ -158,8 +158,8 @@ class SmartClimateEntity(ClimateEntity):
                 "No target temperature available from wrapped entity %s, using default",
                 self._wrapped_entity_id
             )
-            # Never return None - provide sensible default
-            return 22.0
+            # Never return None - provide configurable default
+            return self._config.get("default_target_temperature", 24.0)
             
         except Exception as exc:
             _LOGGER.error(
@@ -167,8 +167,8 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id,
                 exc
             )
-            # Never return None - provide sensible default
-            return 22.0
+            # Never return None - provide configurable default
+            return self._config.get("default_target_temperature", 24.0)
     
     @property
     def preset_modes(self) -> List[str]:
@@ -907,7 +907,7 @@ class SmartClimateEntity(ClimateEntity):
             )
             # Initialize with default if wrapped entity not available
             if self._attr_target_temperature is None:
-                self._attr_target_temperature = 22.0
+                self._attr_target_temperature = self._config.get("default_target_temperature", 24.0)
                 _LOGGER.debug(
                     "Wrapped entity not available, using default target temperature: %.1f°C",
                     self._attr_target_temperature
@@ -931,7 +931,7 @@ class SmartClimateEntity(ClimateEntity):
                     )
                 else:
                     # Set sensible default if wrapped entity has no target temperature
-                    self._attr_target_temperature = 22.0
+                    self._attr_target_temperature = self._config.get("default_target_temperature", 24.0)
                     _LOGGER.debug(
                         "Wrapped entity has no valid target_temperature attribute (value: %s), using default: %.1f°C",
                         wrapped_target,
@@ -939,7 +939,7 @@ class SmartClimateEntity(ClimateEntity):
                     )
             elif self._attr_target_temperature is None:
                 # Fallback default if wrapped entity has no attributes
-                self._attr_target_temperature = 22.0
+                self._attr_target_temperature = self._config.get("default_target_temperature", 24.0)
                 _LOGGER.debug(
                     "No attributes from wrapped entity, using default target temperature: %.1f°C",
                     self._attr_target_temperature
