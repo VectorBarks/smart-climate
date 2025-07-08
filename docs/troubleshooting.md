@@ -65,6 +65,9 @@ This guide helps you diagnose and resolve common issues with Smart Climate Contr
    # Developer Tools → Template
    {{ states('sensor.room_temperature') | float }}
    ```
+4. **v1.1.0+**: Default target temperature is now configurable (16-30°C range)
+   - If seeing unexpected default temperatures, check configuration
+   - Default is 24°C if not specified
 
 ### Operational Issues
 
@@ -123,6 +126,7 @@ This guide helps you diagnose and resolve common issues with Smart Climate Contr
    # Developer Tools → States
    # Find: switch.your_climate_learning
    # Check attributes for samples_collected, accuracy
+   # New in v1.1.0: last_feedback_timestamp shows when last learning occurred
    ```
 
 2. Verify feedback collection in logs:
@@ -138,6 +142,94 @@ This guide helps you diagnose and resolve common issues with Smart Climate Contr
 - Ensure sensors remain stable and available
 - Avoid frequent manual overrides during learning
 - Verify offset is actually being applied (non-zero)
+
+#### AC Heating When It Should Cool
+
+**Symptoms**: AC set to higher temperature when room is warmer than target
+
+**Example**: Room 25.3°C, target 24.5°C, but AC set to 28.5°C
+
+**Root Cause**: Learning system recorded inverted offsets (fixed in v1.1.0)
+
+**Solutions**:
+- Update to latest version (v1.1.0 or later)
+- Reset training data after update using reset button
+- Check logs confirm negative offsets when cooling:
+  ```
+  DEBUG: Learning feedback: predicted=-2.0°C, actual=-2.3°C
+  ```
+
+#### Learning Samples Reset to Zero
+
+**Symptoms**: samples_collected shows 0 after HA restart despite previous learning
+
+**Root Cause**: Sample count synchronization issue (fixed in v1.1.0)
+
+**Solutions**:
+- Update to latest version
+- Check logs for synchronization messages:
+  ```
+  WARNING: Sample count mismatch detected: stored=0, actual enhanced samples=150. Using actual count.
+  ```
+- Learning data is preserved, only display was incorrect
+
+#### Hysteresis State Shows "no_power_sensor"
+
+**Symptoms**: Power sensor configured but hysteresis_state shows "no_power_sensor"
+
+**Root Cause**: State detection logic issue (fixed in v1.1.0)
+
+**Solutions**:
+- Update to latest version
+- During initial learning, should show "learning_hysteresis"
+- After sufficient data, shows actual states: "active_phase", "idle_stable_zone", etc.
+
+#### HysteresisLearner Not Detecting AC Cycles
+
+**Symptoms**: Power sensor configured but no hysteresis learning occurring
+
+**Diagnostic Steps**:
+1. Check power sensor readings:
+   ```yaml
+   # Developer Tools → States
+   # Verify sensor shows distinct values when AC is on/off
+   sensor.ac_power → should show ~0W idle, >min_power when active
+   ```
+
+2. Verify power thresholds in configuration:
+   ```yaml
+   # Check learning switch attributes
+   switch.your_climate_learning → power_idle, power_min thresholds
+   ```
+
+3. Monitor power transitions in logs:
+   ```
+   DEBUG: Power transition detected: 5W → 950W (transition to active)
+   ```
+
+**Solutions**:
+- Ensure power_min is set above idle consumption (default 100W)
+- Adjust power_idle to match your AC's standby power (default 50W)
+- Allow at least 10 power transitions for initial learning
+- Check that AC actually cycles (not running continuously)
+
+#### HysteresisLearner Predictions Seem Wrong
+
+**Symptoms**: AC starts/stops at unexpected temperatures
+
+**Diagnostic**:
+Check learned thresholds in learning switch attributes:
+```yaml
+hysteresis_thresholds:
+  start_temp_internal: 23.5
+  stop_temp_internal: 22.8
+```
+
+**Solutions**:
+- Reset training data if thresholds are clearly wrong
+- Ensure consistent AC operation during learning phase
+- Avoid manual temperature changes during initial learning
+- Allow system to observe multiple complete cooling cycles
 
 ### Sensor Issues
 
@@ -249,6 +341,7 @@ logger:
     custom_components.smart_climate.sensor_manager: debug
     custom_components.smart_climate.coordinator: debug
     custom_components.smart_climate.lightweight_learner: debug
+    custom_components.smart_climate.hysteresis_learner: debug
 ```
 
 ### Key Log Messages to Understand
@@ -265,6 +358,14 @@ INFO: Applying temperature 20.3°C to wrapped entity
 DEBUG: Learning enabled, collecting feedback in 45 seconds
 INFO: Learning feedback: predicted=2.0°C, actual=2.3°C, error=0.3°C
 DEBUG: Updating patterns: samples=156, accuracy=0.89
+```
+
+**HysteresisLearner (v1.1.0+)**:
+```
+DEBUG: Power transition detected: 0W → 950W (transition to active)
+INFO: HysteresisLearner: Learning AC start threshold at 25.3°C (internal: 23.8°C)
+DEBUG: HysteresisLearner state: learning_hysteresis (7/10 transitions)
+INFO: HysteresisLearner: Thresholds learned - Start: 25.2°C, Stop: 24.1°C
 ```
 
 **Error Conditions**:
@@ -385,7 +486,7 @@ When reporting issues, include:
 ```markdown
 **System Information**
 - Home Assistant: 2024.1.0
-- Smart Climate: 1.0.0
+- Smart Climate: 1.1.0
 - Installation method: HACS/Manual
 - Python: 3.11
 

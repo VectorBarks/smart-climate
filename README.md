@@ -1,6 +1,6 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.0.1-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.1.0-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
@@ -21,28 +21,39 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
+**🌟 NEW in v1.1.0: HysteresisLearner - AC Temperature Window Detection**
+- Automatically learns your AC's start/stop temperature thresholds
+- Understands when your AC actually turns on and off
+- Adapts predictions based on real power consumption patterns
+- Dramatically improves temperature control accuracy
+- Works seamlessly with power monitoring sensors
+
 **Universal Compatibility**
 - Works with ANY Home Assistant climate entity
 - Compatible with ANY temperature sensor
 - No device-specific limitations
+- Configurable default target temperature (16-30°C)
 
-**Intelligent Learning**
-- Lightweight ML learns your AC's behavior patterns
-- AC temperature window detection (HysteresisLearner) for enhanced accuracy
+**Intelligent Learning System**
+- Advanced ML learns your AC's behavior patterns over time
+- HysteresisLearner detects AC operating windows automatically
 - Adapts to time-of-day and seasonal changes
-- Optional power monitoring for cycle detection and learning
-- Learning can be enabled/disabled with a simple switch
+- Optional power monitoring for enhanced learning accuracy
+- Learning switch with timestamp tracking (see when learning started)
+- Enable/disable learning anytime with a simple switch
 
 **Smart Operation**
 - Immediate rule-based control (no waiting for learning)
 - Gradual adjustments prevent temperature oscillation
 - Multiple operating modes (Normal, Away, Sleep, Boost)
 - Safety limits prevent extreme temperatures
+- Intelligent feedback system for continuous improvement
 
 **Reliable & Safe**
 - Continues working if sensors fail
 - Manual override always available
 - Persists learning data across restarts
+- Backward-compatible persistence schema
 - Comprehensive debug logging for troubleshooting
 
 ## Quick Start
@@ -68,7 +79,9 @@ Smart Climate Control creates a virtual climate entity that:
    - Temperature limits and offset settings
    - Mode-specific temperatures and offsets
    - Learning system parameters
+   - Power thresholds for AC detection
    - Update intervals and adjustment rates
+   - Default target temperature (16-30°C)
 
 That's it! Your new smart climate entity is ready to use. No YAML editing required!
 
@@ -76,6 +89,8 @@ That's it! Your new smart climate entity is ready to use. No YAML editing requir
 
 - Set your desired temperature normally - the system handles the rest
 - Enable learning with the provided switch entity for improved accuracy over time
+- The HysteresisLearner will automatically detect your AC's operating patterns
+- Check the learning switch attributes to see timestamps and learning progress
 - Use preset modes for different scenarios (Away, Sleep, Boost)
 - Monitor performance through entity attributes
 
@@ -106,6 +121,8 @@ smart_climate:
   - name: "Living Room Smart AC"
     climate_entity: climate.living_room_ac
     room_sensor: sensor.living_room_temperature
+    power_sensor: sensor.ac_power  # Optional: enables HysteresisLearner
+    default_target_temperature: 24  # Optional: your preferred default (16-30°C)
 ```
 
 ## Requirements
@@ -123,13 +140,22 @@ smart_climate:
 
 ## Project Status
 
-**Version 1.0.0 Released**: Production-ready with intelligent learning, all critical bugs fixed, and comprehensive documentation.
+**Version 1.1.0 Released**: Production-ready with HysteresisLearner and enhanced learning capabilities!
 
-Recent improvements:
+**New in v1.1.0:**
+- 🌟 HysteresisLearner: Automatic AC temperature window detection
+- Enhanced learning system with power monitoring integration
+- Learning switch with timestamp tracking
+- Configurable default target temperature
+- Fixed all Home Assistant integration compatibility issues
+- Improved feedback system for better learning accuracy
+- Backward-compatible persistence schema
+
+**Previous v1.0.x improvements:**
 - Fixed learning data collection with feedback mechanism
 - Corrected offset calculations for proper cooling/heating
+- Complete UI configuration for all settings
 - Reorganized documentation for better accessibility
-- Added sensor selection guidance
 
 This is a personal project developed for educational purposes and community use. While functional and tested, it comes with no warranties. Always test thoroughly in your environment.
 

@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-07-08
+
+### Added
+- **HysteresisLearner System** - Advanced AC Temperature Window Detection
+  - Automatically learns AC start/stop temperature thresholds through power monitoring
+  - Detects temperature patterns for AC on/off cycles
+  - Sub-millisecond performance with efficient pattern matching
+  - Improves learning accuracy by understanding AC behavior patterns
+- **Enhanced Learning Switch Attributes**
+  - Added `learning_started_at` timestamp to track when learning was enabled
+  - Shows exact date/time in learning switch attributes
+  - Helps users understand learning progress over time
+- **Configurable Default Target Temperature**
+  - New UI setting for default temperature (16-30°C range)
+  - Sets initial temperature when climate entity has no target
+  - Defaults to 24°C for optimal comfort
+  - Prevents errors when wrapped entity returns None
+
+### Changed
+- **Learning System Architecture**
+  - Integrated HysteresisLearner with LightweightOffsetLearner
+  - Persistence schema upgraded to v2 with backward compatibility
+  - Enhanced prediction accuracy using hysteresis context
+  - Improved feedback loop with power state awareness
+
+### Fixed
+- **Critical Learning System Bugs**
+  - Inverted offset calculation causing AC to heat instead of cool
+  - Learning feedback now correctly applies negative offsets for cooling
+  - Sample count persistence synchronization after restarts
+  - Hysteresis state now shows "learning_hysteresis" when power sensor configured
+- **Home Assistant Integration Issues**
+  - Config flow TypeError (500 error) when accessing options
+  - Added method aliases for OffsetEngine compatibility (`add_training_sample`, `get_optimal_offset`)
+  - Fixed all deprecation warnings for HA 2024.1+ compatibility
+  - Proper async method handling throughout integration
+- **Component Compatibility**
+  - Button entity category error in reset training data button
+  - Periodic offset adjustments now work correctly
+  - Target temperature always returns valid float
+  - Enhanced error handling for wrapped entity access
+
 ## [1.0.1] - 2025-07-07
 
 ### Added
@@ -75,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Safe temperature limits to prevent extreme settings
 - Atomic file operations for data persistence
 
-[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/VectorBarks/smart-climate/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/VectorBarks/smart-climate/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/VectorBarks/smart-climate/releases/tag/v1.0.0
