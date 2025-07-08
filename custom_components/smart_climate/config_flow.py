@@ -422,7 +422,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize Smart Climate Control options flow."""
-        self.config_entry = config_entry
+        super().__init__(config_entry)
     
     def _add_power_threshold_fields_options(self, schema: vol.Schema, current_config: dict, current_options: dict) -> vol.Schema:
         """Add power threshold fields to the options schema."""

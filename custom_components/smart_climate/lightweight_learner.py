@@ -673,3 +673,21 @@ class LightweightOffsetLearner:
             "Pattern loading details: version=%s, power_states=%s, enhanced_samples=%s",
             version, list(self._power_state_patterns.keys()), enhanced_samples_loaded
         )
+
+    # Compatibility aliases for OffsetEngine API
+    def get_statistics(self) -> LearningStats:
+        """Alias for get_learning_stats() for OffsetEngine compatibility."""
+        return self.get_learning_stats()
+    
+    def serialize_for_persistence(self) -> Dict[str, Any]:
+        """Alias for save_patterns() for OffsetEngine compatibility."""
+        return self.save_patterns()
+    
+    def restore_from_persistence(self, patterns: Dict[str, Any]) -> bool:
+        """Alias for load_patterns() for OffsetEngine compatibility."""
+        try:
+            self.load_patterns(patterns)
+            return True
+        except Exception as exc:
+            _LOGGER.error("Failed to restore from persistence: %s", exc)
+            return False
