@@ -1,6 +1,6 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.1.0-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.0--beta1-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
@@ -21,7 +21,14 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**NEW in v1.1.0: HysteresisLearner - AC Temperature Window Detection**
+**NEW in v1.2.0: Visualization Dashboard - One-Click Monitoring**
+- Instant dashboard deployment via Lovelace Blueprint
+- Real-time visualization of learning progress and offset history
+- Responsive design for mobile and desktop
+- Works with core HA cards, enhanced with custom cards
+- Monitor accuracy trends, calibration status, and AC behavior
+
+**v1.1.0: HysteresisLearner - AC Temperature Window Detection**
 - Automatically learns your AC's start/stop temperature thresholds
 - Understands when your AC actually turns on and off
 - Adapts predictions based on real power consumption patterns
@@ -94,6 +101,13 @@ That's it! Your new smart climate entity is ready to use. No YAML editing requir
 - Use preset modes for different scenarios (Away, Sleep, Boost)
 - Monitor performance through entity attributes
 
+### Visualization Dashboard (NEW!)
+
+1. Go to Settings → Dashboards → Blueprints
+2. Import blueprint from `/config/custom_components/smart_climate/blueprints/dashboard/`
+3. Select your Smart Climate entities
+4. Click "Create Dashboard" for instant monitoring
+
 ## Documentation
 
 **Setup & Configuration**
@@ -103,6 +117,7 @@ That's it! Your new smart climate entity is ready to use. No YAML editing requir
 
 **Usage & Features**
 - [Usage Guide](docs/usage.md) - How to use all features effectively
+- [Dashboard Setup](docs/dashboard-setup.md) - **NEW!** Visualization dashboard blueprint
 - [Learning System](docs/learning-system.md) - Understanding the intelligent learning
 - [Troubleshooting](docs/troubleshooting.md) - Solving common issues
 

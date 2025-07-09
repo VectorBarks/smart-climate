@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0-beta1] - 2025-07-09 [Pre-release]
+
+### Added
+- **Visualization Dashboard Blueprint** - One-Click Dashboard Deployment (#5)
+  - Lovelace Dashboard Blueprint for instant visualization setup
+  - Complete monitoring dashboard with 4 main sections:
+    - Current Status: Real-time offset, accuracy, and confidence gauges
+    - Learning Progress: Historical charts for offset and accuracy trends
+    - Calibration & Hysteresis: System status and power correlation
+    - Control Panel: Mode selection and manual adjustments
+  - **5 Template Sensors** for data transformation:
+    - Offset History: Current offset with trend analysis (increasing/decreasing/stable)
+    - Learning Progress: Percentage complete with sample tracking
+    - Accuracy Trend: 7-day moving average with confidence levels
+    - Calibration Status: Phase progress with dynamic icons
+    - Hysteresis State: Human-readable AC behavior states
+  - **Responsive Design** optimized for mobile and desktop:
+    - Mobile: Single column layout with touch-friendly controls
+    - Desktop: Multi-column grid with full visualizations
+    - Conditional card visibility based on screen size
+  - **Dual Card Support**:
+    - Works out-of-the-box with Home Assistant core cards
+    - Enhanced experience with optional custom cards (ApexCharts, Mushroom, Button-card)
+    - Automatic detection and graceful fallback
+- **Comprehensive Dashboard Documentation**
+  - Step-by-step setup guide with configuration examples
+  - Template sensor reference with customization options
+  - Performance optimization tips
+  - Troubleshooting section for common issues
+
+### Technical Details
+- Blueprint structure follows Home Assistant standards
+- Template sensors use efficient expressions with availability checks
+- 47 new tests covering all dashboard functionality
+- Blueprint location: `/config/custom_components/smart_climate/blueprints/dashboard/`
+
 ## [1.1.1-beta2] - 2025-07-09 [Pre-release]
 
 ### Added
