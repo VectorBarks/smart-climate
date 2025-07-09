@@ -43,6 +43,20 @@ If you have a power sensor, this advanced system learns your AC's operational be
 
 ## Getting Started: Initial Setup Best Practices
 
+### Understanding the Calibration Phase (v1.1.1-beta2+)
+
+When you first enable learning, the system enters a **Calibration Phase** for the first 10 samples. This prevents the overcooling issues that could occur during initial learning:
+
+- **What Happens**: The system observes your AC behavior without applying aggressive offsets
+- **Stable State Detection**: Only calculates offsets when AC is idle and temperatures have stabilized
+- **Smart Caching**: Uses cached "stable" offsets during active cooling to prevent feedback loops
+- **Status Messages**: You'll see messages like:
+  - "Calibration (Stable): Updated offset to -2.1°C. (3/10 samples)"
+  - "Calibration (Active): Using cached stable offset of -2.1°C."
+- **Automatic Transition**: After 10 samples, switches to full learning mode
+
+This calibration phase is especially important if your AC has an evaporator coil sensor that shows very low temperatures (e.g., 15°C) when cooling.
+
 ### Day 1: Foundation Setup
 
 1. **Verify Sensor Accuracy**
