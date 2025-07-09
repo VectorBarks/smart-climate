@@ -23,7 +23,10 @@
           "power_idle_threshold": "Power Idle Threshold (W)",
           "power_min_threshold": "Power Minimum Threshold (W)",
           "power_max_threshold": "Power Maximum Threshold (W)",
-          "default_target_temperature": "Default Target Temperature (°C)"
+          "default_target_temperature": "Default Target Temperature (°C)",
+          "enable_retry": "Enable Retry on Startup",
+          "max_retry_attempts": "Maximum Retry Attempts",
+          "initial_timeout": "Initial Timeout (seconds)"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -44,7 +47,10 @@
           "power_idle_threshold": "Power consumption below this value indicates the AC is idle or off",
           "power_min_threshold": "Power consumption below this value indicates the AC is running at minimum capacity",
           "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity",
-          "default_target_temperature": "Initial temperature setting when wrapped entity has no target temperature or is unavailable"
+          "default_target_temperature": "Initial temperature setting when wrapped entity has no target temperature or is unavailable",
+          "enable_retry": "Enable automatic retry when sensors are unavailable during Home Assistant startup",
+          "max_retry_attempts": "Maximum number of retry attempts before giving up (1-10)",
+          "initial_timeout": "Time to wait before first retry attempt (30-300 seconds)"
         }
       }
     },
@@ -81,7 +87,10 @@
           "power_idle_threshold": "Power Idle Threshold (W)",
           "power_min_threshold": "Power Minimum Threshold (W)",
           "power_max_threshold": "Power Maximum Threshold (W)",
-          "default_target_temperature": "Default Target Temperature (°C)"
+          "default_target_temperature": "Default Target Temperature (°C)",
+          "enable_retry": "Enable Retry on Startup",
+          "max_retry_attempts": "Maximum Retry Attempts",
+          "initial_timeout": "Initial Timeout (seconds)"
         },
         "data_description": {
           "max_offset": "Maximum temperature offset to apply (safety limit)",
@@ -98,7 +107,10 @@
           "power_idle_threshold": "Power consumption below this value indicates the AC is idle or off",
           "power_min_threshold": "Power consumption below this value indicates the AC is running at minimum capacity",
           "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity",
-          "default_target_temperature": "Initial temperature setting when wrapped entity has no target temperature or is unavailable"
+          "default_target_temperature": "Initial temperature setting when wrapped entity has no target temperature or is unavailable",
+          "enable_retry": "Enable automatic retry when sensors are unavailable during Home Assistant startup",
+          "max_retry_attempts": "Maximum number of retry attempts before giving up (1-10)",
+          "initial_timeout": "Time to wait before first retry attempt (30-300 seconds)"
         }
       }
     }

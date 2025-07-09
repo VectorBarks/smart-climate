@@ -35,6 +35,9 @@ from .const import (
     CONF_POWER_MIN_THRESHOLD,
     CONF_POWER_MAX_THRESHOLD,
     CONF_DEFAULT_TARGET_TEMPERATURE,
+    CONF_ENABLE_RETRY,
+    CONF_MAX_RETRY_ATTEMPTS,
+    CONF_INITIAL_TIMEOUT,
     DEFAULT_MAX_OFFSET,
     DEFAULT_MIN_TEMPERATURE,
     DEFAULT_MAX_TEMPERATURE,
@@ -50,6 +53,9 @@ from .const import (
     DEFAULT_POWER_MIN_THRESHOLD,
     DEFAULT_POWER_MAX_THRESHOLD,
     DEFAULT_TARGET_TEMPERATURE,
+    DEFAULT_ENABLE_RETRY,
+    DEFAULT_MAX_RETRY_ATTEMPTS,
+    DEFAULT_INITIAL_TIMEOUT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -271,6 +277,24 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),
+            vol.Optional(CONF_ENABLE_RETRY, default=DEFAULT_ENABLE_RETRY): selector.BooleanSelector(),
+            vol.Optional(CONF_MAX_RETRY_ATTEMPTS, default=DEFAULT_MAX_RETRY_ATTEMPTS): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=10,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_INITIAL_TIMEOUT, default=DEFAULT_INITIAL_TIMEOUT): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=30,
+                    max=300,
+                    step=30,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
         })
         
         # Add power threshold fields if power sensor is provided in user_input
@@ -340,6 +364,9 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         validated[CONF_FEEDBACK_DELAY] = user_input.get(CONF_FEEDBACK_DELAY, DEFAULT_FEEDBACK_DELAY)
         validated[CONF_ENABLE_LEARNING] = user_input.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING)
         validated[CONF_DEFAULT_TARGET_TEMPERATURE] = user_input.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)
+        validated[CONF_ENABLE_RETRY] = user_input.get(CONF_ENABLE_RETRY, DEFAULT_ENABLE_RETRY)
+        validated[CONF_MAX_RETRY_ATTEMPTS] = user_input.get(CONF_MAX_RETRY_ATTEMPTS, DEFAULT_MAX_RETRY_ATTEMPTS)
+        validated[CONF_INITIAL_TIMEOUT] = user_input.get(CONF_INITIAL_TIMEOUT, DEFAULT_INITIAL_TIMEOUT)
         
         # Validate power thresholds if power sensor is configured
         if power_sensor:
@@ -597,6 +624,33 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                     max=30.0,
                     step=0.5,
                     unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_ENABLE_RETRY,
+                default=current_options.get(CONF_ENABLE_RETRY, current_config.get(CONF_ENABLE_RETRY, DEFAULT_ENABLE_RETRY))
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_MAX_RETRY_ATTEMPTS,
+                default=current_options.get(CONF_MAX_RETRY_ATTEMPTS, current_config.get(CONF_MAX_RETRY_ATTEMPTS, DEFAULT_MAX_RETRY_ATTEMPTS))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=10,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_INITIAL_TIMEOUT,
+                default=current_options.get(CONF_INITIAL_TIMEOUT, current_config.get(CONF_INITIAL_TIMEOUT, DEFAULT_INITIAL_TIMEOUT))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=30,
+                    max=300,
+                    step=30,
+                    unit_of_measurement="seconds",
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),

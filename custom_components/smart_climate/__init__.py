@@ -11,6 +11,7 @@ from homeassistant.const import Platform
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_call_later
 from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
 )
@@ -25,6 +26,31 @@ __version__ = "0.1.0"
 __author__ = "Smart Climate Team"
 
 _LOGGER = logging.getLogger(__name__)
+
+# Retry configuration defaults
+DEFAULT_RETRY_ENABLED = True
+DEFAULT_MAX_RETRY_ATTEMPTS = 4
+DEFAULT_INITIAL_TIMEOUT = 60
+RETRY_DELAYS = [30, 60, 120, 240]  # Exponential backoff in seconds
+
+
+async def _schedule_retry(hass: HomeAssistant, entry: ConfigEntry, attempt: int) -> None:
+    """Schedule a retry for config entry setup."""
+    # Calculate delay with exponential backoff, capped at 240 seconds
+    delay = RETRY_DELAYS[min(attempt - 1, len(RETRY_DELAYS) - 1)]
+    
+    _LOGGER.info(
+        "Scheduling retry #%d for Smart Climate entry %s in %d seconds",
+        attempt, entry.entry_id, delay
+    )
+    
+    async def retry_setup(now):
+        """Retry the setup."""
+        _LOGGER.info("Retrying setup for Smart Climate entry %s (attempt #%d)", entry.entry_id, attempt)
+        await hass.config_entries.async_reload(entry.entry_id)
+    
+    # Schedule the retry
+    async_call_later(hass, delay, retry_setup)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -53,20 +79,65 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up Smart Climate Control from config entry: %s", entry.entry_id)
 
     # Initialize data structure for this config entry
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+    entry_data = {
         "config": entry.data,
         "offset_engines": {},  # Stores one engine per climate entity
         "data_stores": {},  # Stores one data store per climate entity
         "unload_listeners": [],  # To clean up periodic save tasks
     }
+    
+    # Get retry attempt from runtime data if exists
+    retry_attempt = hass.data.setdefault(DOMAIN, {}).get(entry.entry_id, {}).get("_retry_attempt", 0)
+    
+    # Store entry data
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = entry_data
 
     # Wait for required entities to become available
     try:
         entity_waiter = EntityWaiter()
-        await entity_waiter.wait_for_required_entities(hass, entry.data, timeout=60)
+        # Get configurable timeout, cap at 300 seconds
+        timeout = min(entry.data.get("initial_timeout", DEFAULT_INITIAL_TIMEOUT), 300)
+        await entity_waiter.wait_for_required_entities(hass, entry.data, timeout=timeout)
         _LOGGER.info("All required entities are available for entry: %s", entry.entry_id)
+        
+        # Clear retry attempt on successful entity wait
+        if "_retry_attempt" in hass.data[DOMAIN][entry.entry_id]:
+            del hass.data[DOMAIN][entry.entry_id]["_retry_attempt"]
+            
     except EntityNotAvailableError as exc:
-        raise HomeAssistantError(f"Required entities not available: {exc}") from exc
+        # Check if retry is enabled
+        if not entry.data.get("enable_retry", DEFAULT_RETRY_ENABLED):
+            raise HomeAssistantError(f"Required entities not available: {exc}") from exc
+            
+        # Check if we've exceeded max retry attempts
+        max_attempts = entry.data.get("max_retry_attempts", DEFAULT_MAX_RETRY_ATTEMPTS)
+        if retry_attempt >= max_attempts:
+            # Send notification about failure
+            await async_create_notification(
+                hass,
+                title="Smart Climate Setup Failed",
+                message=(
+                    f"Smart Climate '{entry.title}' failed to initialize after {max_attempts} attempts. "
+                    f"Required entities are not available: {exc}\n\n"
+                    "You can manually reload the integration when entities are available:\n"
+                    "1. Go to Settings → Devices & Services\n"
+                    "2. Find the Smart Climate integration\n"
+                    "3. Click the three dots menu\n"
+                    "4. Select 'Reload'"
+                ),
+                notification_id=f"smart_climate_setup_failed_{entry.entry_id}",
+            )
+            _LOGGER.error(
+                "Smart Climate setup failed after %d retry attempts for entry %s: %s",
+                max_attempts, entry.entry_id, exc
+            )
+            return False
+            
+        # Schedule retry
+        retry_attempt += 1
+        hass.data[DOMAIN][entry.entry_id]["_retry_attempt"] = retry_attempt
+        await _schedule_retry(hass, entry, retry_attempt)
+        return False
 
     # --- PERSISTENCE INTEGRATION ---
     # Set up persistence for each climate entity
@@ -305,3 +376,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         "generate_dashboard",
         handle_generate_dashboard,
     )
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry."""
+    _LOGGER.info("Reloading Smart Climate Control for entry: %s", entry.entry_id)
+    await hass.config_entries.async_reload(entry.entry_id)
