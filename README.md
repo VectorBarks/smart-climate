@@ -1,6 +1,6 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.2.0--beta1-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.0--beta3-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
@@ -21,7 +21,12 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**NEW in v1.2.0: Smart Climate Dashboard (Beta)**
+**NEW in v1.2.0-beta3: Complete Bug Fix Release**
+- Fixed all major reported issues: training data persistence, startup failures, temperature logic
+- Configurable save intervals (5 minutes to 24 hours) with 60-minute default
+- Enhanced save diagnostics visible in Home Assistant UI
+- Robust startup retry mechanism for slow sensor initialization
+- Corrected temperature adjustment logic for proper AC operation
 - Beautiful visualization dashboard for learning progress and system performance
 - Automatic sensor creation - no manual configuration needed
 - One-click dashboard generation service
@@ -59,7 +64,9 @@ Smart Climate Control creates a virtual climate entity that:
 **Reliable & Safe**
 - Continues working if sensors fail
 - Manual override always available
-- Persists learning data across restarts
+- Robust training data persistence with configurable save intervals
+- Enhanced shutdown save with timeout protection
+- Save diagnostics and monitoring in Home Assistant UI
 - Backward-compatible persistence schema
 - Comprehensive debug logging for troubleshooting
 

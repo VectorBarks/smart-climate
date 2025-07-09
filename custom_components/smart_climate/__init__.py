@@ -5,12 +5,13 @@ import logging
 import os
 from typing import Any, Dict, List
 
+import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import Platform
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import entity_registry as er, config_validation as cv
 from homeassistant.helpers.event import async_call_later
 from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
@@ -182,7 +183,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error(error_msg, exc_info=True)
         raise HomeAssistantError(error_msg) from exc
 
-    # Register the dashboard generation service
+    # Register the dashboard generation service (only once per HA instance)
     await _async_register_services(hass)
 
     return True
@@ -298,6 +299,11 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     """Register Smart Climate services."""
     if hass.services.has_service(DOMAIN, "generate_dashboard"):
         return  # Service already registered
+    
+    # Define schema for generate_dashboard service
+    generate_dashboard_schema = vol.Schema({
+        vol.Required("climate_entity_id"): cv.entity_id,
+    })
 
     async def handle_generate_dashboard(call: ServiceCall) -> None:
         """Handle the generate_dashboard service call."""
@@ -380,11 +386,17 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         )
     
     # Register the service
-    hass.services.async_register(
-        DOMAIN,
-        "generate_dashboard",
-        handle_generate_dashboard,
-    )
+    try:
+        hass.services.async_register(
+            DOMAIN,
+            "generate_dashboard",
+            handle_generate_dashboard,
+            schema=generate_dashboard_schema,
+        )
+        
+        _LOGGER.info("Smart Climate service 'generate_dashboard' registered successfully")
+    except Exception as exc:
+        _LOGGER.error("Failed to register Smart Climate service: %s", exc, exc_info=True)
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

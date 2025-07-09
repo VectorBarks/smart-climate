@@ -88,8 +88,7 @@ class SmartClimateDashboardSensor(SensorEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        # Check if coordinator has data
-        return hasattr(self._offset_engine, '_coordinator') and self._offset_engine._coordinator.data is not None
+        return self._offset_engine is not None  # Simple existence check
 
 
 class OffsetCurrentSensor(SmartClimateDashboardSensor):
