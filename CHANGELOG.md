@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0-beta3] - 2025-07-09 [Pre-release]
+
+### Added
+- **Complete Training Data Persistence System** - Resolves all data loss issues
+  - Configurable save intervals (5 minutes to 24 hours) with 60-minute default
+  - Save diagnostics exposed in entity attributes (save_count, failed_save_count, last_save_time)
+  - Enhanced shutdown save with 5-second timeout protection
+  - INFO level logging for successful saves with sample count details
+  - WARNING level logging for save errors (upgraded from DEBUG)
+  - Save statistics tracking for troubleshooting and monitoring
+- **Robust Integration Startup System** - Fixes startup failures with slow sensors
+  - Retry mechanism with exponential backoff (30s, 60s, 120s, 240s intervals)
+  - Configurable initial timeout (default 60 seconds)
+  - User notifications for retry status and final failure
+  - Graceful handling of Zigbee sensors that take >60s to initialize
+  - Automatic recovery when sensors become available
+- **Fixed Temperature Adjustment Logic** - Corrects backwards AC operation
+  - Room temperature deviation now properly considered in calculations
+  - When room > target, AC sets lower temperature for more cooling
+  - When room < target, AC sets higher temperature for less cooling
+  - Eliminates confusing behavior where AC would warm when cooling needed
+
+### Fixed
+- **Training Data Persistence Issues** (#8, #9)
+  - Periodic save interval changed from 10 to 60 minutes (as expected by users)
+  - Shutdown save now reliably saves data before Home Assistant restart
+  - Save operations no longer block Home Assistant during shutdown
+  - Enhanced error handling prevents data corruption during save failures
+- **Integration Startup Failures** (#11)
+  - No more integration failures when Zigbee sensors take >60s to initialize
+  - Automatic retries with exponential backoff prevent permanent failures
+  - Clear user notifications explain retry progress and final status
+- **Temperature Logic Errors** (#13)
+  - Fixed backwards temperature adjustment causing AC to warm instead of cool
+  - Room temperature properly factored into offset calculations
+  - Eliminated user confusion about AC behavior
+
+### Enhanced
+- **Save System Monitoring**
+  - Real-time save statistics visible in Home Assistant UI
+  - Users can track save frequency and success rates
+  - Troubleshooting improved with detailed save logging
+- **User Experience**
+  - All save intervals configurable through UI (no more hardcoded values)
+  - Clear feedback on persistence system status
+  - Automatic retry system reduces setup frustration
+  - Consistent temperature behavior eliminates user confusion
+
+### Technical Improvements
+- 50+ new test cases covering all persistence functionality
+- Comprehensive error handling with graceful degradation
+- Atomic save operations prevent data corruption
+- Configurable save intervals with validation (300-86400 seconds)
+- Enhanced logging throughout the system
+- Backward compatibility maintained for existing configurations
+
 ## [1.2.0-beta1] - 2025-07-09 [Pre-release]
 
 ### Added
