@@ -634,6 +634,127 @@ smart_climate:
 - Virtual sensor creation
 - Enhanced accuracy algorithms
 
+## Dashboard Sensors (Automatically Created)
+
+Smart Climate Control automatically creates specialized sensors for dashboard visualization when you configure a device. These sensors appear immediately after setup with no additional configuration required.
+
+### Dashboard Sensor Types
+
+Each Smart Climate device creates five dashboard sensors:
+
+#### Current Offset Sensor
+- **Entity Pattern**: `sensor.{device_name}_offset_current`
+- **Purpose**: Real-time temperature offset being applied
+- **Device Class**: Temperature
+- **Unit**: °C
+- **State Class**: Measurement
+- **Update Frequency**: Every offset calculation
+- **Attributes**:
+  - `last_update`: Timestamp of last change
+  - `offset_reason`: Why this offset was applied
+  - `clamped`: Whether offset hit limits
+
+#### Learning Progress Sensor  
+- **Entity Pattern**: `sensor.{device_name}_learning_progress`
+- **Purpose**: Percentage of learning completion
+- **Unit**: %
+- **State Class**: Measurement
+- **Range**: 0-100%
+- **Update Frequency**: After each learning sample
+- **Attributes**:
+  - `samples_collected`: Number of data points
+  - `samples_required`: Target sample count
+  - `learning_rate`: Current learning speed
+
+#### Accuracy Sensor
+- **Entity Pattern**: `sensor.{device_name}_accuracy_current`
+- **Purpose**: Current prediction accuracy
+- **Unit**: %
+- **State Class**: Measurement  
+- **Range**: 0-100%
+- **Update Frequency**: After feedback collection
+- **Attributes**:
+  - `prediction_error`: Last prediction error
+  - `trend`: Improving/stable/declining
+  - `confidence_level`: Statistical confidence
+
+#### Calibration Status Sensor
+- **Entity Pattern**: `sensor.{device_name}_calibration_status`
+- **Purpose**: Shows calibration phase state
+- **Icon**: mdi:progress-check
+- **Possible States**:
+  - `calibrating`: Initial calibration phase
+  - `learning`: Active learning mode
+  - `complete`: Calibration finished
+- **Attributes**:
+  - `phase_start_time`: When phase began
+  - `stable_offset_cached`: Whether stable offset found
+
+#### Hysteresis State Sensor
+- **Entity Pattern**: `sensor.{device_name}_hysteresis_state`
+- **Purpose**: AC behavior learning state
+- **Icon**: mdi:sine-wave
+- **Possible States**:
+  - `idle`: AC not running
+  - `cooling`: AC actively cooling
+  - `learning_pattern`: Detecting temperature windows
+- **Attributes**:
+  - `cooling_start_temp`: Learned start threshold
+  - `cooling_stop_temp`: Learned stop threshold
+  - `pattern_confidence`: Detection confidence
+
+### Using Dashboard Sensors
+
+These sensors are designed for visualization and automation:
+
+**In Dashboards**:
+```yaml
+type: gauge
+entity: sensor.living_room_smart_ac_learning_progress
+name: Learning Progress
+min: 0
+max: 100
+severity:
+  green: 80
+  yellow: 50
+  red: 0
+```
+
+**In Automations**:
+```yaml
+automation:
+  - alias: "Notify Learning Complete"
+    trigger:
+      - platform: state
+        entity_id: sensor.living_room_smart_ac_calibration_status
+        to: "complete"
+    action:
+      - service: notify.mobile_app
+        data:
+          message: "Smart Climate calibration complete!"
+```
+
+**In Templates**:
+```yaml
+template:
+  - sensor:
+      - name: "AC Learning Summary"
+        state: >
+          {% set progress = states('sensor.living_room_smart_ac_learning_progress') | int %}
+          {% set accuracy = states('sensor.living_room_smart_ac_accuracy_current') | int %}
+          Learning: {{ progress }}% | Accuracy: {{ accuracy }}%
+```
+
+### Dashboard Sensor Availability
+
+Dashboard sensors follow the parent climate entity:
+- Available when Smart Climate entity is available
+- Update based on parent entity updates
+- Retain last known state during brief outages
+- Show "unavailable" if parent entity removed
+
+For complete dashboard setup instructions, see the [Dashboard Setup Guide](dashboard-setup.md).
+
 ## Best Practices Summary
 
 1. **Prioritize Room Sensor Quality**: Invest in accurate, responsive sensors
@@ -642,8 +763,10 @@ smart_climate:
 4. **Monitor Availability**: Set up alerts for sensor failures
 5. **Use Filtering**: Apply filters for noisy sensors
 6. **Consider Redundancy**: Multiple sensors for critical areas
+7. **Leverage Dashboard Sensors**: Use automatic sensors for monitoring
 
 For more information:
 - [Configuration Guide](configuration.md) - Sensor setup details
+- [Dashboard Setup Guide](dashboard-setup.md) - Using dashboard sensors
 - [Troubleshooting Guide](troubleshooting.md) - Solving sensor issues
 - [Architecture Guide](architecture.md) - Technical sensor integration

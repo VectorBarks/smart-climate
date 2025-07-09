@@ -2,13 +2,18 @@
 
 import asyncio
 import logging
+import os
 from typing import Any, Dict, List
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import Platform
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers import entity_registry as er
+from homeassistant.components.persistent_notification import (
+    async_create as async_create_notification,
+)
 
 from .const import DOMAIN, PLATFORMS
 from .data_store import SmartClimateDataStore
@@ -105,6 +110,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         error_msg = f"Error setting up Smart Climate platforms: {exc}"
         _LOGGER.error(error_msg, exc_info=True)
         raise HomeAssistantError(error_msg) from exc
+
+    # Register the dashboard generation service
+    await _async_register_services(hass)
 
     return True
 
@@ -204,3 +212,96 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("Smart Climate Control unload completed for entry: %s", entry.entry_id)
     return unload_ok
+
+
+async def _async_register_services(hass: HomeAssistant) -> None:
+    """Register Smart Climate services."""
+    if hass.services.has_service(DOMAIN, "generate_dashboard"):
+        return  # Service already registered
+
+    async def handle_generate_dashboard(call: ServiceCall) -> None:
+        """Handle the generate_dashboard service call."""
+        climate_entity_id = call.data.get("climate_entity_id")
+        _LOGGER.debug("Generating dashboard for entity: %s", climate_entity_id)
+
+        # Validate entity exists
+        entity_registry = er.async_get(hass)
+        entity_entry = entity_registry.async_get(climate_entity_id)
+        
+        if not entity_entry:
+            raise ServiceValidationError(
+                f"Entity {climate_entity_id} not found"
+            )
+        
+        # Validate entity is from smart_climate integration
+        if entity_entry.platform != DOMAIN:
+            raise ServiceValidationError(
+                f"Entity {climate_entity_id} is not a Smart Climate entity"
+            )
+        
+        # Get entity friendly name
+        state = hass.states.get(climate_entity_id)
+        friendly_name = state.attributes.get("friendly_name", climate_entity_id) if state else climate_entity_id
+        
+        # Extract entity ID without domain
+        entity_id_without_domain = climate_entity_id.split(".", 1)[1]
+        
+        # Read dashboard template
+        template_path = os.path.join(
+            os.path.dirname(__file__),
+            "dashboard",
+            "dashboard.yaml"
+        )
+        
+        if not os.path.exists(template_path):
+            raise ServiceValidationError(
+                "Dashboard template file not found"
+            )
+        
+        try:
+            with open(template_path, "r", encoding="utf-8") as file:
+                template_content = file.read()
+        except Exception as exc:
+            _LOGGER.error("Failed to read dashboard template: %s", exc)
+            raise ServiceValidationError(
+                f"Failed to read dashboard template: {exc}"
+            ) from exc
+        
+        # Replace placeholders
+        dashboard_yaml = template_content.replace(
+            "REPLACE_ME_ENTITY", entity_id_without_domain
+        ).replace(
+            "REPLACE_ME_NAME", friendly_name
+        )
+        
+        # Create notification with instructions
+        notification_message = (
+            "Copy the YAML below and use it to create a new dashboard:\n\n"
+            "1. Go to Settings → Dashboards\n"
+            "2. Click 'Add Dashboard'\n"
+            "3. Give it a name and click 'Create'\n"
+            "4. Click 'Edit Dashboard' (three dots menu)\n"
+            "5. Click 'Raw Configuration Editor' (three dots menu)\n"
+            "6. Replace the content with the YAML below\n"
+            "7. Click 'Save'\n\n"
+            f"{dashboard_yaml}"
+        )
+        
+        await async_create_notification(
+            hass,
+            title=f"Smart Climate Dashboard - {friendly_name}",
+            message=notification_message,
+            notification_id=f"smart_climate_dashboard_{entity_id_without_domain}",
+        )
+        
+        _LOGGER.info(
+            "Dashboard generated for %s and sent via notification",
+            climate_entity_id
+        )
+    
+    # Register the service
+    hass.services.async_register(
+        DOMAIN,
+        "generate_dashboard",
+        handle_generate_dashboard,
+    )

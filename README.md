@@ -21,12 +21,12 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**NEW in v1.2.0: Visualization Dashboard - One-Click Monitoring**
-- Instant dashboard deployment via Lovelace Blueprint
-- Real-time visualization of learning progress and offset history
-- Responsive design for mobile and desktop
-- Works with core HA cards, enhanced with custom cards
-- Monitor accuracy trends, calibration status, and AC behavior
+**NEW in v1.2.0: Smart Climate Dashboard (Beta)**
+- Beautiful visualization dashboard for learning progress and system performance
+- Automatic sensor creation - no manual configuration needed
+- One-click dashboard generation service
+- Responsive design works on all devices
+- Real-time monitoring of offsets, accuracy, and AC behavior
 
 **v1.1.0: HysteresisLearner - AC Temperature Window Detection**
 - Automatically learns your AC's start/stop temperature thresholds
@@ -101,12 +101,14 @@ That's it! Your new smart climate entity is ready to use. No YAML editing requir
 - Use preset modes for different scenarios (Away, Sleep, Boost)
 - Monitor performance through entity attributes
 
-### Visualization Dashboard (NEW!)
+### Dashboard Setup (NEW!)
 
-1. Go to Settings → Dashboards → Blueprints
-2. Import blueprint from `/config/custom_components/smart_climate/blueprints/dashboard/`
-3. Select your Smart Climate entities
-4. Click "Create Dashboard" for instant monitoring
+1. After installation, dashboard sensors are created automatically
+2. Go to Developer Tools → Services
+3. Search for "Smart Climate: Generate Dashboard"
+4. Select your Smart Climate entity and click "Call Service"
+5. A notification appears with your custom dashboard YAML
+6. Follow the instructions in the notification to create your dashboard
 
 ## Documentation
 

@@ -1,0 +1,291 @@
+# Smart Climate Dashboard Template
+# This template provides a complete monitoring and control interface for Smart Climate
+# 
+# To use this template:
+# 1. Replace REPLACE_ME_ENTITY with your climate entity ID (without domain, e.g., "living_room_ac")
+# 2. Replace REPLACE_ME_NAME with a friendly name (e.g., "Living Room")
+#
+# Optional: Install these custom cards via HACS for enhanced visualization:
+# - apexcharts-card: For advanced charts and graphs
+# - mushroom-cards: For modern UI elements
+# - button-card: For custom button styling
+
+title: Smart Climate - REPLACE_ME_NAME
+views:
+  - title: Overview
+    path: overview
+    icon: mdi:home-thermometer
+    cards:
+      # Main Climate Control Section
+      - type: vertical-stack
+        cards:
+          # Climate control with temperature display
+          - type: thermostat
+            entity: climate.REPLACE_ME_ENTITY
+            name: REPLACE_ME_NAME Climate Control
+          
+          # Key metrics in a row
+          - type: horizontal-stack
+            cards:
+              # Current offset gauge
+              - type: gauge
+                entity: sensor.REPLACE_ME_ENTITY_offset_current
+                name: Current Offset
+                unit: "°C"
+                min: -5
+                max: 5
+                severity:
+                  green: -1
+                  yellow: -3
+                  red: -5
+                needle: true
+                
+              # Learning progress gauge
+              - type: gauge
+                entity: sensor.REPLACE_ME_ENTITY_learning_progress
+                name: Learning Progress
+                unit: "%"
+                min: 0
+                max: 100
+                severity:
+                  red: 0
+                  yellow: 50
+                  green: 80
+                needle: true
+                
+              # Current accuracy gauge
+              - type: gauge
+                entity: sensor.REPLACE_ME_ENTITY_accuracy_current
+                name: Accuracy
+                unit: "%"
+                min: 0
+                max: 100
+                severity:
+                  red: 0
+                  yellow: 60
+                  green: 85
+                needle: true
+
+      # Learning System Status
+      - type: entities
+        title: Learning System Status
+        show_header_toggle: false
+        entities:
+          # Learning toggle switch with all its attributes
+          - entity: switch.REPLACE_ME_ENTITY_learning
+            name: Learning System
+            secondary_info: last-changed
+            
+          # Calibration status
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: last_sample_collected
+            name: Last Sample Collected
+            icon: mdi:clock-outline
+            
+          - entity: sensor.REPLACE_ME_ENTITY_calibration_status
+            name: Calibration Status
+            icon: mdi:progress-check
+            
+          # Samples collected
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: samples_collected
+            name: Samples Collected
+            icon: mdi:counter
+            
+          # Has sufficient data indicator
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: has_sufficient_data
+            name: Sufficient Data
+            icon: mdi:database-check
+
+      # Hysteresis Learning Status
+      - type: entities
+        title: AC Behavior Learning
+        show_header_toggle: false
+        entities:
+          # Hysteresis state
+          - entity: sensor.REPLACE_ME_ENTITY_hysteresis_state
+            name: AC State
+            icon: mdi:sine-wave
+            
+          # Temperature window
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: temperature_window
+            name: Temperature Window
+            icon: mdi:thermometer-lines
+            
+          # Start threshold
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: learned_start_threshold
+            name: AC Start Threshold
+            icon: mdi:thermometer-chevron-up
+            
+          # Stop threshold
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: learned_stop_threshold
+            name: AC Stop Threshold
+            icon: mdi:thermometer-chevron-down
+            
+          # Hysteresis ready indicator
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: hysteresis_ready
+            name: Behavior Learned
+            icon: mdi:check-circle
+
+      # Historical Data Section
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              ## Historical Performance
+              The graphs below show how Smart Climate is learning and adapting to your AC's behavior.
+          
+          # Temperature and offset history
+          - type: history-graph
+            title: Temperature & Offset History
+            hours_to_show: 24
+            refresh_interval: 60
+            entities:
+              - entity: climate.REPLACE_ME_ENTITY
+                name: Target Temperature
+              - entity: sensor.REPLACE_ME_ENTITY_offset_current
+                name: Applied Offset
+              - entity: sensor.REPLACE_ME_ENTITY_accuracy_current
+                name: Prediction Accuracy
+
+      # Controls Section
+      - type: vertical-stack
+        cards:
+          - type: entities
+            title: Controls
+            show_header_toggle: false
+            entities:
+              # Preset mode selector
+              - entity: climate.REPLACE_ME_ENTITY
+                type: climate-preset-modes
+                name: Preset Mode
+                
+              # Reset button
+              - entity: button.REPLACE_ME_ENTITY_reset_training_data
+                name: Reset Training Data
+                icon: mdi:database-remove
+                action_name: Reset
+              
+              # Divider
+              - type: divider
+              
+              # Info section
+              - type: section
+                label: "Information"
+                
+              # Confidence level
+              - type: attribute
+                entity: switch.REPLACE_ME_ENTITY_learning
+                attribute: confidence_level
+                name: Confidence Level
+                icon: mdi:shield-check
+                format: precision1
+
+      # Enhanced Visualization (with custom cards)
+      - type: conditional
+        conditions:
+          - entity: sensor.REPLACE_ME_ENTITY_learning_progress
+            state_not: "unavailable"
+        card:
+          type: vertical-stack
+          cards:
+            - type: markdown
+              content: |
+                ## Enhanced Visualizations
+                For the best experience, install these optional cards via HACS:
+                - **ApexCharts Card**: For detailed learning progress graphs
+                - **Mushroom Cards**: For modern climate controls
+                - **Button Card**: For custom styled buttons
+                
+                Once installed, you can replace the sections above with enhanced versions.
+
+  # Detailed Stats View
+  - title: Detailed Stats
+    path: stats
+    icon: mdi:chart-line
+    cards:
+      # Learning metrics over time
+      - type: history-graph
+        title: Learning Metrics (7 days)
+        hours_to_show: 168
+        refresh_interval: 300
+        entities:
+          - entity: sensor.REPLACE_ME_ENTITY_learning_progress
+            name: Learning Progress
+          - entity: sensor.REPLACE_ME_ENTITY_accuracy_current
+            name: Accuracy
+          - entity: sensor.REPLACE_ME_ENTITY_offset_current
+            name: Applied Offset
+
+      # All learning attributes
+      - type: entities
+        title: Detailed Learning Information
+        show_header_toggle: false
+        entities:
+          - entity: switch.REPLACE_ME_ENTITY_learning
+            type: custom:multiple-entity-row
+            name: Learning System
+            state_header: Status
+            secondary_info: last-changed
+            show_state: true
+            entities:
+              - attribute: samples_collected
+                name: Samples
+              - attribute: learning_accuracy
+                name: Accuracy
+                format: precision1
+              - attribute: confidence_level
+                name: Confidence
+                format: precision1
+
+      # System diagnostics
+      - type: entities
+        title: System Diagnostics
+        show_header_toggle: false
+        entities:
+          - entity: sensor.REPLACE_ME_ENTITY_calibration_status
+            name: Calibration Status
+          - entity: sensor.REPLACE_ME_ENTITY_hysteresis_state
+            name: Hysteresis State
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: patterns_learned
+            name: Patterns Learned
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: start_samples_collected
+            name: Start Samples
+          - type: attribute
+            entity: switch.REPLACE_ME_ENTITY_learning
+            attribute: stop_samples_collected
+            name: Stop Samples
+
+      # Power monitoring (if available)
+      - type: conditional
+        conditions:
+          - entity: sensor.REPLACE_ME_ENTITY_hysteresis_state
+            state_not: "No power sensor"
+        card:
+          type: entities
+          title: Power Monitoring
+          entities:
+            - type: custom:template-entity-row
+              name: Power Sensor Status
+              state: Connected
+              icon: mdi:flash
+              secondary: Hysteresis learning active
+
+# Note: This dashboard uses only core Home Assistant cards by default.
+# For enhanced visualizations, consider installing custom cards via HACS.

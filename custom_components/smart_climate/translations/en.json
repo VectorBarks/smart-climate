@@ -110,5 +110,17 @@
         "description": "Clear all learned patterns and start fresh with training"
       }
     }
+  },
+  "services": {
+    "generate_dashboard": {
+      "name": "Generate Dashboard",
+      "description": "Generate a customized dashboard YAML for your Smart Climate device",
+      "fields": {
+        "climate_entity_id": {
+          "name": "Climate Entity",
+          "description": "The Smart Climate entity to generate a dashboard for"
+        }
+      }
+    }
   }
 }
