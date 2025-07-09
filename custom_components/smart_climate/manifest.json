@@ -1,7 +1,7 @@
 {
   "domain": "smart_climate",
   "name": "Smart Climate Control",
-  "version": "1.2.0-beta3",
+  "version": "1.2.0-beta4",
   "documentation": "https://github.com/VectorBarks/smart-climate",
   "issue_tracker": "https://github.com/VectorBarks/smart-climate/issues",
   "dependencies": [],

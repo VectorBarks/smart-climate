@@ -1,6 +1,6 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.2.0--beta3-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.0--beta4-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
@@ -21,7 +21,11 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**NEW in v1.2.0-beta3: Complete Bug Fix Release**
+**NEW in v1.2.0-beta4: Sensor Availability Fix**
+- Fixed sensor availability issue causing red "!" indicators on dashboard sensors
+- All 5 dashboard sensors (Current Offset, Learning Progress, Accuracy, Calibration, Hysteresis) now show as available
+- Simplified sensor availability logic using KISS approach
+- Comprehensive test suite for sensor availability and integration
 - Fixed all major reported issues: training data persistence, startup failures, temperature logic
 - Configurable save intervals (5 minutes to 24 hours) with 60-minute default
 - Enhanced save diagnostics visible in Home Assistant UI
