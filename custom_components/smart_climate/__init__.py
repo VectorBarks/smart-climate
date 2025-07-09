@@ -259,10 +259,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception as exc:
                 _LOGGER.warning("Error removing listener during unload: %s", exc)
 
-        # Perform final save for all offset engines
+        # Perform final save for all offset engines with timeout protection
         offset_engines = entry_data.get("offset_engines", {})
         if offset_engines:
-            _LOGGER.debug("Performing final save for %d offset engines", len(offset_engines))
+            _LOGGER.info("Starting shutdown save for %d offset engines", len(offset_engines))
             
             # Create save tasks for all engines
             save_tasks = []
@@ -272,11 +272,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 except Exception as exc:
                     _LOGGER.warning("Error creating save task for %s: %s", entity_id, exc)
             
-            # Execute all saves concurrently
+            # Execute all saves concurrently with timeout protection
             if save_tasks:
                 try:
-                    await asyncio.gather(*save_tasks, return_exceptions=True)
-                    _LOGGER.debug("Final save completed for all entities")
+                    # Wait for all save tasks with 5 second timeout
+                    await asyncio.wait_for(
+                        asyncio.gather(*save_tasks, return_exceptions=True),
+                        timeout=5.0
+                    )
+                    _LOGGER.info("Final save completed for all entities")
+                except asyncio.TimeoutError:
+                    _LOGGER.warning(
+                        "Shutdown save timeout after 5 seconds - some data may not be saved. "
+                        "This prevents Home Assistant shutdown from hanging."
+                    )
                 except Exception as exc:
                     _LOGGER.warning("Error during final save: %s", exc)
         # --- END PERSISTENCE CLEANUP ---
