@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.0-beta1] - 2025-07-09 [Pre-release]
 
 ### Added
-- **Smart Climate Dashboard - Complete Visualization System**
+- **Smart Climate Dashboard - Complete Visualization System** (#7)
   - Beautiful, responsive dashboard for monitoring learning progress and performance
   - Automatic creation of 5 dashboard sensor entities - zero configuration needed
   - One-click dashboard generation service creates customized YAML
