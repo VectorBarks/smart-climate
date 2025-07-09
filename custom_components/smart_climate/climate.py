@@ -762,7 +762,8 @@ class SmartClimateEntity(ClimateEntity):
     async def _apply_temperature_with_offset(self, target_temp: float) -> None:
         """Apply target temperature with calculated offset to wrapped entity."""
         _LOGGER.debug(
-            "Applying temperature with offset: target_temp=%.1f°C for %s",
+            "=== _apply_temperature_with_offset START ===\n"
+            "Target temperature: %.1f°C for %s",
             target_temp,
             self._wrapped_entity_id
         )
@@ -774,7 +775,7 @@ class SmartClimateEntity(ClimateEntity):
             power_consumption = self._sensor_manager.get_power_consumption()
             
             _LOGGER.debug(
-                "Sensor readings: room_temp=%s, outdoor_temp=%s, power=%s",
+                "Sensor readings: room_temp=%s°C, outdoor_temp=%s°C, power=%sW",
                 room_temp, outdoor_temp, power_consumption
             )
             
@@ -785,9 +786,20 @@ class SmartClimateEntity(ClimateEntity):
                 ac_internal_temp = wrapped_state.attributes["current_temperature"]
             
             _LOGGER.debug(
-                "Wrapped entity current temperature: %s",
+                "AC internal sensor temperature: %s°C",
                 ac_internal_temp
             )
+            
+            # Log room vs target comparison
+            if room_temp is not None:
+                room_deviation = room_temp - target_temp
+                _LOGGER.debug(
+                    "Room vs Target: %.1f°C - %.1f°C = %.2f°C %s",
+                    room_temp,
+                    target_temp,
+                    room_deviation,
+                    "(room is warmer, needs MORE cooling)" if room_deviation > 0 else "(room is cooler, needs LESS cooling)"
+                )
             
             # Skip offset calculation if we don't have essential data
             if room_temp is None or ac_internal_temp is None:
@@ -801,7 +813,7 @@ class SmartClimateEntity(ClimateEntity):
                     target_temp
                 )
                 _LOGGER.debug(
-                    "Sent target temperature %.1f°C directly to %s (no offset)",
+                    "Sent target temperature %.1f°C directly to %s (no offset calculation possible)",
                     target_temp,
                     self._wrapped_entity_id
                 )
@@ -820,18 +832,48 @@ class SmartClimateEntity(ClimateEntity):
                 day_of_week=now.weekday()
             )
             
+            _LOGGER.debug(
+                "Created OffsetInput: ac_temp=%.1f°C, room_temp=%.1f°C, mode=%s",
+                ac_internal_temp,
+                room_temp,
+                self._mode_manager.current_mode
+            )
+            
             # Calculate offset
             offset_result = self._offset_engine.calculate_offset(offset_input)
             self._last_offset = offset_result.offset
             
+            _LOGGER.debug(
+                "OffsetEngine result: offset=%.2f°C, clamped=%s, reason='%s', confidence=%.2f",
+                offset_result.offset,
+                offset_result.clamped,
+                offset_result.reason,
+                offset_result.confidence
+            )
+            
             # Get mode adjustments
             mode_adjustments = self._mode_manager.get_adjustments()
+            
+            _LOGGER.debug(
+                "Mode adjustments: temp_override=%s, offset_adj=%.2f°C, boost=%.2f°C",
+                mode_adjustments.temperature_override,
+                mode_adjustments.offset_adjustment,
+                mode_adjustments.boost_offset
+            )
             
             # Apply offset and limits
             adjusted_temp = self._temperature_controller.apply_offset_and_limits(
                 target_temp,
                 offset_result.offset,
-                mode_adjustments
+                mode_adjustments,
+                room_temp
+            )
+            
+            _LOGGER.debug(
+                "FINAL CALCULATION: target=%.1f°C + offset=%.2f°C = adjusted=%.1f°C",
+                target_temp,
+                offset_result.offset,
+                adjusted_temp
             )
             
             # Send adjusted temperature to wrapped entity
@@ -840,19 +882,15 @@ class SmartClimateEntity(ClimateEntity):
                 adjusted_temp
             )
             
-            _LOGGER.debug(
-                "Applied offset %.2f°C: target=%.1f°C, adjusted=%.1f°C, reason=%s",
-                offset_result.offset,
+            _LOGGER.info(
+                "Temperature adjustment complete: target=%.1f°C -> adjusted=%.1f°C (offset=%.2f°C, reason='%s')",
                 target_temp,
                 adjusted_temp,
+                offset_result.offset,
                 offset_result.reason
             )
             
-            _LOGGER.debug(
-                "Successfully sent adjusted temperature %.1f°C to %s",
-                adjusted_temp,
-                self._wrapped_entity_id
-            )
+            _LOGGER.debug("=== _apply_temperature_with_offset END ===")
             
             # Schedule learning feedback if learning is enabled
             if (hasattr(self._offset_engine, '_enable_learning') and 
@@ -888,11 +926,13 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id,
                 target_temp
             )
-            _LOGGER.debug(
-                "Fallback: sent target temperature %.1f°C directly to %s due to error",
+            _LOGGER.warning(
+                "FALLBACK: Sent target temperature %.1f°C directly to %s (no offset) due to error: %s",
                 target_temp,
-                self._wrapped_entity_id
+                self._wrapped_entity_id,
+                exc
             )
+            _LOGGER.debug("=== _apply_temperature_with_offset END (error path) ===")
     
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass."""
@@ -976,12 +1016,25 @@ class SmartClimateEntity(ClimateEntity):
                     if self._attr_target_temperature is None or abs(wrapped_temp - self._attr_target_temperature) > 0.1:
                         old_temp = self._attr_target_temperature
                         self._attr_target_temperature = wrapped_temp
-                        _LOGGER.debug(
-                            "Synced target temperature from wrapped entity: %.1f°C → %.1f°C",
+                        _LOGGER.info(
+                            "Target temperature synced from wrapped entity: %.1f°C → %.1f°C (change: %.1f°C)",
                             old_temp if old_temp is not None else 0.0,
-                            wrapped_temp
+                            wrapped_temp,
+                            wrapped_temp - (old_temp if old_temp is not None else 0.0)
                         )
                         return True
+                    else:
+                        _LOGGER.debug(
+                            "Target temp sync: no significant change (wrapped=%.1f°C, current=%.1f°C, diff=%.1f°C)",
+                            wrapped_temp,
+                            self._attr_target_temperature,
+                            abs(wrapped_temp - self._attr_target_temperature)
+                        )
+            else:
+                _LOGGER.debug(
+                    "Target temp sync: wrapped entity has no valid target_temperature (state=%s)",
+                    wrapped_state.state if wrapped_state else "None"
+                )
             return False
         except Exception as exc:
             _LOGGER.error(
@@ -1051,6 +1104,8 @@ class SmartClimateEntity(ClimateEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator to apply periodic adjustments."""
+        _LOGGER.debug("=== Coordinator update received ===")
+        
         if not self._coordinator.data:
             _LOGGER.debug("Coordinator update skipped: no data available.")
             return
@@ -1063,29 +1118,51 @@ class SmartClimateEntity(ClimateEntity):
 
         new_offset = self._coordinator.data.calculated_offset
         
+        _LOGGER.debug(
+            "Coordinator data: calculated_offset=%.2f°C, last_applied_offset=%.2f°C, "
+            "room_temp=%s, mode_adjustments=%s",
+            new_offset,
+            self._last_offset,
+            self._coordinator.data.room_temp if hasattr(self._coordinator.data, 'room_temp') else "N/A",
+            self._coordinator.data.mode_adjustments if hasattr(self._coordinator.data, 'mode_adjustments') else "N/A"
+        )
+        
         # Check if the calculated offset has changed significantly since the last application
-        if abs(new_offset - self._last_offset) > OFFSET_UPDATE_THRESHOLD:
+        offset_change = abs(new_offset - self._last_offset)
+        if offset_change > OFFSET_UPDATE_THRESHOLD:
             _LOGGER.info(
-                "Significant offset change detected (last applied: %.2f°C, new: %.2f°C). "
+                "Significant offset change detected: %.2f°C (last=%.2f°C, new=%.2f°C, threshold=%.2f°C). "
                 "Triggering automatic temperature adjustment.",
+                offset_change,
                 self._last_offset,
                 new_offset,
+                OFFSET_UPDATE_THRESHOLD
             )
             
             # To call an async method from this synchronous callback, schedule it as a task.
             # This re-applies the current target temperature with the new offset.
             if self.target_temperature is not None:
+                _LOGGER.debug(
+                    "Scheduling temperature adjustment task with target=%.1f°C",
+                    self.target_temperature
+                )
                 self.hass.async_create_task(
                     self._apply_temperature_with_offset(self.target_temperature)
                 )
+            else:
+                _LOGGER.warning("Cannot apply automatic adjustment: target_temperature is None")
         else:
             _LOGGER.debug(
-                "Offset change (%.2f°C -> %.2f°C) is within threshold (%.2f°C). No automatic adjustment needed.",
-                self._last_offset, new_offset, OFFSET_UPDATE_THRESHOLD
+                "Offset change %.2f°C (%.2f°C -> %.2f°C) is within threshold %.2f°C. No automatic adjustment needed.",
+                offset_change,
+                self._last_offset, 
+                new_offset, 
+                OFFSET_UPDATE_THRESHOLD
             )
 
         # Always update the state to reflect the latest sensor values from the coordinator
         self.async_write_ha_state()
+        _LOGGER.debug("=== Coordinator update complete ===")
     
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""

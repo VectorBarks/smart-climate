@@ -51,7 +51,8 @@ class TemperatureController:
         self,
         target_temp: float,
         offset: float,
-        mode_adjustments: ModeAdjustments
+        mode_adjustments: ModeAdjustments,
+        room_temp: Optional[float] = None
     ) -> float:
         """Apply offset and safety limits to target temperature.
         
@@ -59,22 +60,83 @@ class TemperatureController:
             target_temp: User's desired temperature
             offset: Calculated offset from OffsetEngine
             mode_adjustments: Current mode adjustments
+            room_temp: Current room temperature (optional for backward compatibility)
             
         Returns:
             Adjusted temperature to send to wrapped entity
         """
+        # Log input parameters
+        _LOGGER.debug(
+            "apply_offset_and_limits - Input: target_temp=%.1f°C, offset=%.2f°C, room_temp=%s°C, "
+            "mode_adjustments=(temp_override=%s, offset_adj=%.2f°C, boost=%.2f°C)",
+            target_temp,
+            offset,
+            room_temp if room_temp is not None else "N/A",
+            mode_adjustments.temperature_override,
+            mode_adjustments.offset_adjustment,
+            mode_adjustments.boost_offset
+        )
+        
         # Use override temperature if available (for away mode)
         if mode_adjustments.temperature_override is not None:
             base_temp = mode_adjustments.temperature_override
+            _LOGGER.debug(
+                "Using mode override temperature: %.1f°C instead of target: %.1f°C",
+                base_temp,
+                target_temp
+            )
         else:
             base_temp = target_temp
+            _LOGGER.debug("Using user target temperature: %.1f°C", base_temp)
         
-        # Apply offset
+        # Apply base offset (compensates for sensor difference)
         adjusted_temp = base_temp + offset
+        _LOGGER.debug(
+            "After applying base offset: %.1f°C + %.2f°C = %.1f°C",
+            base_temp,
+            offset,
+            adjusted_temp
+        )
+        
+        # Apply room temperature deviation adjustment if room_temp is provided
+        if room_temp is not None:
+            room_deviation = room_temp - target_temp
+            _LOGGER.debug(
+                "Room temperature deviation: %.1f°C - %.1f°C = %.2f°C",
+                room_temp,
+                target_temp,
+                room_deviation
+            )
+            
+            # When room is warmer than target, we need MORE cooling (lower AC temp)
+            # When room is cooler than target, we need LESS cooling (higher AC temp)
+            # So we subtract the room deviation from the adjusted temperature
+            adjusted_temp -= room_deviation
+            _LOGGER.debug(
+                "After room deviation adjustment: %.1f°C - %.2f°C = %.1f°C",
+                adjusted_temp + room_deviation,
+                room_deviation,
+                adjusted_temp
+            )
         
         # Apply mode adjustments
-        adjusted_temp += mode_adjustments.offset_adjustment
-        adjusted_temp += mode_adjustments.boost_offset
+        if mode_adjustments.offset_adjustment != 0:
+            adjusted_temp += mode_adjustments.offset_adjustment
+            _LOGGER.debug(
+                "After mode offset adjustment: %.1f°C + %.2f°C = %.1f°C",
+                adjusted_temp - mode_adjustments.offset_adjustment,
+                mode_adjustments.offset_adjustment,
+                adjusted_temp
+            )
+        
+        if mode_adjustments.boost_offset != 0:
+            adjusted_temp += mode_adjustments.boost_offset
+            _LOGGER.debug(
+                "After boost offset: %.1f°C + %.2f°C = %.1f°C",
+                adjusted_temp - mode_adjustments.boost_offset,
+                mode_adjustments.boost_offset,
+                adjusted_temp
+            )
         
         # Clamp to safety limits
         clamped_temp = max(
@@ -90,6 +152,18 @@ class TemperatureController:
                 self._limits.min_temperature,
                 self._limits.max_temperature
             )
+        else:
+            _LOGGER.debug(
+                "Temperature within limits: %.1f°C (limits: %.1f-%.1f°C)",
+                clamped_temp,
+                self._limits.min_temperature,
+                self._limits.max_temperature
+            )
+        
+        _LOGGER.debug(
+            "apply_offset_and_limits - Final result: %.1f°C",
+            clamped_temp
+        )
         
         return clamped_temp
     
@@ -109,16 +183,41 @@ class TemperatureController:
         """
         difference = target_adjustment - current_adjustment
         
+        _LOGGER.debug(
+            "apply_gradual_adjustment - Input: current=%.2f°C, target=%.2f°C, "
+            "difference=%.2f°C, rate_limit=%.2f°C",
+            current_adjustment,
+            target_adjustment,
+            difference,
+            self._gradual_adjustment_rate
+        )
+        
         # Apply rate limiting
         if abs(difference) <= self._gradual_adjustment_rate:
             # Small change, apply fully
+            _LOGGER.debug(
+                "Small change within rate limit: applying full adjustment to %.2f°C",
+                target_adjustment
+            )
             return target_adjustment
         elif difference > 0:
             # Increase limited by rate
-            return current_adjustment + self._gradual_adjustment_rate
+            result = current_adjustment + self._gradual_adjustment_rate
+            _LOGGER.debug(
+                "Large increase: limiting to +%.2f°C per update, result=%.2f°C",
+                self._gradual_adjustment_rate,
+                result
+            )
+            return result
         else:
             # Decrease limited by rate
-            return current_adjustment - self._gradual_adjustment_rate
+            result = current_adjustment - self._gradual_adjustment_rate
+            _LOGGER.debug(
+                "Large decrease: limiting to -%.2f°C per update, result=%.2f°C",
+                self._gradual_adjustment_rate,
+                result
+            )
+            return result
     
     async def send_temperature_command(
         self,
