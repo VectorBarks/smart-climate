@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0-beta1] - 2025-07-09 [Pre-release]
+
+### Added
+- **Smart Climate Dashboard - Complete Visualization System**
+  - Beautiful, responsive dashboard for monitoring learning progress and performance
+  - Automatic creation of 5 dashboard sensor entities - zero configuration needed
+  - One-click dashboard generation service creates customized YAML
+  - Real-time visualization of temperature offsets, accuracy, and AC behavior
+  - Works on all devices with responsive design
+  - Uses only core Home Assistant cards - no dependencies
+
+### New Sensor Entities (Created Automatically)
+- `sensor.{entity}_offset_current` - Current temperature offset in real-time
+- `sensor.{entity}_learning_progress` - Learning completion percentage (0-100%)
+- `sensor.{entity}_accuracy_current` - Current prediction accuracy
+- `sensor.{entity}_calibration_status` - Shows calibration phase status
+- `sensor.{entity}_hysteresis_state` - AC behavior state (idle/cooling/heating)
+
+### New Service
+- `smart_climate.generate_dashboard` - Generates complete dashboard configuration
+  - Automatically replaces entity IDs in template
+  - Sends dashboard via persistent notification
+  - Includes step-by-step setup instructions
+  - No manual YAML editing required
+
+### Documentation
+- New dashboard setup guide with visual examples
+- Migration guide for existing users
+- Updated README with dashboard feature highlights
+- Service documentation for generate_dashboard
+
+### Technical Improvements
+- Added sensor platform with automatic entity creation
+- Dashboard template with responsive grid layouts
+- Comprehensive test coverage for dashboard features
+- Performance optimized sensor updates (<10ms)
+
 ## [1.1.1-beta2] - 2025-07-09 [Pre-release]
 
 ### Added

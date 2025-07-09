@@ -21,7 +21,14 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**NEW in v1.1.0: HysteresisLearner - AC Temperature Window Detection**
+**NEW in v1.2.0: Smart Climate Dashboard (Beta)**
+- Beautiful visualization dashboard for learning progress and system performance
+- Automatic sensor creation - no manual configuration needed
+- One-click dashboard generation service
+- Responsive design works on all devices
+- Real-time monitoring of offsets, accuracy, and AC behavior
+
+**v1.1.0: HysteresisLearner - AC Temperature Window Detection**
 - Automatically learns your AC's start/stop temperature thresholds
 - Understands when your AC actually turns on and off
 - Adapts predictions based on real power consumption patterns
@@ -93,6 +100,15 @@ That's it! Your new smart climate entity is ready to use. No YAML editing requir
 - Check the learning switch attributes to see timestamps and learning progress
 - Use preset modes for different scenarios (Away, Sleep, Boost)
 - Monitor performance through entity attributes
+
+### Dashboard Setup (NEW!)
+
+1. After installation, dashboard sensors are created automatically
+2. Go to Developer Tools → Services
+3. Search for "Smart Climate: Generate Dashboard"
+4. Select your Smart Climate entity and click "Call Service"
+5. A notification appears with your custom dashboard YAML
+6. Follow the instructions in the notification to create your dashboard
 
 ## Documentation
 
