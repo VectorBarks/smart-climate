@@ -12,6 +12,8 @@ from .const import (
     DEFAULT_POWER_IDLE_THRESHOLD,
     DEFAULT_POWER_MIN_THRESHOLD,
     DEFAULT_POWER_MAX_THRESHOLD,
+    DEFAULT_SAVE_INTERVAL,
+    CONF_SAVE_INTERVAL,
 )
 
 if TYPE_CHECKING:
@@ -197,26 +199,48 @@ class OffsetEngine:
         # Add state for the stable calibration offset
         self._stable_calibration_offset: Optional[float] = None
         
+        # Save configuration and statistics
+        self._save_interval = config.get(CONF_SAVE_INTERVAL, DEFAULT_SAVE_INTERVAL)
+        self._save_count = 0
+        self._failed_save_count = 0
+        self._last_save_time: Optional[datetime] = None
+        
         if self._enable_learning:
             self._learner = EnhancedLightweightOffsetLearner()
             _LOGGER.debug("Learning enabled - EnhancedLightweightOffsetLearner initialized")
         
         _LOGGER.debug(
             "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s, "
-            "hysteresis_enabled=%s, power_thresholds(idle=%s, min=%s, max=%s)",
+            "hysteresis_enabled=%s, power_thresholds(idle=%s, min=%s, max=%s), save_interval=%s",
             self._max_offset,
             self._ml_enabled,
             self._enable_learning,
             self._hysteresis_enabled,
             self._power_idle_threshold,
             self._power_min_threshold,
-            self._power_max_threshold
+            self._power_max_threshold,
+            self._save_interval
         )
     
     @property
     def is_learning_enabled(self) -> bool:
         """Return true if learning is enabled."""
         return self._enable_learning
+    
+    @property
+    def save_count(self) -> int:
+        """Return the number of successful saves."""
+        return self._save_count
+    
+    @property
+    def failed_save_count(self) -> int:
+        """Return the number of failed saves."""
+        return self._failed_save_count
+    
+    @property
+    def last_save_time(self) -> Optional[datetime]:
+        """Return the timestamp of the last successful save."""
+        return self._last_save_time
     
     @property
     def is_in_calibration_phase(self) -> bool:
@@ -963,6 +987,7 @@ class OffsetEngine:
         """
         if not hasattr(self, "_data_store") or self._data_store is None:
             _LOGGER.warning("No data store configured, cannot save learning data")
+            self._failed_save_count += 1
             return
 
         try:
@@ -976,8 +1001,13 @@ class OffsetEngine:
 
             # Prepare hysteresis data only if hysteresis is enabled
             hysteresis_data = None
+            hysteresis_sample_count = 0
             if self._hysteresis_enabled:
                 hysteresis_data = self._hysteresis_learner.serialize_for_persistence()
+                hysteresis_sample_count = (
+                    len(hysteresis_data.get("start_temps", [])) + 
+                    len(hysteresis_data.get("stop_temps", []))
+                )
                 _LOGGER.debug("Serializing hysteresis data: %s start samples, %s stop samples", 
                             len(hysteresis_data.get("start_temps", [])), 
                             len(hysteresis_data.get("stop_temps", [])))
@@ -1002,10 +1032,26 @@ class OffsetEngine:
 
             # Save to persistent storage
             await self._data_store.async_save_learning_data(persistent_data)
+            
+            # Update save statistics on success
+            self._save_count += 1
+            self._last_save_time = datetime.now()
+            
+            # Log successful save with sample count information
+            total_samples = sample_count + hysteresis_sample_count
+            if total_samples > 0:
+                _LOGGER.info(
+                    "Learning data save successful: %s learning samples, %s hysteresis samples (%s total)",
+                    sample_count, hysteresis_sample_count, total_samples
+                )
+            else:
+                _LOGGER.info("Learning data save successful: no samples collected yet")
+            
             _LOGGER.debug("Learning data and engine state saved successfully")
 
         except Exception as exc:
-            _LOGGER.error("Failed to save learning data: %s", exc)
+            self._failed_save_count += 1
+            _LOGGER.warning("Failed to save learning data: %s", exc)
     
     async def async_load_learning_data(self) -> bool:
         """Load engine state and learning data from persistent storage.
@@ -1099,11 +1145,12 @@ class OffsetEngine:
             _LOGGER.error("Failed to load learning data: %s", exc)
             return False
     
-    async def async_setup_periodic_save(self, hass: "HomeAssistant") -> Callable:
+    async def async_setup_periodic_save(self, hass: "HomeAssistant", save_interval: Optional[int] = None) -> Callable:
         """Set up periodic saving of learning data.
         
         Args:
             hass: Home Assistant instance
+            save_interval: Optional save interval in seconds. If not provided, uses configured interval.
             
         Returns:
             Function to cancel the periodic saving
@@ -1115,16 +1162,22 @@ class OffsetEngine:
             _LOGGER.debug("Learning disabled, skipping periodic save setup")
             return lambda: None
         
+        # Use provided save_interval or fall back to configured interval
+        interval = save_interval if save_interval is not None else self._save_interval
+        
         async def _periodic_save(_now=None):
             """Periodic save callback."""
             await self.async_save_learning_data()
         
-        # Save every 10 minutes (600 seconds)
+        # Set up periodic save with configurable interval
         remove_listener = async_track_time_interval(
-            hass, _periodic_save, timedelta(seconds=600)
+            hass, _periodic_save, timedelta(seconds=interval)
         )
         
-        _LOGGER.debug("Periodic learning data save configured (every 10 minutes)")
+        _LOGGER.info(
+            "Periodic learning data save configured (every %s seconds / %s minutes)",
+            interval, interval / 60
+        )
         return remove_listener
     
     async def _trigger_save_callback(self) -> None:

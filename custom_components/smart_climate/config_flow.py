@@ -38,6 +38,7 @@ from .const import (
     CONF_ENABLE_RETRY,
     CONF_MAX_RETRY_ATTEMPTS,
     CONF_INITIAL_TIMEOUT,
+    CONF_SAVE_INTERVAL,
     DEFAULT_MAX_OFFSET,
     DEFAULT_MIN_TEMPERATURE,
     DEFAULT_MAX_TEMPERATURE,
@@ -56,6 +57,7 @@ from .const import (
     DEFAULT_ENABLE_RETRY,
     DEFAULT_MAX_RETRY_ATTEMPTS,
     DEFAULT_INITIAL_TIMEOUT,
+    DEFAULT_SAVE_INTERVAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -295,6 +297,15 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),
+            vol.Optional(CONF_SAVE_INTERVAL, default=DEFAULT_SAVE_INTERVAL): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=300,
+                    max=86400,
+                    step=300,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
         })
         
         # Add power threshold fields if power sensor is provided in user_input
@@ -367,6 +378,7 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         validated[CONF_ENABLE_RETRY] = user_input.get(CONF_ENABLE_RETRY, DEFAULT_ENABLE_RETRY)
         validated[CONF_MAX_RETRY_ATTEMPTS] = user_input.get(CONF_MAX_RETRY_ATTEMPTS, DEFAULT_MAX_RETRY_ATTEMPTS)
         validated[CONF_INITIAL_TIMEOUT] = user_input.get(CONF_INITIAL_TIMEOUT, DEFAULT_INITIAL_TIMEOUT)
+        validated[CONF_SAVE_INTERVAL] = user_input.get(CONF_SAVE_INTERVAL, DEFAULT_SAVE_INTERVAL)
         
         # Validate power thresholds if power sensor is configured
         if power_sensor:
@@ -650,6 +662,18 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                     min=30,
                     max=300,
                     step=30,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_SAVE_INTERVAL,
+                default=current_options.get(CONF_SAVE_INTERVAL, current_config.get(CONF_SAVE_INTERVAL, DEFAULT_SAVE_INTERVAL))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=300,
+                    max=86400,
+                    step=300,
                     unit_of_measurement="seconds",
                     mode=selector.NumberSelectorMode.BOX,
                 )
