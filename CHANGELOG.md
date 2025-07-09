@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1-beta2] - 2025-07-09 [Pre-release]
+
+### Added
+- **Stable State Calibration Phase** - Prevents Overcooling During Initial Learning
+  - Implements intelligent offset caching for the first 10 learning samples
+  - Detects "stable states" when AC is idle and temperatures have converged
+  - Caches offset only during stable periods (power < idle threshold AND temp diff < 2°C)
+  - Uses cached stable offset during active cooling to prevent feedback loops
+  - Provides clear calibration status messages to users
+  - Automatically transitions to full learning mode after calibration
+
+### Fixed
+- **Critical Overcooling Issue** (#3)
+  - System no longer applies large dynamic offsets during initial learning
+  - Prevents room temperature from dropping well below target (e.g., 24.5°C → 23°C)
+  - Especially important for ACs with evaporator coil sensors showing 15°C when cooling
+  - Eliminates feedback loop that made the integration unusable during setup
+
+### Technical Details
+- Added `MIN_SAMPLES_FOR_ACTIVE_CONTROL` constant (10 samples)
+- New `_stable_calibration_offset` attribute for caching stable offsets
+- Enhanced `calculate_offset()` with calibration phase logic
+- Comprehensive test suite with 8 new calibration tests
+- Updated existing tests to work with calibration phase
+
 ## [1.1.1-beta1] - 2025-07-08 [Pre-release]
 
 ### Added
