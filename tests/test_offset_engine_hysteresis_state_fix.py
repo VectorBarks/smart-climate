@@ -42,6 +42,11 @@ class TestHysteresisStateLogic:
         mock_hysteresis.has_sufficient_data = False
         engine._hysteresis_learner = mock_hysteresis
         
+        # Mock learner to report enough samples to skip calibration phase
+        engine._learner = Mock()
+        engine._learner.get_statistics.return_value = Mock(samples_collected=15)  # > 10
+        engine._learner._enhanced_samples = [Mock() for _ in range(15)]
+        
         # Create test input
         input_data = OffsetInput(
             ac_internal_temp=20.0,
@@ -52,9 +57,6 @@ class TestHysteresisStateLogic:
             time_of_day=time(14, 0),
             day_of_week=1
         )
-        
-        # Add some samples to the learner so it will try to predict
-        engine._learner._enhanced_samples = [Mock() for _ in range(5)]
         
         # Patch the learner's predict method to capture hysteresis_state
         with patch.object(engine._learner, 'predict') as mock_predict:
@@ -82,6 +84,11 @@ class TestHysteresisStateLogic:
             "power_sensor": "sensor.ac_power"
         }
         engine = OffsetEngine(config)
+        
+        # Mock learner to report enough samples to skip calibration phase
+        engine._learner = Mock()
+        engine._learner.get_statistics.return_value = Mock(samples_collected=15)  # > 10
+        engine._learner._enhanced_samples = [Mock() for _ in range(15)]
         
         # Mock hysteresis learner with sufficient data
         mock_hysteresis = Mock()

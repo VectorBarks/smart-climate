@@ -277,7 +277,8 @@ class TestOffsetEngineHysteresisIntegration:
             assert saved_data["hysteresis_data"]["start_temps"] == [24.5]
             assert saved_data["hysteresis_data"]["stop_temps"] == [23.5]
 
-    def test_persistence_serialization_without_hysteresis_when_disabled(self):
+    @pytest.mark.asyncio
+    async def test_persistence_serialization_without_hysteresis_when_disabled(self):
         """Test that persistence excludes hysteresis data when hysteresis is disabled."""
         config = {
             "max_offset": 5.0,
@@ -290,8 +291,7 @@ class TestOffsetEngineHysteresisIntegration:
         
         # Mock the data store save method to capture what's being saved
         with patch.object(engine._data_store, 'async_save_learning_data', new_callable=AsyncMock) as mock_save:
-            import asyncio
-            asyncio.run(engine.async_save_learning_data())
+            await engine.async_save_learning_data()
             
             # Verify the saved data doesn't include hysteresis_data when disabled
             mock_save.assert_called_once()
@@ -301,7 +301,8 @@ class TestOffsetEngineHysteresisIntegration:
             assert saved_data["version"] == 2
             assert "hysteresis_data" not in saved_data
 
-    def test_persistence_backward_compatibility_v1_data(self):
+    @pytest.mark.asyncio
+    async def test_persistence_backward_compatibility_v1_data(self):
         """Test that v1 data loading works without hysteresis_data key."""
         config = {
             "max_offset": 5.0,
@@ -323,8 +324,7 @@ class TestOffsetEngineHysteresisIntegration:
         engine.set_data_store(mock_data_store)
         
         # Should load successfully without errors
-        import asyncio
-        result = asyncio.run(engine.async_load_learning_data())
+        result = await engine.async_load_learning_data()
         
         assert result is True
         # Hysteresis learner should still be available but with no data
@@ -332,7 +332,8 @@ class TestOffsetEngineHysteresisIntegration:
         assert len(engine._hysteresis_learner._start_temps) == 0
         assert len(engine._hysteresis_learner._stop_temps) == 0
 
-    def test_persistence_v2_data_with_hysteresis_restoration(self):
+    @pytest.mark.asyncio
+    async def test_persistence_v2_data_with_hysteresis_restoration(self):
         """Test that v2 data with hysteresis_data is properly restored."""
         config = {
             "max_offset": 5.0,
@@ -357,8 +358,7 @@ class TestOffsetEngineHysteresisIntegration:
         engine.set_data_store(mock_data_store)
         
         # Should load successfully and restore hysteresis data
-        import asyncio
-        result = asyncio.run(engine.async_load_learning_data())
+        result = await engine.async_load_learning_data()
         
         assert result is True
         # Hysteresis learner should have restored data

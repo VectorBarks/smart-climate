@@ -70,7 +70,7 @@ class TestOffsetEngineEnhanced:
         
         # Should work exactly as before - rule-based calculation
         assert isinstance(result, OffsetResult)
-        assert result.offset == -2.0  # Basic temperature difference
+        assert result.offset == 2.0  # AC sensor warmer than room, positive offset
         assert not result.clamped
         assert result.confidence >= 0.5
         assert "learning" not in result.reason.lower()
@@ -92,32 +92,23 @@ class TestOffsetEngineEnhanced:
         
         result = engine.calculate_offset(input_data)
         
-        # Should fall back to rule-based calculation
+        # During calibration phase with insufficient data
         assert isinstance(result, OffsetResult)
-        assert result.offset == -2.0  # Basic temperature difference
+        assert result.offset == 2.0  # AC sensor warmer than room, positive offset
         assert not result.clamped
-        assert result.confidence >= 0.5
-        assert "insufficient learning data" in result.reason.lower()
+        assert result.confidence == 0.2  # Low confidence during calibration
+        assert "calibration" in result.reason.lower()  # Should be in calibration phase
 
     def test_calculate_offset_with_learning_sufficient_data(self):
         """Test offset calculation with learning and sufficient training data."""
         config = {"max_offset": 5.0, "enable_learning": True}
         engine = OffsetEngine(config)
         
-        # Add enough training samples to trigger learning
-        sample_input = OffsetInput(
-            ac_internal_temp=24.0,
-            room_temp=22.0,
-            outdoor_temp=25.0,
-            mode="none",
-            power_consumption=150.0,
-            time_of_day=time(14, 30),
-            day_of_week=1
-        )
-        
-        # Add sufficient training samples
-        for i in range(25):  # More than _min_samples (20)
-            engine.record_actual_performance(-2.0, -1.8 + (i * 0.01), sample_input)
+        # Mock learner to report sufficient samples (skip calibration phase)
+        engine._learner = Mock()
+        engine._learner.get_statistics.return_value = Mock(samples_collected=25)  # > 10
+        engine._learner._enhanced_samples = [Mock()]  # Has samples
+        engine._learner.predict.return_value = 1.8  # Learned offset
         
         input_data = OffsetInput(
             ac_internal_temp=24.0,
@@ -140,6 +131,12 @@ class TestOffsetEngineEnhanced:
         """Test offset calculation considers power consumption for AC state."""
         config = {"max_offset": 5.0, "enable_learning": True}
         engine = OffsetEngine(config)
+        
+        # Mock learner to skip calibration phase
+        engine._learner = Mock()
+        engine._learner.get_statistics.return_value = Mock(samples_collected=15)  # > 10
+        engine._learner._enhanced_samples = [Mock()]
+        engine._learner.predict.return_value = 1.8
         
         # Test with high power (AC working hard)
         input_high_power = OffsetInput(
@@ -216,8 +213,8 @@ class TestOffsetEngineEnhanced:
             )
         )
         
-        # Should not raise exception
-        assert len(engine._learner._training_samples) > 0
+        # Should not raise exception and should have recorded the sample
+        assert len(engine._learner._enhanced_samples) > 0
 
     def test_record_actual_performance_learning_disabled(self):
         """Test recording performance when learning is disabled."""
@@ -348,20 +345,11 @@ class TestOffsetEngineEnhanced:
         config = {"max_offset": 5.0, "enable_learning": True}
         engine = OffsetEngine(config)
         
-        # Add training samples that would predict -1.5 offset
-        sample_input = OffsetInput(
-            ac_internal_temp=24.0,
-            room_temp=22.0,
-            outdoor_temp=25.0,
-            mode="none",
-            power_consumption=150.0,
-            time_of_day=time(14, 30),
-            day_of_week=1
-        )
-        
-        # Add samples that converge to -1.5 actual offset
-        for i in range(25):
-            engine.record_actual_performance(-2.0, -1.5, sample_input)
+        # Mock learner to skip calibration phase and provide learned offset
+        engine._learner = Mock()
+        engine._learner.get_statistics.return_value = Mock(samples_collected=25)  # > 10
+        engine._learner._enhanced_samples = [Mock()]  # Has samples
+        engine._learner.predict.return_value = 1.5  # Learned offset
         
         input_data = OffsetInput(
             ac_internal_temp=24.0,
@@ -376,10 +364,10 @@ class TestOffsetEngineEnhanced:
         result = engine.calculate_offset(input_data)
         
         # Should use learning since we have sufficient data
-        # The exact offset will depend on the learner's confidence calculation
-        # But it should be somewhere between rule-based (-2.0) and learned (-1.5)
-        assert result.offset != -2.0  # Should not be pure rule-based
-        assert -2.0 <= result.offset <= -1.5  # Should be between rule-based and learned
+        # The exact offset will be a weighted combination of rule-based (2.0) and learned (1.5)
+        # With 0.8 confidence, it should be: 0.2 * 2.0 + 0.8 * 1.5 = 0.4 + 1.2 = 1.6
+        assert result.offset != 2.0  # Should not be pure rule-based
+        assert 1.5 <= result.offset <= 2.0  # Should be between learned and rule-based
         assert "learning" in result.reason.lower()
         assert result.confidence > 0.5
 
@@ -412,19 +400,19 @@ class TestOffsetEngineEnhanced:
         # Record different actual outcomes for different power states
         for _ in range(20):
             engine.record_actual_performance(
-                predicted_offset=-2.0,
-                actual_offset=-1.5,  # Better for high power
+                predicted_offset=2.0,
+                actual_offset=1.5,  # Better for high power
                 input_data=high_power_input
             )
             
             engine.record_actual_performance(
-                predicted_offset=-2.0,
-                actual_offset=-2.5,  # Worse for low power
+                predicted_offset=2.0,
+                actual_offset=2.5,  # Worse for low power
                 input_data=low_power_input
             )
         
         # Learning should differentiate between power states
-        assert len(engine._learner._training_samples) == 40
+        assert len(engine._learner._enhanced_samples) == 40
 
     def test_graceful_degradation_when_power_unavailable(self):
         """Test graceful degradation when power sensor becomes unavailable."""
@@ -480,8 +468,8 @@ class TestOffsetEngineEnhanced:
         
         result = engine.calculate_offset(input_data)
         
-        # Should behave exactly as before
-        assert result.offset == -2.0  # Basic temperature difference
+        # Should behave exactly as before (with corrected offset calculation)
+        assert result.offset == 2.0  # AC sensor warmer than room, positive offset
         assert not result.clamped
         assert "AC sensor warmer than room" in result.reason
         assert result.confidence >= 0.5
@@ -491,7 +479,7 @@ class TestOffsetEngineEnhanced:
         assert hasattr(engine, 'get_learning_info')
         
         # Should not raise exceptions
-        engine.record_actual_performance(-2.0, -1.8, input_data)
+        engine.record_actual_performance(2.0, 1.8, input_data)
         learning_info = engine.get_learning_info()
         assert learning_info["enabled"] is False
 
@@ -500,25 +488,11 @@ class TestOffsetEngineEnhanced:
         config = {"max_offset": 5.0, "enable_learning": True}
         engine = OffsetEngine(config)
         
-        # Add sufficient training samples first
-        sample_input = OffsetInput(
-            ac_internal_temp=24.0,
-            room_temp=22.0,
-            outdoor_temp=25.0,
-            mode="none",
-            power_consumption=150.0,
-            time_of_day=time(14, 30),
-            day_of_week=1
-        )
-        
-        for i in range(25):
-            engine.record_actual_performance(-2.0, -1.8, sample_input)
-        
-        # Mock learner to throw exception
-        def mock_predict_error(input_data):
-            raise ValueError("Mock learning error")
-        
-        engine._learner.predict_offset = mock_predict_error
+        # Mock learner to skip calibration phase and throw exception on predict
+        engine._learner = Mock()
+        engine._learner.get_statistics.return_value = Mock(samples_collected=25)  # > 10
+        engine._learner._enhanced_samples = [Mock()]  # Has samples
+        engine._learner.predict.side_effect = ValueError("Mock learning error")
         
         input_data = OffsetInput(
             ac_internal_temp=24.0,
@@ -534,5 +508,5 @@ class TestOffsetEngineEnhanced:
         
         # Should fall back to rule-based calculation
         assert isinstance(result, OffsetResult)
-        assert result.offset == -2.0  # Rule-based fallback
-        assert "learning error" in result.reason.lower() or "fallback" in result.reason.lower()
+        assert result.offset == 2.0  # Rule-based fallback (corrected offset)
+        assert "fallback" in result.reason.lower()
