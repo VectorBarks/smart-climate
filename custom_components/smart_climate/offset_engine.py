@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Calibration phase threshold - configurable in the future
+MIN_SAMPLES_FOR_ACTIVE_CONTROL = 10  # Exit calibration after this many samples
 
 # HysteresisState defines the possible states of the AC cycle.
 HysteresisState = Literal[
@@ -192,6 +194,9 @@ class OffsetEngine:
         self._hysteresis_learner = HysteresisLearner()
         self._last_power_state: Optional[str] = None
         
+        # Add state for the stable calibration offset
+        self._stable_calibration_offset: Optional[float] = None
+        
         if self._enable_learning:
             self._learner = EnhancedLightweightOffsetLearner()
             _LOGGER.debug("Learning enabled - EnhancedLightweightOffsetLearner initialized")
@@ -212,6 +217,21 @@ class OffsetEngine:
     def is_learning_enabled(self) -> bool:
         """Return true if learning is enabled."""
         return self._enable_learning
+    
+    @property
+    def is_in_calibration_phase(self) -> bool:
+        """
+        Determines if the system is in the initial calibration phase.
+        During this phase, we use stable state offset caching.
+        """
+        if not self._enable_learning or not self._learner:
+            return False
+        
+        try:
+            stats = self._learner.get_statistics()
+            return stats.samples_collected < MIN_SAMPLES_FOR_ACTIVE_CONTROL
+        except Exception:
+            return True
     
     def _get_power_state(self, power_consumption: float) -> str:
         """Determine power state based on consumption and thresholds.
@@ -299,6 +319,10 @@ class OffsetEngine:
         self._last_power_state = None
         _LOGGER.debug("Hysteresis learner reset with fresh instance")
         
+        # Clear calibration phase cache
+        self._stable_calibration_offset = None
+        _LOGGER.debug("Calibration phase cache cleared")
+        
         # Clear any cached learning info
         if hasattr(self, '_last_learning_info'):
             self._last_learning_info = {}
@@ -331,8 +355,61 @@ class OffsetEngine:
                 mode_adjusted_offset, input_data
             )
             
-            # Hysteresis learning: detect power state transitions
+            # Always run power transition detection
             self._detect_power_transitions(input_data)
+            
+            # Check if in calibration phase
+            if self.is_in_calibration_phase:
+                samples_collected = 0
+                if self._learner:
+                    try:
+                        stats = self._learner.get_statistics()
+                        samples_collected = stats.samples_collected
+                    except Exception:
+                        pass
+                
+                # Determine if AC is in stable state (idle and temps converged)
+                if input_data.power_consumption is not None:
+                    # Power sensor available - use both power and temperature
+                    is_stable_state = (
+                        input_data.power_consumption < self._power_idle_threshold and
+                        abs(input_data.ac_internal_temp - input_data.room_temp) < 2.0
+                    )
+                else:
+                    # No power sensor - use temperature convergence only
+                    is_stable_state = abs(input_data.ac_internal_temp - input_data.room_temp) < 2.0
+                
+                if is_stable_state:
+                    # Calculate and cache the stable offset
+                    self._stable_calibration_offset = input_data.ac_internal_temp - input_data.room_temp
+                    final_offset, was_clamped = self._clamp_offset(self._stable_calibration_offset)
+                    self._stable_calibration_offset = final_offset  # Store clamped value
+                    
+                    reason = (
+                        f"Calibration (Stable): Updated offset to {final_offset:.1f}°C. "
+                        f"({samples_collected}/{MIN_SAMPLES_FOR_ACTIVE_CONTROL} samples)"
+                    )
+                    _LOGGER.info(reason)
+                    
+                elif self._stable_calibration_offset is not None:
+                    # AC is cooling - use cached stable offset
+                    final_offset = self._stable_calibration_offset
+                    reason = f"Calibration (Active): Using cached stable offset of {final_offset:.1f}°C."
+                    _LOGGER.debug(reason)
+                    
+                else:
+                    # First run with AC already cooling - temporary offset
+                    final_offset = input_data.ac_internal_temp - input_data.room_temp
+                    final_offset, was_clamped = self._clamp_offset(final_offset)
+                    reason = f"Calibration (Initial): No cached offset. Using temporary offset of {final_offset:.1f}°C."
+                    _LOGGER.info(reason)
+                
+                return OffsetResult(
+                    offset=final_offset,
+                    clamped=False,
+                    reason=reason,
+                    confidence=0.2  # Low confidence during calibration
+                )
             
             # Get hysteresis state for enhanced learning
             if not self._hysteresis_enabled:
