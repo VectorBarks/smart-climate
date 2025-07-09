@@ -129,6 +129,27 @@ class LearningSwitch(SwitchEntity):
                 except Exception:
                     last_sample_display = str(last_sample_time)
             
+            # Get save statistics from offset engine
+            save_count = 0
+            failed_save_count = 0
+            last_save_display = "Never"
+            try:
+                save_count = self._offset_engine.save_count
+                failed_save_count = self._offset_engine.failed_save_count
+                last_save_time = self._offset_engine.last_save_time
+                
+                # Format last save time for display
+                if last_save_time:
+                    try:
+                        last_save_display = last_save_time.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        last_save_display = str(last_save_time)
+            except Exception:
+                # If save statistics access fails, use defaults
+                save_count = 0
+                failed_save_count = 0
+                last_save_display = "Error"
+            
             # Format hysteresis thresholds
             start_threshold = learning_info.get("learned_start_threshold")
             stop_threshold = learning_info.get("learned_stop_threshold")
@@ -173,10 +194,32 @@ class LearningSwitch(SwitchEntity):
                 "temperature_window": temperature_window_display,
                 "start_samples_collected": learning_info.get("start_samples_collected", 0),
                 "stop_samples_collected": learning_info.get("stop_samples_collected", 0),
-                "hysteresis_ready": learning_info.get("hysteresis_ready", False)
+                "hysteresis_ready": learning_info.get("hysteresis_ready", False),
+                "save_count": save_count,
+                "failed_save_count": failed_save_count,
+                "last_save_time": last_save_display
             }
         except Exception as exc:
             _LOGGER.warning("Failed to get learning info for switch attributes: %s", exc)
+            # Try to get save statistics even if learning info fails
+            save_count = 0
+            failed_save_count = 0
+            last_save_display = "Error"
+            try:
+                save_count = self._offset_engine.save_count
+                failed_save_count = self._offset_engine.failed_save_count
+                last_save_time = self._offset_engine.last_save_time
+                if last_save_time:
+                    try:
+                        last_save_display = last_save_time.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        last_save_display = str(last_save_time)
+                else:
+                    last_save_display = "Never"
+            except Exception:
+                # If save statistics also fail, use error defaults
+                pass
+            
             return {
                 "samples_collected": 0,
                 "learning_accuracy": 0.0,
@@ -193,6 +236,9 @@ class LearningSwitch(SwitchEntity):
                 "start_samples_collected": 0,
                 "stop_samples_collected": 0,
                 "hysteresis_ready": False,
+                "save_count": save_count,
+                "failed_save_count": failed_save_count,
+                "last_save_time": last_save_display,
                 "error": str(exc)
             }
 
