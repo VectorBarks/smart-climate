@@ -206,13 +206,6 @@ Don't worry - this behavior is expected during the initial learning phase when t
 
 **Timeline for Improvement**:
 
-With v1.1.1-beta2 and later (Calibration Phase):
-- **First 10 samples**: Calibration phase prevents overcooling
-- **After calibration**: System enters full learning mode
-- **Week 1**: Patterns become established
-- **Week 2+**: System maintains comfortable temperatures automatically
-
-For versions before v1.1.1-beta2:
 - **Day 1-2**: May experience overcooling, use manual overrides as needed
 - **Day 3-5**: System begins learning patterns, overcooling reduces
 - **Week 1-2**: HysteresisLearner (if power sensor configured) optimizes thresholds
