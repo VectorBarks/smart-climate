@@ -37,9 +37,26 @@ class ModeAdjustments:
 
 @dataclass
 class SmartClimateData:
-    """Data structure for coordinator updates."""
+    """Data structure for coordinator updates.
+    
+    Contains all data needed for Smart Climate coordination including sensor readings,
+    calculated offsets, mode adjustments, and startup state tracking.
+    
+    Args:
+        room_temp: Current room temperature from sensor
+        outdoor_temp: Current outdoor temperature (if available)
+        power: Current power consumption (if available)
+        calculated_offset: Calculated temperature offset for AC control
+        mode_adjustments: Mode-specific adjustments to apply
+        is_startup_calculation: Flag indicating if this is a startup calculation.
+            When True, the climate entity will apply the calculated offset to the AC
+            even if the offset change is below the normal update threshold. This ensures
+            that learned temperature adjustments are applied immediately when the
+            integration starts up, rather than waiting for the next significant change.
+    """
     room_temp: Optional[float]
     outdoor_temp: Optional[float]
     power: Optional[float]
     calculated_offset: float
     mode_adjustments: ModeAdjustments
+    is_startup_calculation: bool = False

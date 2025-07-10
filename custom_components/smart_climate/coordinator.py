@@ -39,6 +39,13 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         self._sensor_manager = sensor_manager
         self._offset_engine = offset_engine
         self._mode_manager = mode_manager
+        self._is_startup = True  # Flag for startup calculation
+    
+    async def async_force_startup_refresh(self) -> None:
+        """Force immediate refresh for startup scenario."""
+        _LOGGER.debug("Forcing startup refresh for coordinator")
+        self._is_startup = True
+        await self.async_request_refresh()
     
     async def _async_update_data(self) -> SmartClimateData:
         """Fetch latest data from all sources."""
@@ -91,12 +98,19 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             else:
                 _LOGGER.warning("No room temperature available for offset calculation")
             
+            # Handle startup flag
+            startup_flag = self._is_startup
+            if startup_flag:
+                _LOGGER.info("Coordinator performing startup calculation (offset=%.1f°C)", calculated_offset)
+                self._is_startup = False  # Reset after first calculation
+            
             return SmartClimateData(
                 room_temp=room_temp,
                 outdoor_temp=outdoor_temp,
                 power=power,
                 calculated_offset=calculated_offset,
-                mode_adjustments=mode_adjustments
+                mode_adjustments=mode_adjustments,
+                is_startup_calculation=startup_flag
             )
             
         except Exception as err:

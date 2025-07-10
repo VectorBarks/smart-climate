@@ -998,6 +998,20 @@ class SmartClimateEntity(ClimateEntity):
         debug_info = self.debug_state()
         _LOGGER.debug("SmartClimateEntity added to hass: %s, debug state: %s", self.entity_id, debug_info)
         
+        # NEW: Trigger initial temperature calculation after setup
+        if self._attr_target_temperature is not None:
+            _LOGGER.debug("Triggering startup temperature calculation")
+            try:
+                # Force coordinator update to get latest offset
+                await self._coordinator.async_force_startup_refresh()
+                
+                # Apply current offset to AC if significant
+                await self._apply_temperature_with_offset(self._attr_target_temperature)
+                
+                _LOGGER.info("Startup temperature update completed successfully")
+            except Exception as exc:
+                _LOGGER.warning("Startup temperature update failed: %s", exc)
+        
         _LOGGER.debug("SmartClimateEntity fully initialized: %s", self.entity_id)
         
     def _sync_target_temperature_from_wrapped(self) -> bool:
@@ -1127,12 +1141,15 @@ class SmartClimateEntity(ClimateEntity):
             self._coordinator.data.mode_adjustments if hasattr(self._coordinator.data, 'mode_adjustments') else "N/A"
         )
         
-        # Check if the calculated offset has changed significantly since the last application
+        # Check for startup scenario OR significant offset change
+        is_startup = getattr(self._coordinator.data, 'is_startup_calculation', False)
         offset_change = abs(new_offset - self._last_offset)
-        if offset_change > OFFSET_UPDATE_THRESHOLD:
+        
+        if is_startup or offset_change > OFFSET_UPDATE_THRESHOLD:
             _LOGGER.info(
-                "Significant offset change detected: %.2f°C (last=%.2f°C, new=%.2f°C, threshold=%.2f°C). "
-                "Triggering automatic temperature adjustment.",
+                "Triggering AC temperature update: startup=%s, offset_change=%.2f°C "
+                "(last=%.2f°C, new=%.2f°C, threshold=%.2f°C)",
+                is_startup,
                 offset_change,
                 self._last_offset,
                 new_offset,
@@ -1153,7 +1170,8 @@ class SmartClimateEntity(ClimateEntity):
                 _LOGGER.warning("Cannot apply automatic adjustment: target_temperature is None")
         else:
             _LOGGER.debug(
-                "Offset change %.2f°C (%.2f°C -> %.2f°C) is within threshold %.2f°C. No automatic adjustment needed.",
+                "No AC update needed: startup=%s, offset_change=%.2f°C (%.2f°C -> %.2f°C) within threshold %.2f°C",
+                is_startup,
                 offset_change,
                 self._last_offset, 
                 new_offset, 
