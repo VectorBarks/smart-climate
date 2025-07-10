@@ -20,7 +20,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
-from .offset_engine import OffsetEngine
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,24 +33,24 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Smart Climate sensor platform from a config entry."""
-    # Retrieve the OffsetEngine instances created in __init__.py
+    # Retrieve the coordinators created in __init__.py
     entry_data = hass.data[DOMAIN][config_entry.entry_id]
-    offset_engines = entry_data.get("offset_engines", {})
+    coordinators = entry_data.get("coordinators", {})
     
-    if not offset_engines:
-        _LOGGER.warning("No offset engines found for sensor setup in entry: %s", config_entry.entry_id)
+    if not coordinators:
+        _LOGGER.warning("No coordinators found for sensor setup in entry: %s", config_entry.entry_id)
         return
     
     # Create sensors for each climate entity
     sensors = []
-    for entity_id, offset_engine in offset_engines.items():
+    for entity_id, coordinator in coordinators.items():
         # Create all 5 sensor types for each climate entity
         sensors.extend([
-            OffsetCurrentSensor(offset_engine, entity_id, config_entry),
-            LearningProgressSensor(offset_engine, entity_id, config_entry),
-            AccuracyCurrentSensor(offset_engine, entity_id, config_entry),
-            CalibrationStatusSensor(offset_engine, entity_id, config_entry),
-            HysteresisStateSensor(offset_engine, entity_id, config_entry),
+            OffsetCurrentSensor(coordinator, entity_id, config_entry),
+            LearningProgressSensor(coordinator, entity_id, config_entry),
+            AccuracyCurrentSensor(coordinator, entity_id, config_entry),
+            CalibrationStatusSensor(coordinator, entity_id, config_entry),
+            HysteresisStateSensor(coordinator, entity_id, config_entry),
         ])
     
     async_add_entities(sensors)
@@ -64,13 +63,14 @@ class SmartClimateDashboardSensor(SensorEntity):
     
     def __init__(
         self,
-        offset_engine: OffsetEngine,
+        coordinator,
         base_entity_id: str,
         sensor_type: str,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize dashboard sensor."""
-        self._offset_engine = offset_engine
+        super().__init__()
+        self.coordinator = coordinator
         self._base_entity_id = base_entity_id
         self._sensor_type = sensor_type
         
@@ -86,9 +86,27 @@ class SmartClimateDashboardSensor(SensorEntity):
         )
     
     @property
+    def should_poll(self) -> bool:
+        """No need to poll. Coordinator notifies entity of updates."""
+        return False
+    
+    @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._offset_engine is not None  # Simple existence check
+        """Return if entity is available."""
+        return self.coordinator.last_update_success
+    
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.async_add_listener(
+                self._handle_coordinator_update, self.entity_id
+            )
+        )
+    
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
 
 
 class OffsetCurrentSensor(SmartClimateDashboardSensor):
@@ -96,12 +114,12 @@ class OffsetCurrentSensor(SmartClimateDashboardSensor):
     
     def __init__(
         self,
-        offset_engine: OffsetEngine,
+        coordinator,
         base_entity_id: str,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize offset sensor."""
-        super().__init__(offset_engine, base_entity_id, "offset_current", config_entry)
+        super().__init__(coordinator, base_entity_id, "offset_current", config_entry)
         self._attr_name = "Current Offset"
         self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         self._attr_device_class = SensorDeviceClass.TEMPERATURE
@@ -112,11 +130,11 @@ class OffsetCurrentSensor(SmartClimateDashboardSensor):
     @property
     def native_value(self) -> Optional[float]:
         """Return the current offset value."""
-        if not self.available:
+        if not self.coordinator.data:
             return None
         
         try:
-            return self._offset_engine._coordinator.data.calculated_offset
+            return self.coordinator.data.get("calculated_offset")
         except (AttributeError, TypeError):
             return None
 
@@ -126,12 +144,12 @@ class LearningProgressSensor(SmartClimateDashboardSensor):
     
     def __init__(
         self,
-        offset_engine: OffsetEngine,
+        coordinator,
         base_entity_id: str,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize learning progress sensor."""
-        super().__init__(offset_engine, base_entity_id, "learning_progress", config_entry)
+        super().__init__(coordinator, base_entity_id, "learning_progress", config_entry)
         self._attr_name = "Learning Progress"
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -140,8 +158,11 @@ class LearningProgressSensor(SmartClimateDashboardSensor):
     @property
     def native_value(self) -> int:
         """Return the learning progress percentage."""
+        if not self.coordinator.data:
+            return 0
+            
         try:
-            learning_info = self._offset_engine.get_learning_info()
+            learning_info = self.coordinator.data.get("learning_info", {})
             
             if not learning_info.get("enabled", False):
                 return 0
@@ -160,12 +181,12 @@ class AccuracyCurrentSensor(SmartClimateDashboardSensor):
     
     def __init__(
         self,
-        offset_engine: OffsetEngine,
+        coordinator,
         base_entity_id: str,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize accuracy sensor."""
-        super().__init__(offset_engine, base_entity_id, "accuracy_current", config_entry)
+        super().__init__(coordinator, base_entity_id, "accuracy_current", config_entry)
         self._attr_name = "Current Accuracy"
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -174,8 +195,11 @@ class AccuracyCurrentSensor(SmartClimateDashboardSensor):
     @property
     def native_value(self) -> int:
         """Return the current accuracy percentage."""
+        if not self.coordinator.data:
+            return 0
+            
         try:
-            learning_info = self._offset_engine.get_learning_info()
+            learning_info = self.coordinator.data.get("learning_info", {})
             accuracy = learning_info.get("accuracy", 0.0)
             # Convert to percentage
             return int(accuracy * 100)
@@ -188,20 +212,23 @@ class CalibrationStatusSensor(SmartClimateDashboardSensor):
     
     def __init__(
         self,
-        offset_engine: OffsetEngine,
+        coordinator,
         base_entity_id: str,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize calibration status sensor."""
-        super().__init__(offset_engine, base_entity_id, "calibration_status", config_entry)
+        super().__init__(coordinator, base_entity_id, "calibration_status", config_entry)
         self._attr_name = "Calibration Status"
         self._attr_icon = "mdi:progress-check"
     
     @property
     def native_value(self) -> str:
         """Return the calibration status text."""
+        if not self.coordinator.data:
+            return "Unknown"
+            
         try:
-            learning_info = self._offset_engine.get_learning_info()
+            learning_info = self.coordinator.data.get("learning_info", {})
             
             if not learning_info.get("enabled", False):
                 return "Waiting (Learning Disabled)"
@@ -218,8 +245,16 @@ class CalibrationStatusSensor(SmartClimateDashboardSensor):
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
+        if not self.coordinator.data:
+            return {
+                "samples_collected": 0,
+                "minimum_required": MIN_SAMPLES_FOR_CALIBRATION,
+                "learning_enabled": False,
+                "last_sample": None,
+            }
+            
         try:
-            learning_info = self._offset_engine.get_learning_info()
+            learning_info = self.coordinator.data.get("learning_info", {})
             return {
                 "samples_collected": learning_info.get("samples", 0),
                 "minimum_required": MIN_SAMPLES_FOR_CALIBRATION,
@@ -240,20 +275,23 @@ class HysteresisStateSensor(SmartClimateDashboardSensor):
     
     def __init__(
         self,
-        offset_engine: OffsetEngine,
+        coordinator,
         base_entity_id: str,
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize hysteresis state sensor."""
-        super().__init__(offset_engine, base_entity_id, "hysteresis_state", config_entry)
+        super().__init__(coordinator, base_entity_id, "hysteresis_state", config_entry)
         self._attr_name = "Hysteresis State"
         self._attr_icon = "mdi:sine-wave"
     
     @property
     def native_value(self) -> str:
         """Return the human-readable hysteresis state."""
+        if not self.coordinator.data:
+            return "Unknown"
+            
         try:
-            learning_info = self._offset_engine.get_learning_info()
+            learning_info = self.coordinator.data.get("learning_info", {})
             state = learning_info.get("hysteresis_state", "unknown")
             
             # Map to human-readable descriptions
@@ -276,8 +314,19 @@ class HysteresisStateSensor(SmartClimateDashboardSensor):
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
+        if not self.coordinator.data:
+            return {
+                "power_sensor_configured": False,
+                "start_threshold": "Not available",
+                "stop_threshold": "Not available",
+                "temperature_window": "Not available",
+                "start_samples": 0,
+                "stop_samples": 0,
+                "ready": False,
+            }
+            
         try:
-            learning_info = self._offset_engine.get_learning_info()
+            learning_info = self.coordinator.data.get("learning_info", {})
             
             # Check if power sensor is configured
             power_configured = learning_info.get("hysteresis_enabled", False)

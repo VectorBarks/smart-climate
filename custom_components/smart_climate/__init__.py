@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 from typing import Any, Dict, List
+from datetime import timedelta
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -13,6 +14,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er, config_validation as cv
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
 )
@@ -84,6 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "config": entry.data,
         "offset_engines": {},  # Stores one engine per climate entity
         "data_stores": {},  # Stores one data store per climate entity
+        "coordinators": {},  # Stores one coordinator per climate entity
         "unload_listeners": [],  # To clean up periodic save tasks
     }
     
@@ -198,6 +201,27 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
     
     # Store the engine instance for the platform to use, keyed by entity_id
     hass.data[DOMAIN][entry.entry_id]["offset_engines"][entity_id] = offset_engine
+    
+    # Create DataUpdateCoordinator for this entity
+    async def async_update_data():
+        """Fetch data from offset engine."""
+        try:
+            data = await offset_engine.async_get_dashboard_data()
+            return data
+        except Exception as exc:
+            _LOGGER.error("Error fetching dashboard data for %s: %s", entity_id, exc)
+            raise UpdateFailed(f"Error fetching dashboard data: {exc}") from exc
+    
+    coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name=f"smart_climate_{entry.entry_id}_{entity_id}",
+        update_method=async_update_data,
+        update_interval=timedelta(seconds=30),
+    )
+    
+    # Store the coordinator instance for the sensor platform to use
+    hass.data[DOMAIN][entry.entry_id]["coordinators"][entity_id] = coordinator
 
     # 2. Try to create persistence - graceful degradation if it fails
     try:
@@ -237,6 +261,14 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             entity_id, exc
         )
         # Entity will work without persistence - graceful degradation
+    
+    # 6. Perform initial coordinator data fetch
+    try:
+        await coordinator.async_config_entry_first_refresh()
+        _LOGGER.debug("Initial coordinator data fetched for entity: %s", entity_id)
+    except Exception as exc:
+        _LOGGER.warning("Failed to fetch initial coordinator data for %s: %s", entity_id, exc)
+        # Continue without initial data - coordinator will retry on its schedule
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

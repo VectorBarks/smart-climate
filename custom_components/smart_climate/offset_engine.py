@@ -199,6 +199,9 @@ class OffsetEngine:
         # Add state for the stable calibration offset
         self._stable_calibration_offset: Optional[float] = None
         
+        # Add state for the last calculated offset (for dashboard data)
+        self._last_offset: float = 0.0
+        
         # Save configuration and statistics
         self._save_interval = config.get(CONF_SAVE_INTERVAL, DEFAULT_SAVE_INTERVAL)
         self._save_count = 0
@@ -428,6 +431,9 @@ class OffsetEngine:
                     reason = f"Calibration (Initial): No cached offset. Using temporary offset of {final_offset:.1f}°C."
                     _LOGGER.info(reason)
                 
+                # Store the last offset for dashboard data
+                self._last_offset = final_offset
+                
                 return OffsetResult(
                     offset=final_offset,
                     clamped=False,
@@ -517,6 +523,9 @@ class OffsetEngine:
             )
             _LOGGER.debug("Offset calculation reason: %s", reason)
             
+            # Store the last calculated offset for dashboard data
+            self._last_offset = clamped_offset
+            
             return OffsetResult(
                 offset=clamped_offset,
                 clamped=was_clamped,
@@ -526,6 +535,8 @@ class OffsetEngine:
             
         except Exception as exc:
             _LOGGER.error("Error calculating offset: %s", exc)
+            # Store the fallback offset
+            self._last_offset = 0.0
             # Return safe fallback
             return OffsetResult(
                 offset=0.0,
@@ -1183,3 +1194,72 @@ class OffsetEngine:
     async def _trigger_save_callback(self) -> None:
         """Trigger a save operation (used for testing and state changes)."""
         await self.async_save_learning_data()
+    
+    async def async_get_dashboard_data(self) -> dict:
+        """Return all data needed by dashboard sensors.
+        
+        Returns a dictionary containing:
+        - calculated_offset: Current offset value
+        - learning_info: Full learning statistics
+        - save_diagnostics: Save operation statistics
+        - calibration_info: Calibration phase information
+        """
+        try:
+            # Get the last calculated offset (default to 0.0 if not available)
+            calculated_offset = getattr(self, '_last_offset', 0.0)
+            
+            # Get full learning info using existing method
+            learning_info = self.get_learning_info()
+            
+            # Build save diagnostics
+            save_diagnostics = {
+                "save_count": self._save_count,
+                "failed_save_count": self._failed_save_count,
+                "last_save_time": self._last_save_time.isoformat() if self._last_save_time else None,
+            }
+            
+            # Build calibration info
+            calibration_info = {
+                "in_calibration": self.is_in_calibration_phase,
+                "cached_offset": self._stable_calibration_offset,
+            }
+            
+            # Return the complete dashboard data
+            return {
+                "calculated_offset": calculated_offset,
+                "learning_info": learning_info,
+                "save_diagnostics": save_diagnostics,
+                "calibration_info": calibration_info,
+            }
+            
+        except Exception as exc:
+            _LOGGER.error("Error getting dashboard data: %s", exc)
+            # Return safe fallback data on error
+            return {
+                "calculated_offset": 0.0,
+                "learning_info": {
+                    "enabled": False,
+                    "samples": 0,
+                    "accuracy": 0.0,
+                    "confidence": 0.0,
+                    "has_sufficient_data": False,
+                    "last_sample_time": None,
+                    "hysteresis_enabled": False,
+                    "hysteresis_state": "disabled",
+                    "learned_start_threshold": None,
+                    "learned_stop_threshold": None,
+                    "temperature_window": None,
+                    "start_samples_collected": 0,
+                    "stop_samples_collected": 0,
+                    "hysteresis_ready": False,
+                },
+                "save_diagnostics": {
+                    "save_count": 0,
+                    "failed_save_count": 0,
+                    "last_save_time": None,
+                },
+                "calibration_info": {
+                    "in_calibration": False,
+                    "cached_offset": None,
+                },
+            }
