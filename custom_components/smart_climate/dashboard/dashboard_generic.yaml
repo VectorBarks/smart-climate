@@ -167,8 +167,6 @@ views:
               show: true
               title: Temperature & Offset History (24h)
             graph_span: 24h
-            span:
-              end: day
             update_interval: 1min
             series:
               - entity: REPLACE_ME_CLIMATE
@@ -205,8 +203,6 @@ views:
               show: true
               title: Learning Progress (7 days)
             graph_span: 7d
-            span:
-              end: day
             update_interval: 5min
             series:
               - entity: REPLACE_ME_SENSOR_PROGRESS
@@ -264,8 +260,6 @@ views:
           show: true
           title: Detailed Learning Metrics (7 days)
         graph_span: 7d
-        span:
-          end: day
         update_interval: 5min
         series:
           - entity: REPLACE_ME_SENSOR_PROGRESS
