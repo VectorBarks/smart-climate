@@ -364,11 +364,65 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         # Extract entity ID without domain
         entity_id_without_domain = climate_entity_id.split(".", 1)[1]
         
+        # Find the config entry for this climate entity
+        config_entry_id = entity_entry.config_entry_id
+        if not config_entry_id:
+            raise ServiceValidationError(
+                f"No config entry found for {climate_entity_id}"
+            )
+            
+        # Dynamically discover all related entities for this Smart Climate instance
+        # Pattern 1: Look for entities with matching config_entry_id
+        all_entities = entity_registry.entities
+        related_entities = {
+            "sensors": {},
+            "switch": None,
+            "button": None
+        }
+        
+        # Sensor types we're looking for
+        sensor_types = ["offset_current", "learning_progress", "accuracy_current", 
+                       "calibration_status", "hysteresis_state"]
+        
+        _LOGGER.debug("Looking for entities with config_entry_id: %s", config_entry_id)
+        
+        for entity_id, entity in all_entities.items():
+            if entity.config_entry_id == config_entry_id:
+                _LOGGER.debug("Found entity %s: domain=%s, platform=%s, unique_id=%s", 
+                            entity.entity_id, entity.domain, entity.platform, entity.unique_id)
+                # Check if it's a sensor
+                if entity.domain == "sensor" and entity.platform == DOMAIN:
+                    # Try to identify sensor type from unique_id
+                    for sensor_type in sensor_types:
+                        if sensor_type in entity.unique_id:
+                            related_entities["sensors"][sensor_type] = entity.entity_id
+                            _LOGGER.debug("Identified %s sensor: %s", sensor_type, entity.entity_id)
+                            break
+                # Check if it's the learning switch
+                elif entity.domain == "switch" and entity.platform == DOMAIN:
+                    related_entities["switch"] = entity.entity_id
+                    _LOGGER.debug("Found learning switch: %s", entity.entity_id)
+                # Check if it's the reset button
+                elif entity.domain == "button" and entity.platform == DOMAIN:
+                    related_entities["button"] = entity.entity_id
+                    _LOGGER.debug("Found reset button: %s", entity.entity_id)
+        
+        # Validate we found all required entities
+        missing_sensors = [st for st in sensor_types if st not in related_entities["sensors"]]
+        if missing_sensors:
+            _LOGGER.warning("Missing sensors: %s", missing_sensors)
+        
+        if not related_entities["switch"]:
+            _LOGGER.warning("Learning switch not found")
+        
+        if not related_entities["button"]:
+            _LOGGER.warning("Reset button not found")
+        
         # Read dashboard template
         template_path = os.path.join(
             os.path.dirname(__file__),
             "dashboard",
-            "dashboard.yaml"
+            "dashboard_generic.yaml"
         )
         
         if not os.path.exists(template_path):
@@ -385,11 +439,25 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 f"Failed to read dashboard template: {exc}"
             ) from exc
         
-        # Replace placeholders
+        # Replace placeholders with actual entity IDs
         dashboard_yaml = template_content.replace(
-            "REPLACE_ME_ENTITY", entity_id_without_domain
+            "REPLACE_ME_CLIMATE", climate_entity_id
         ).replace(
             "REPLACE_ME_NAME", friendly_name
+        ).replace(
+            "REPLACE_ME_SENSOR_OFFSET", related_entities["sensors"].get("offset_current", "sensor.unknown")
+        ).replace(
+            "REPLACE_ME_SENSOR_PROGRESS", related_entities["sensors"].get("learning_progress", "sensor.unknown")
+        ).replace(
+            "REPLACE_ME_SENSOR_ACCURACY", related_entities["sensors"].get("accuracy_current", "sensor.unknown")
+        ).replace(
+            "REPLACE_ME_SENSOR_CALIBRATION", related_entities["sensors"].get("calibration_status", "sensor.unknown")
+        ).replace(
+            "REPLACE_ME_SENSOR_HYSTERESIS", related_entities["sensors"].get("hysteresis_state", "sensor.unknown")
+        ).replace(
+            "REPLACE_ME_SWITCH", related_entities["switch"] or "switch.unknown"
+        ).replace(
+            "REPLACE_ME_BUTTON", related_entities["button"] or "button.unknown"
         )
         
         # Create notification with instructions

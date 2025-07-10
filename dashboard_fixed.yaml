@@ -1,0 +1,361 @@
+title: Smart Climate - Smart Climate
+views:
+  - title: Overview
+    path: overview
+    icon: mdi:home-thermometer
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: custom:mushroom-climate-card
+            entity: climate.smart_klimaanlage_tu_climate
+            name: Smart Climate Control
+            show_current_as_primary: true
+            hvac_modes:
+              - heat_cool
+              - cool
+              - heat
+              - fan_only
+              - dry
+              - 'off'
+            layout: horizontal
+            fill_container: false
+          - type: thermostat
+            entity: climate.smart_klimaanlage_tu_climate
+            name: Smart Climate Control
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.scc_torsten_current_offset
+                name: Current Offset
+                unit: °C
+                min: -5
+                max: 5
+                severity:
+                  green: -1
+                  yellow: -3
+                  red: -5
+                needle: true
+              - type: gauge
+                entity: sensor.scc_torsten_learning_progress
+                name: Learning Progress
+                unit: '%'
+                min: 0
+                max: 100
+                severity:
+                  red: 0
+                  yellow: 50
+                  green: 80
+                needle: true
+              - type: gauge
+                entity: sensor.scc_torsten_current_accuracy
+                name: Accuracy
+                unit: '%'
+                min: 0
+                max: 100
+                severity:
+                  red: 0
+                  yellow: 60
+                  green: 85
+                needle: true
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## Learning System Status'
+          - type: horizontal-stack
+            cards:
+              - type: custom:button-card
+                entity: switch.smart_climate_control_climate_klimaanlage_tu_climate_learning
+                name: Learning System
+                show_state: true
+                show_last_changed: true
+                styles:
+                  card:
+                    - height: 80px
+                  name:
+                    - font-size: 14px
+                  state:
+                    - font-size: 12px
+                state:
+                  - value: 'on'
+                    color: green
+                    icon: mdi:brain
+                  - value: 'off'
+                    color: red
+                    icon: mdi:brain-off
+              - type: custom:mushroom-entity-card
+                entity: sensor.scc_torsten_calibration_status
+                name: Calibration Status
+                icon: mdi:progress-check
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: sensor.scc_torsten_calibration_status
+                primary: >-
+                  {{ state_attr('sensor.scc_torsten_calibration_status',
+                  'samples_collected') | default('0') }}
+                secondary: Samples Collected
+                icon: mdi:counter
+                layout: vertical
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: sensor.scc_torsten_calibration_status
+                attribute: last_sample
+                name: Last Sample Collected
+                icon: mdi:clock-outline
+              - type: attribute
+                entity: switch.smart_climate_control_climate_klimaanlage_tu_climate_learning
+                attribute: has_sufficient_data
+                name: Sufficient Data
+                icon: mdi:database-check
+              - type: attribute
+                entity: switch.smart_climate_control_climate_klimaanlage_tu_climate_learning
+                attribute: confidence_level
+                name: Confidence Level
+                icon: mdi:shield-check
+                format: precision1
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## AC Behavior Learning'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-entity-card
+                entity: sensor.scc_torsten_hysteresis_state
+                name: AC State
+                icon: mdi:sine-wave
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: sensor.scc_torsten_hysteresis_state
+                primary: >-
+                  {{ state_attr('sensor.scc_torsten_hysteresis_state',
+                  'temperature_window') | default('Unknown') }}
+                secondary: Temperature Window
+                icon: mdi:thermometer-lines
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: sensor.scc_torsten_hysteresis_state
+                primary: >-
+                  {{ state_attr('sensor.scc_torsten_hysteresis_state',
+                  'ready') | default('false') }}
+                secondary: Behavior Learned
+                icon: mdi:check-circle
+                layout: vertical
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: sensor.scc_torsten_hysteresis_state
+                attribute: start_threshold
+                name: AC Start Threshold
+                icon: mdi:thermometer-chevron-up
+              - type: attribute
+                entity: sensor.scc_torsten_hysteresis_state
+                attribute: stop_threshold
+                name: AC Stop Threshold
+                icon: mdi:thermometer-chevron-down
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: >
+              ## Performance Charts
+
+              Real-time visualization of your Smart Climate system's learning
+              and performance.
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Temperature & Offset History (24h)
+            graph_span: 24h
+            span:
+              end: day
+            update_interval: 1min
+            series:
+              - entity: climate.smart_klimaanlage_tu_climate
+                attribute: current_temperature
+                name: Current Temperature
+                color: blue
+                stroke_width: 2
+                yaxis_id: temperature
+              - entity: sensor.scc_torsten_current_offset
+                name: Applied Offset
+                color: red
+                stroke_width: 2
+                yaxis_id: temperature
+              - entity: sensor.scc_torsten_current_accuracy
+                name: Prediction Accuracy
+                color: green
+                stroke_width: 2
+                unit: '%'
+                yaxis_id: percentage
+            yaxis:
+              - id: temperature
+                decimals: 1
+                apex_config:
+                  title:
+                    text: Temperature (°C)
+              - id: percentage
+                opposite: true
+                decimals: 0
+                apex_config:
+                  title:
+                    text: Accuracy (%)
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Learning Progress (7 days)
+            graph_span: 7d
+            span:
+              end: day
+            update_interval: 5min
+            series:
+              - entity: sensor.scc_torsten_learning_progress
+                name: Learning Progress
+                color: purple
+                stroke_width: 3
+              - entity: sensor.scc_torsten_current_accuracy
+                name: Current Accuracy
+                color: orange
+                stroke_width: 2
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## Controls'
+          - type: horizontal-stack
+            cards:
+              - type: custom:button-card
+                entity: climate.smart_klimaanlage_tu_climate
+                name: Preset Mode
+                show_state: true
+                show_attribute: preset_mode
+                styles:
+                  card:
+                    - height: 80px
+                  name:
+                    - font-size: 14px
+                tap_action:
+                  action: more-info
+              - type: custom:button-card
+                entity: button.smart_climate_control_climate_klimaanlage_tu_climate_reset_training_data
+                name: Reset Training Data
+                icon: mdi:database-remove
+                styles:
+                  card:
+                    - height: 80px
+                    - background-color: var(--red-color)
+                  name:
+                    - color: white
+                    - font-size: 14px
+                  icon:
+                    - color: white
+                tap_action:
+                  action: call-service
+                  service: button.press
+                  service_data:
+                    entity_id: button.smart_climate_control_climate_klimaanlage_tu_climate_reset_training_data
+                confirmation:
+                  text: Are you sure you want to reset all training data?
+  - title: Detailed Stats
+    path: stats
+    icon: mdi:chart-line
+    cards:
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Detailed Learning Metrics (7 days)
+        graph_span: 7d
+        span:
+          end: day
+        update_interval: 5min
+        series:
+          - entity: sensor.scc_torsten_learning_progress
+            name: Learning Progress
+            color: purple
+            stroke_width: 2
+            yaxis_id: percentage
+          - entity: sensor.scc_torsten_current_accuracy
+            name: Accuracy
+            color: green
+            stroke_width: 2
+            yaxis_id: percentage
+          - entity: sensor.scc_torsten_current_offset
+            name: Applied Offset
+            color: red
+            stroke_width: 2
+            yaxis_id: offset
+        yaxis:
+          - id: percentage
+            decimals: 0
+            apex_config:
+              title:
+                text: Progress & Accuracy (%)
+          - id: offset
+            opposite: true
+            decimals: 1
+            apex_config:
+              title:
+                text: Offset (°C)
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## Detailed Learning Information'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: sensor.scc_torsten_calibration_status
+                primary: >-
+                  {{ state_attr('sensor.scc_torsten_calibration_status',
+                  'samples_collected') | default('0') }}
+                secondary: Total Samples
+                icon: mdi:counter
+              - type: custom:mushroom-template-card
+                entity: sensor.scc_torsten_current_accuracy
+                primary: >-
+                  {{ states('sensor.scc_torsten_current_accuracy')
+                  | default('0') }}%
+                secondary: Learning Accuracy
+                icon: mdi:target
+              - type: custom:mushroom-template-card
+                entity: switch.smart_climate_control_climate_klimaanlage_tu_climate_learning
+                primary: >-
+                  {{ state_attr('switch.smart_climate_control_climate_klimaanlage_tu_climate_learning',
+                  'patterns_learned') | default('0') }}
+                secondary: Patterns Learned
+                icon: mdi:brain
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## System Diagnostics'
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: sensor.scc_torsten_calibration_status
+                name: Calibration Status
+                icon: mdi:progress-check
+              - entity: sensor.scc_torsten_hysteresis_state
+                name: Hysteresis State
+                icon: mdi:sine-wave
+              - type: attribute
+                entity: sensor.scc_torsten_hysteresis_state
+                attribute: start_samples
+                name: Start Samples
+                icon: mdi:play-circle
+              - type: attribute
+                entity: sensor.scc_torsten_hysteresis_state
+                attribute: stop_samples
+                name: Stop Samples
+                icon: mdi:stop-circle
+      - type: conditional
+        conditions:
+          - entity: sensor.scc_torsten_hysteresis_state
+            state_not: No power sensor
+        card:
+          type: vertical-stack
+          cards:
+            - type: markdown
+              content: '## Power Monitoring'
+            - type: custom:mushroom-entity-card
+              entity: sensor.scc_torsten_hysteresis_state
+              name: Power Sensor Status
+              icon: mdi:flash
+              secondary_info: last-changed
