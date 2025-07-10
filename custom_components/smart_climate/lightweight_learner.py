@@ -5,6 +5,7 @@ Uses simple statistics and exponential smoothing for memory-efficient real-time 
 """
 
 import logging
+import math
 import statistics
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
@@ -509,6 +510,162 @@ class LightweightOffsetLearner:
             _LOGGER.warning("Error in temperature correlation prediction: %s", exc)
             return None
     
+    def _calculate_sample_count_confidence(self) -> float:
+        """Calculate confidence based on sample count (logarithmic scale).
+        
+        Returns:
+            Confidence factor from 0.0 to 1.0 based on sample count
+        """
+        if self._sample_count == 0:
+            return 0.0
+        
+        # Logarithmic scale: 0-100 samples maps to 0-0.8 confidence
+        # This gives rapid initial growth that slows down
+        
+        # Use log10 scale with smoothing
+        # 10 samples = ~0.3, 50 samples = ~0.5, 100 samples = ~0.8
+        confidence = min(0.8, math.log10(self._sample_count + 1) / 2.5)
+        
+        # Add bonus for having many samples
+        if self._sample_count >= 100:
+            confidence = min(1.0, confidence + 0.2)
+        
+        return confidence
+    
+    def _calculate_condition_diversity_confidence(self) -> float:
+        """Calculate confidence based on diversity of conditions seen.
+        
+        Returns:
+            Confidence factor from 0.0 to 1.0 based on condition diversity
+        """
+        if not self._enhanced_samples:
+            return 0.0
+        
+        # Analyze diversity in enhanced samples
+        ac_temps = set()
+        room_temps = set()
+        outdoor_temps = set()
+        modes = set()
+        power_values = set()
+        hysteresis_states = set()
+        
+        for sample in self._enhanced_samples:
+            # Round temperatures to 0.5°C bins for diversity calculation
+            ac_temps.add(round(sample["ac_temp"] * 2) / 2)
+            room_temps.add(round(sample["room_temp"] * 2) / 2)
+            
+            if sample.get("outdoor_temp") is not None:
+                outdoor_temps.add(round(sample["outdoor_temp"] * 2) / 2)
+            
+            modes.add(sample.get("mode", "unknown"))
+            
+            if sample.get("power") is not None:
+                # Round power to 100W bins
+                power_values.add(round(sample["power"] / 100) * 100)
+            
+            hysteresis_states.add(sample.get("hysteresis_state", "unknown"))
+        
+        # Calculate diversity scores
+        diversity_factors = []
+        
+        # Temperature diversity (want at least 5 different values)
+        ac_temp_diversity = min(1.0, len(ac_temps) / 5.0)
+        room_temp_diversity = min(1.0, len(room_temps) / 5.0)
+        diversity_factors.extend([ac_temp_diversity, room_temp_diversity])
+        
+        if outdoor_temps:
+            outdoor_temp_diversity = min(1.0, len(outdoor_temps) / 8.0)
+            diversity_factors.append(outdoor_temp_diversity)
+        
+        # Mode diversity (want at least 2 modes)
+        mode_diversity = min(1.0, len(modes) / 2.0)
+        diversity_factors.append(mode_diversity)
+        
+        # Power diversity (want at least 5 different power levels)
+        if power_values:
+            power_diversity = min(1.0, len(power_values) / 5.0)
+            diversity_factors.append(power_diversity)
+        
+        # Hysteresis state diversity (want at least 2 states)
+        hysteresis_diversity = min(1.0, len(hysteresis_states) / 2.0)
+        diversity_factors.append(hysteresis_diversity)
+        
+        # Calculate overall diversity as average
+        if diversity_factors:
+            return statistics.mean(diversity_factors)
+        else:
+            return 0.0
+    
+    def _calculate_time_coverage_confidence(self) -> float:
+        """Calculate confidence based on time coverage (hours with data).
+        
+        Returns:
+            Confidence factor from 0.0 to 1.0 based on time coverage
+        """
+        # Count hours with significant data
+        hours_with_data = 0
+        hours_with_patterns = 0
+        
+        for hour in range(24):
+            if self._time_pattern_counts[hour] > 0:
+                hours_with_data += 1
+                # Consider an hour well-covered if it has 3+ samples
+                if self._time_pattern_counts[hour] >= 3:
+                    hours_with_patterns += 1
+        
+        # Two factors: having any data and having good coverage
+        basic_coverage = hours_with_data / 24.0
+        quality_coverage = hours_with_patterns / 24.0
+        
+        # Weighted average favoring quality coverage
+        confidence = 0.3 * basic_coverage + 0.7 * quality_coverage
+        
+        return confidence
+    
+    def _calculate_prediction_accuracy(self) -> float:
+        """Calculate confidence based on prediction accuracy from enhanced samples.
+        
+        Returns:
+            Confidence factor from 0.0 to 1.0 based on prediction accuracy
+        """
+        if not self._enhanced_samples:
+            # No enhanced samples yet, return neutral confidence
+            return 0.5
+        
+        # Calculate RMSE from enhanced samples
+        errors = []
+        for sample in self._enhanced_samples:
+            predicted = sample.get("predicted", 0.0)
+            actual = sample.get("actual", 0.0)
+            error = abs(predicted - actual)
+            errors.append(error)
+        
+        if not errors:
+            return 0.5
+        
+        # Calculate mean absolute error
+        mae = statistics.mean(errors)
+        
+        # Convert MAE to confidence score
+        # MAE of 0 = confidence 1.0
+        # MAE of 0.5 = confidence ~0.8
+        # MAE of 1.0 = confidence ~0.5
+        # MAE of 2.0 = confidence ~0.2
+        # MAE of 3.0+ = confidence 0.0
+        
+        if mae <= 0.1:
+            confidence = 1.0
+        elif mae <= 0.5:
+            confidence = 0.8 + 0.2 * (0.5 - mae) / 0.4
+        elif mae <= 1.0:
+            confidence = 0.5 + 0.3 * (1.0 - mae) / 0.5
+        elif mae <= 2.0:
+            confidence = 0.2 + 0.3 * (2.0 - mae) / 1.0
+        else:
+            confidence = max(0.0, 0.2 - (mae - 2.0) * 0.1)
+        
+        return max(0.0, min(1.0, confidence))
+    
     def get_learning_stats(self) -> LearningStats:
         """Get statistics about the learning process.
         
@@ -518,24 +675,58 @@ class LightweightOffsetLearner:
         # Count patterns learned (hours with data)
         patterns_learned = sum(1 for count in self._time_pattern_counts if count > 0)
         
-        # Calculate average accuracy (simplified metric)
+        # Calculate average accuracy using multiple factors
         if self._sample_count == 0:
             avg_accuracy = 0.0
         else:
-            # Use consistency as a proxy for accuracy
-            # More consistent predictions = higher accuracy
-            hour_variances = []
-            for hour in range(24):
-                if self._time_pattern_counts[hour] > 1:
-                    # This is a simplified accuracy metric
-                    # In practice, would compare predictions vs actual outcomes
-                    consistency = min(1.0, self._time_pattern_counts[hour] / 10.0)
-                    hour_variances.append(consistency)
+            # Calculate confidence factors
+            sample_confidence = self._calculate_sample_count_confidence()
+            diversity_confidence = self._calculate_condition_diversity_confidence()
+            time_confidence = self._calculate_time_coverage_confidence()
+            prediction_confidence = self._calculate_prediction_accuracy()
             
-            if hour_variances:
-                avg_accuracy = statistics.mean(hour_variances)
+            # Weighted combination of factors
+            # Sample count is most important early on, prediction accuracy matters more later
+            if self._sample_count < 20:
+                # Early phase: emphasize sample count and diversity
+                weights = {
+                    "sample": 0.4,
+                    "diversity": 0.3,
+                    "time": 0.2,
+                    "prediction": 0.1
+                }
+            elif self._sample_count < 50:
+                # Medium phase: balanced weights
+                weights = {
+                    "sample": 0.25,
+                    "diversity": 0.25,
+                    "time": 0.25,
+                    "prediction": 0.25
+                }
             else:
-                avg_accuracy = 0.5  # Default moderate accuracy
+                # Mature phase: emphasize prediction accuracy
+                weights = {
+                    "sample": 0.15,
+                    "diversity": 0.2,
+                    "time": 0.25,
+                    "prediction": 0.4
+                }
+            
+            # Calculate weighted average
+            avg_accuracy = (
+                weights["sample"] * sample_confidence +
+                weights["diversity"] * diversity_confidence +
+                weights["time"] * time_confidence +
+                weights["prediction"] * prediction_confidence
+            )
+            
+            # Ensure bounds
+            avg_accuracy = max(0.0, min(1.0, avg_accuracy))
+            
+            _LOGGER.debug(
+                "Confidence calculation: sample=%.3f, diversity=%.3f, time=%.3f, prediction=%.3f, overall=%.3f",
+                sample_confidence, diversity_confidence, time_confidence, prediction_confidence, avg_accuracy
+            )
         
         # Get last sample timestamp from enhanced samples
         last_sample_time = None

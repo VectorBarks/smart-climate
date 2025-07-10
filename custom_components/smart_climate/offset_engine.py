@@ -368,6 +368,9 @@ class OffsetEngine:
         Returns:
             OffsetResult with calculated offset and metadata
         """
+        # Store the input data for confidence calculation
+        self._last_input_data = input_data
+        
         try:
             # Calculate basic rule-based offset from temperature difference
             # When room_temp > ac_internal_temp: AC thinks it's cooler than reality, needs negative offset to cool more
@@ -766,6 +769,77 @@ class OffsetEngine:
         except Exception as exc:
             _LOGGER.warning("Failed to record learning sample: %s", exc)
     
+    def _calculate_enhanced_confidence(self, stats: "LearningStats") -> float:
+        """Calculate enhanced confidence score based on multiple factors.
+        
+        Args:
+            stats: Learning statistics from the learner
+            
+        Returns:
+            Confidence score between 0.0 and 1.0
+        """
+        # Start with the learner's accuracy as the base
+        # This reflects actual prediction performance
+        base_confidence = stats.avg_accuracy
+        
+        # Factor 1: Sample count maturity
+        # Confidence increases with more samples, plateauing at 100
+        sample_factor = min(1.0, stats.samples_collected / 100.0)
+        
+        # Factor 2: Calibration phase penalty
+        # Lower confidence during initial calibration
+        calibration_factor = 1.0
+        if self.is_in_calibration_phase:
+            calibration_factor = 0.5  # 50% reduction during calibration
+            _LOGGER.debug("In calibration phase, reducing confidence by 50%")
+        
+        # Factor 3: Hysteresis readiness (if applicable)
+        hysteresis_factor = 1.0
+        if self._hysteresis_enabled and hasattr(self, '_hysteresis_learner'):
+            if self._hysteresis_learner.has_sufficient_data:
+                hysteresis_factor = 1.1  # 10% boost when hysteresis is ready
+            else:
+                hysteresis_factor = 0.9  # 10% penalty when still learning
+        
+        # Factor 4: Sensor availability
+        # Full sensor complement increases confidence
+        sensor_factor = 1.0
+        sensor_count = 2  # Base: AC temp + room temp (always present)
+        
+        # Check for optional sensors through recent input data
+        if hasattr(self, '_last_input_data'):
+            if self._last_input_data.outdoor_temp is not None:
+                sensor_count += 1
+            if self._last_input_data.power_consumption is not None:
+                sensor_count += 1
+        
+        # 2 sensors = 0.8, 3 sensors = 0.9, 4 sensors = 1.0
+        sensor_factor = 0.7 + (sensor_count - 2) * 0.1
+        
+        # Combine all factors with weights
+        # Learning accuracy is the primary factor (40%)
+        # Sample maturity is important (30%)
+        # Other factors provide adjustments (30% combined)
+        combined_confidence = (
+            0.4 * base_confidence +
+            0.3 * sample_factor +
+            0.1 * calibration_factor +
+            0.1 * hysteresis_factor +
+            0.1 * sensor_factor
+        )
+        
+        # Apply bounds and log the calculation
+        final_confidence = max(0.0, min(1.0, combined_confidence))
+        
+        _LOGGER.debug(
+            "Confidence calculation: base=%.2f, samples=%.2f, calibration=%.2f, "
+            "hysteresis=%.2f, sensors=%.2f → final=%.2f",
+            base_confidence, sample_factor, calibration_factor,
+            hysteresis_factor, sensor_factor, final_confidence
+        )
+        
+        return final_confidence
+    
     def get_learning_info(self) -> Dict:
         """Get learning information and statistics.
         
@@ -787,12 +861,16 @@ class OffsetEngine:
         else:
             try:
                 stats = self._learner.get_statistics()
+                
+                # Calculate enhanced confidence based on multiple factors
+                confidence = self._calculate_enhanced_confidence(stats)
+                
                 # Handle LearningStats dataclass from LightweightOffsetLearner
                 base_info = {
                     "enabled": True,
                     "samples": stats.samples_collected,
                     "accuracy": stats.avg_accuracy,
-                    "confidence": stats.avg_accuracy,  # Use accuracy as overall confidence
+                    "confidence": confidence,  # Use enhanced confidence calculation
                     "has_sufficient_data": stats.samples_collected >= 10,  # Consider 10+ samples sufficient
                     "last_sample_time": stats.last_sample_time,
                 }
