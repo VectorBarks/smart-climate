@@ -28,6 +28,12 @@ from .offset_engine import OffsetEngine
 __version__ = "0.1.0"
 __author__ = "Smart Climate Team"
 
+
+def _read_file_sync(file_path: str) -> str:
+    """Read file synchronously - for use with async_add_executor_job."""
+    with open(file_path, "r", encoding="utf-8") as file:
+        return file.read()
+
 _LOGGER = logging.getLogger(__name__)
 
 # Retry configuration defaults
@@ -431,8 +437,11 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             )
         
         try:
-            with open(template_path, "r", encoding="utf-8") as file:
-                template_content = file.read()
+            _LOGGER.debug("Reading dashboard template from %s", template_path)
+            template_content = await hass.async_add_executor_job(
+                _read_file_sync, template_path
+            )
+            _LOGGER.debug("Dashboard template read successfully (%d characters)", len(template_content))
         except Exception as exc:
             _LOGGER.error("Failed to read dashboard template: %s", exc)
             raise ServiceValidationError(
@@ -440,6 +449,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             ) from exc
         
         # Replace placeholders with actual entity IDs
+        _LOGGER.debug("Replacing template placeholders for %s", climate_entity_id)
         dashboard_yaml = template_content.replace(
             "REPLACE_ME_CLIMATE", climate_entity_id
         ).replace(
@@ -459,6 +469,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ).replace(
             "REPLACE_ME_BUTTON", related_entities["button"] or "button.unknown"
         )
+        _LOGGER.debug("Template processing complete, dashboard YAML generated (%d characters)", len(dashboard_yaml))
         
         # Create notification with instructions
         notification_message = (
@@ -473,12 +484,21 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             f"{dashboard_yaml}"
         )
         
-        await async_create_notification(
-            hass,
-            title=f"Smart Climate Dashboard - {friendly_name}",
-            message=notification_message,
-            notification_id=f"smart_climate_dashboard_{entity_id_without_domain}",
-        )
+        # Create notification with dashboard YAML
+        _LOGGER.debug("Creating notification for dashboard generation")
+        try:
+            async_create_notification(
+                hass,
+                title=f"Smart Climate Dashboard - {friendly_name}",
+                message=notification_message,
+                notification_id=f"smart_climate_dashboard_{entity_id_without_domain}",
+            )
+            _LOGGER.debug("Notification created successfully")
+        except Exception as exc:
+            _LOGGER.error("Failed to create notification: %s", exc)
+            raise ServiceValidationError(
+                f"Failed to create notification: {exc}"
+            ) from exc
         
         _LOGGER.info(
             "Dashboard generated for %s and sent via notification",
