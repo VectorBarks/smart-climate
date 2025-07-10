@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-07-10
+
+### 🚀 Major Features
+
+#### **Startup AC Temperature Update** - New in v1.2.0
+- **Immediate Application**: Smart Climate now applies learned temperature offsets immediately when Home Assistant starts
+- **Learning Data Integration**: Uses cached learning data for instant temperature compensation on startup
+- **Threshold Override**: Startup updates bypass the normal 0.3°C change threshold for immediate effect
+- **Graceful Handling**: Robust error handling ensures startup failures don't break entity initialization
+- **Enhanced Architecture**: 
+  - New `is_startup_calculation` flag in `SmartClimateData` for startup detection
+  - `async_force_startup_refresh()` method in coordinator for triggering startup refresh
+  - Modified climate entity `async_added_to_hass()` to trigger initial temperature calculation
+  - Updated `_handle_coordinator_update()` to handle startup scenario OR significant offset changes
+
+#### **Smart Climate Dashboard** - Complete Visualization System
+- Beautiful, responsive dashboard for monitoring learning progress and performance
+- Automatic creation of 5 dashboard sensor entities - zero configuration needed
+- One-click dashboard generation service creates customized YAML
+- Real-time visualization of temperature offsets, accuracy, and AC behavior
+- Works on all devices with responsive design using only core Home Assistant cards
+
+#### **Multi-Factor Confidence Calculation** - Enhanced ML Intelligence
+- **Fixed**: Confidence level no longer stuck at 50% - now provides meaningful progression
+- **Enhanced Algorithm**: Uses sample count, condition diversity, time coverage, and prediction accuracy
+- **Logarithmic Scaling**: Natural confidence progression from 0-100% based on actual learning
+- **Better User Feedback**: Users can now see real learning progress instead of static 50%
+
+### 🐛 Critical Bug Fixes
+
+#### **Training Data Persistence** - Issues #8, #9
+- **Periodic Save System**: Configurable save intervals (5 minutes to 24 hours, default 60 minutes)
+- **Shutdown Protection**: Enhanced shutdown save with 5-second timeout protection
+- **Save Diagnostics**: Real-time save statistics in entity attributes (save_count, failed_save_count, last_save_time)
+- **Reliable Recovery**: No more training data loss during Home Assistant restarts
+
+#### **Integration Startup Failures** - Issue #11
+- **Retry Mechanism**: Exponential backoff retry system (30s, 60s, 120s, 240s intervals)
+- **Zigbee Compatibility**: Handles sensors that take >60s to initialize
+- **User Notifications**: Clear feedback on retry progress and final failure status
+- **Graceful Recovery**: Automatic recovery when sensors become available
+
+#### **Temperature Logic Corrections** - Issue #13
+- **Fixed Backwards Operation**: Room temperature deviation now properly considered
+- **Correct Cooling Logic**: When room > target, AC sets lower temperature for more cooling
+- **Intuitive Behavior**: Eliminates confusing AC behavior that warmed when cooling was needed
+
+#### **Dashboard Sensor Availability** - Issue #17
+- **DataUpdateCoordinator Pattern**: Migrated from direct offset_engine access to proper coordinator pattern
+- **Real-time Updates**: Dashboard sensors now receive data through coordinator updates every 30 seconds
+- **Robust Architecture**: Each climate entity has its own dedicated coordinator instance
+- **No More Red Indicators**: All 5 sensor types now show as available with real-time data
+
+### 🛡️ **Stable State Calibration** - Prevents Overcooling
+- **Intelligent Caching**: System caches offsets only during stable periods (AC idle + temps converged)
+- **Feedback Loop Prevention**: Uses cached stable offset during active cooling
+- **User Safety**: Prevents severe overcooling during initial learning (e.g., 24.5°C → 23°C)
+- **Automatic Transition**: Seamlessly moves to full learning mode after calibration complete
+
+### 🧪 **Quality Assurance**
+- **100+ New Tests**: Comprehensive test coverage with unit and integration tests
+- **Test-Driven Development**: All features implemented using TDD methodology
+- **Backward Compatibility**: 100% compatibility maintained - no breaking changes
+- **Performance Validated**: Startup updates complete within 2 seconds
+
+### 📊 **User Experience Improvements**
+- **Immediate Benefits**: Users benefit from learned temperature compensation from HA startup
+- **Better Feedback**: Real confidence progression shows actual learning progress
+- **Clear Monitoring**: Dashboard provides comprehensive visibility into system behavior
+- **Reliable Operation**: Robust error handling and automatic recovery mechanisms
+
+### 🔧 **Technical Architecture Enhancements**
+- **Enhanced Data Models**: Added startup calculation flag support
+- **Improved Coordination**: Better separation of concerns between climate and sensor platforms
+- **Robust Error Handling**: Comprehensive error handling with graceful degradation
+- **Enhanced Logging**: Better debugging and troubleshooting capabilities
+
+### 🆕 **New Sensor Entities** (Created Automatically)
+- `sensor.{entity}_offset_current` - Current temperature offset in real-time
+- `sensor.{entity}_learning_progress` - Learning completion percentage (0-100%)
+- `sensor.{entity}_accuracy_current` - Current prediction accuracy (now progresses correctly)
+- `sensor.{entity}_calibration_status` - Shows calibration phase status
+- `sensor.{entity}_hysteresis_state` - AC behavior state (idle/cooling/heating)
+
+### 🛠️ **New Service**
+- `smart_climate.generate_dashboard` - Generates complete dashboard configuration
+  - Automatically replaces entity IDs in template
+  - Sends dashboard via persistent notification
+  - Includes step-by-step setup instructions
+  - No manual YAML editing required
+
 ## [1.2.0-beta5] - 2025-07-10 [Pre-release]
 
 ### Fixed
@@ -294,7 +385,8 @@ This release was superseded by v1.2.0-beta5 which implements a more robust archi
 - Safe temperature limits to prevent extreme settings
 - Atomic file operations for data persistence
 
-[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0-beta5...HEAD
+[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/VectorBarks/smart-climate/compare/v1.1.0...v1.2.0
 [1.2.0-beta5]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0-beta4...v1.2.0-beta5
 [1.2.0-beta4]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0-beta3...v1.2.0-beta4
 [1.2.0-beta3]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0-beta1...v1.2.0-beta3
