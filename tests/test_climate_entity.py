@@ -435,8 +435,8 @@ class TestSmartClimateEntity:
         # Assert - Should handle missing entity gracefully
         assert entity.hvac_mode == HVACMode.OFF  # Default when entity missing
         assert entity.hvac_modes == ['off', 'cool', 'heat', 'auto']  # Default modes when entity missing
-        assert entity.supported_features == 0  # No features when entity missing
+        assert entity.supported_features == 17  # Basic features (TARGET_TEMPERATURE | PRESET_MODE) still available
         # Critical test: target_temperature should NEVER return None
         assert entity.target_temperature is not None
         assert isinstance(entity.target_temperature, float)
-        assert entity.target_temperature == 22.0  # Default value
+        assert entity.target_temperature == 24.0  # Default value from const.py
