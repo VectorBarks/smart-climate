@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0-beta5] - 2025-07-10 [Pre-release]
+
+### Fixed
+- **Dashboard Sensors Availability** (#17)
+  - Fixed dashboard sensors showing as unavailable (red "!" indicators)
+  - Root cause: Sensors couldn't access offset_engine instance due to architectural limitations
+  - Implemented DataUpdateCoordinator pattern for proper cross-platform data sharing
+  - Dashboard sensors now receive data through coordinator updates every 30 seconds
+  - All 5 sensor types now show as available with real-time data updates
+  - Comprehensive test coverage: 45+ tests for coordinator implementation
+
+### Changed
+- **Architecture Enhancement**
+  - Migrated from direct offset_engine access to DataUpdateCoordinator pattern
+  - Each climate entity now has its own dedicated coordinator instance
+  - Sensors use CoordinatorEntity base class for automatic availability management
+  - OffsetEngine exposes dashboard data through new async_get_dashboard_data() method
+  - Improved separation of concerns between climate and sensor platforms
+
+### Technical Improvements
+- Added robust error handling in coordinator data fetching
+- Coordinator automatically handles entity availability state
+- Initial data fetch on coordinator setup ensures immediate sensor availability
+- Enhanced logging for coordinator operations and data updates
+- Backward compatible with existing configurations
+
+## [1.2.0-beta4] - 2025-07-09 [Pre-release]
+
+### Fixed
+- **Dashboard Sensor Availability** (#17)
+  - Fixed dashboard sensors showing as unavailable (red "!" indicators)
+  - Root cause: Complex coordinator dependency check in sensor.py line 92
+  - Applied KISS solution: simplified `available` property to `return self._offset_engine is not None`
+  - All 5 sensor types (Current Offset, Learning Progress, Current Accuracy, Calibration Status, Hysteresis State) now show as available
+  - Comprehensive test coverage: 28 unit tests + 29 integration tests = 57 total tests
+  - Maintains existing error handling in `native_value` methods
+  - No regression in existing functionality - purely availability logic fix
+
+### Note
+This release was superseded by v1.2.0-beta5 which implements a more robust architectural solution using DataUpdateCoordinator pattern.
+
 ## [1.2.0-beta3] - 2025-07-09 [Pre-release]
 
 ### Added
@@ -253,7 +294,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Safe temperature limits to prevent extreme settings
 - Atomic file operations for data persistence
 
-[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.1.1-beta1...HEAD
+[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0-beta5...HEAD
+[1.2.0-beta5]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0-beta4...v1.2.0-beta5
+[1.2.0-beta4]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0-beta3...v1.2.0-beta4
+[1.2.0-beta3]: https://github.com/VectorBarks/smart-climate/compare/v1.2.0-beta1...v1.2.0-beta3
+[1.2.0-beta1]: https://github.com/VectorBarks/smart-climate/compare/v1.1.1-beta2...v1.2.0-beta1
+[1.1.1-beta2]: https://github.com/VectorBarks/smart-climate/compare/v1.1.1-beta1...v1.1.1-beta2
 [1.1.1-beta1]: https://github.com/VectorBarks/smart-climate/compare/v1.1.0...v1.1.1-beta1
 [1.1.0]: https://github.com/VectorBarks/smart-climate/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/VectorBarks/smart-climate/compare/v1.0.0...v1.0.1
