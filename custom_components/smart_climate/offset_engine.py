@@ -1127,7 +1127,7 @@ class OffsetEngine:
             sample_count = 0
             if self._learner:
                 learner_data = self._learner.serialize_for_persistence()
-                sample_count = learner_data.get("statistics", {}).get("samples", 0)
+                sample_count = learner_data.get("sample_count", 0)
                 _LOGGER.debug("Serializing learner data: %s samples, learning_enabled=%s", sample_count, self._enable_learning)
 
             # Prepare hysteresis data only if hysteresis is enabled
