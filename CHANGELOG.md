@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1-beta1] - 2025-07-11
+
+### 🐛 Bug Fixes
+
+#### **Periodic Room Temperature Updates** - Issue #22
+- **Fixed**: AC no longer continues cooling/heating when room temperature reaches target
+- **Root Cause**: System only checked offset changes, ignoring room temperature deviation
+- **Solution**: Added room temperature deviation check with 0.5°C threshold
+- **Impact**: Prevents overcooling/overheating situations reported by users
+- **Technical**: Updates now trigger when: startup OR offset_change > 0.3°C OR room_deviation > 0.5°C
+
+#### **Dashboard Service Blocking I/O** - Issue #18 (PR #21)
+- **Fixed**: Dashboard generation service no longer causes blocking I/O warnings
+- **Root Cause**: Synchronous file operations and incorrect await usage in async context
+- **Solution**: Replaced synchronous operations with async executor jobs
+- **Impact**: Dashboard service now fully functional without blocking Home Assistant event loop
+
+#### **Unavailable Entity Handling** - Issue #19
+- **Fixed**: Climate entity gracefully handles wrapped entity becoming unavailable
+- **Added**: Automatic recovery when entity becomes available again
+- **Protection**: Training data collection paused during unavailability
+- **Impact**: No more crashes or errors when entities go offline
+
+#### **ApexCharts Span Deprecation** - Issue #20
+- **Fixed**: Removed deprecated span: properties from dashboard ApexCharts cards
+- **Solution**: Kept graph_span: properties which are the correct way to specify time ranges
+- **Impact**: Dashboard now compatible with current ApexCharts card versions
+
 ## [1.2.0] - 2025-07-10
 
 ### 🚀 Major Features
