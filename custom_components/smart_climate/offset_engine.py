@@ -1113,7 +1113,8 @@ class OffsetEngine:
 
         This method serializes the current engine state (including whether
         learning is enabled) and the learner's data, saving it to disk
-        to survive Home Assistant restarts.
+        to survive Home Assistant restarts. Learning data is preserved
+        even when learning is disabled to prevent data loss.
         """
         if not hasattr(self, "_data_store") or self._data_store is None:
             _LOGGER.warning("No data store configured, cannot save learning data")
@@ -1121,10 +1122,10 @@ class OffsetEngine:
             return
 
         try:
-            # Prepare learner data only if learning is enabled and learner exists
+            # Prepare learner data if learner exists (regardless of enable_learning state)
             learner_data = None
             sample_count = 0
-            if self._enable_learning and self._learner:
+            if self._learner:
                 learner_data = self._learner.serialize_for_persistence()
                 sample_count = learner_data.get("statistics", {}).get("samples", 0)
                 _LOGGER.debug("Serializing learner data: %s samples, learning_enabled=%s", sample_count, self._enable_learning)
@@ -1156,7 +1157,7 @@ class OffsetEngine:
                 persistent_data["hysteresis_data"] = hysteresis_data
 
             _LOGGER.debug(
-                "Saving learning data: samples=%s, enabled=%s, has_learner_data=%s",
+                "Saving learning data: samples=%s, learning_enabled=%s, has_learner_data=%s",
                 sample_count, self._enable_learning, learner_data is not None
             )
 
