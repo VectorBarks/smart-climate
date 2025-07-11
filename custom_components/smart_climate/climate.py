@@ -9,6 +9,7 @@ from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     HVACMode, HVACAction, ClimateEntityFeature
 )
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_call_later
@@ -68,6 +69,9 @@ class SmartClimateEntity(ClimateEntity):
         self._last_offset = 0.0
         self._manual_override = None
         
+        # Track availability state changes
+        self._was_unavailable = False
+        
         # Pass wrapped entity ID to coordinator for AC internal temp access
         self._coordinator._wrapped_entity_id = wrapped_entity_id
         
@@ -124,6 +128,62 @@ class SmartClimateEntity(ClimateEntity):
         else:
             # Fallback to config name or wrapped entity ID
             return self._config.get("name", f"Smart {self._wrapped_entity_id}")
+    
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        try:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if not wrapped_state:
+                return False
+            
+            # Check if the wrapped entity is unavailable
+            is_unavailable = wrapped_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN, None)
+            
+            # Track state changes for recovery handling
+            if is_unavailable and not self._was_unavailable:
+                _LOGGER.debug(
+                    "Wrapped entity %s became unavailable (state: %s)",
+                    self._wrapped_entity_id,
+                    wrapped_state.state
+                )
+                self._was_unavailable = True
+            elif not is_unavailable and self._was_unavailable:
+                _LOGGER.info(
+                    "Wrapped entity %s recovered from unavailable state (state: %s)",
+                    self._wrapped_entity_id,
+                    wrapped_state.state
+                )
+                self._was_unavailable = False
+                
+                # Check if we need to update temperature on recovery
+                if self._attr_target_temperature is not None:
+                    # Get current temperatures
+                    room_temp = self._sensor_manager.get_room_temperature()
+                    if room_temp is not None:
+                        temp_diff = abs(room_temp - self._attr_target_temperature)
+                        if temp_diff > OFFSET_UPDATE_THRESHOLD:
+                            _LOGGER.info(
+                                "Temperature update needed on recovery: room=%.1f°C, target=%.1f°C, diff=%.1f°C",
+                                room_temp,
+                                self._attr_target_temperature,
+                                temp_diff
+                            )
+                            # Schedule temperature update
+                            self.hass.async_create_task(
+                                self._apply_temperature_with_offset(self._attr_target_temperature)
+                            )
+            
+            # Return availability based on wrapped entity state
+            return not is_unavailable
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Error checking availability for wrapped entity %s: %s",
+                self._wrapped_entity_id,
+                exc
+            )
+            return False
     
     @property
     def current_temperature(self) -> Optional[float]:
@@ -594,6 +654,18 @@ class SmartClimateEntity(ClimateEntity):
         if "temperature" in kwargs:
             target_temp = kwargs["temperature"]
             
+            # Check if wrapped entity is available
+            if not self.available:
+                _LOGGER.warning(
+                    "Cannot set temperature %.1f°C: wrapped entity %s is unavailable",
+                    target_temp,
+                    self._wrapped_entity_id
+                )
+                # Still store the user's desired temperature for when entity recovers
+                self._attr_target_temperature = target_temp
+                self.async_write_ha_state()
+                return
+            
             _LOGGER.debug(
                 "Setting target temperature to %.1f°C (was %.1f°C) for %s",
                 target_temp,
@@ -644,6 +716,15 @@ class SmartClimateEntity(ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: str) -> None:
         """Set new HVAC mode on wrapped entity."""
         try:
+            # Check if wrapped entity is available
+            if not self.available:
+                _LOGGER.warning(
+                    "Cannot set HVAC mode %s: wrapped entity %s is unavailable",
+                    hvac_mode,
+                    self._wrapped_entity_id
+                )
+                return
+            
             _LOGGER.debug(
                 "Setting HVAC mode to %s (was %s) for %s",
                 hvac_mode,
@@ -682,6 +763,15 @@ class SmartClimateEntity(ClimateEntity):
     
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new fan mode on wrapped entity."""
+        # Check if wrapped entity is available
+        if not self.available:
+            _LOGGER.warning(
+                "Cannot set fan mode %s: wrapped entity %s is unavailable",
+                fan_mode,
+                self._wrapped_entity_id
+            )
+            return
+            
         # Check if wrapped entity supports fan modes
         if self.fan_modes and fan_mode in self.fan_modes:
             await self.hass.services.async_call(
@@ -709,6 +799,15 @@ class SmartClimateEntity(ClimateEntity):
     
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set new swing mode on wrapped entity."""
+        # Check if wrapped entity is available
+        if not self.available:
+            _LOGGER.warning(
+                "Cannot set swing mode %s: wrapped entity %s is unavailable",
+                swing_mode,
+                self._wrapped_entity_id
+            )
+            return
+            
         # Check if wrapped entity supports swing modes
         if self.swing_modes and swing_mode in self.swing_modes:
             await self.hass.services.async_call(
@@ -736,6 +835,15 @@ class SmartClimateEntity(ClimateEntity):
     
     async def async_set_humidity(self, humidity: float) -> None:
         """Set new target humidity on wrapped entity."""
+        # Check if wrapped entity is available
+        if not self.available:
+            _LOGGER.warning(
+                "Cannot set humidity %s: wrapped entity %s is unavailable",
+                humidity,
+                self._wrapped_entity_id
+            )
+            return
+            
         # Check if wrapped entity supports humidity
         if self.target_humidity is not None:
             await self.hass.services.async_call(
@@ -767,6 +875,14 @@ class SmartClimateEntity(ClimateEntity):
             target_temp,
             self._wrapped_entity_id
         )
+        
+        # Check if wrapped entity is available
+        if not self.available:
+            _LOGGER.warning(
+                "Cannot apply temperature offset: wrapped entity %s is unavailable",
+                self._wrapped_entity_id
+            )
+            return
         
         try:
             # Get current sensor readings

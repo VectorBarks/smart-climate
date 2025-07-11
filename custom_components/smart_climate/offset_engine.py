@@ -371,6 +371,21 @@ class OffsetEngine:
         # Store the input data for confidence calculation
         self._last_input_data = input_data
         
+        # Check for unavailable critical sensors
+        if input_data.ac_internal_temp is None or input_data.room_temp is None:
+            _LOGGER.debug(
+                "Critical sensor unavailable: ac_temp=%s, room_temp=%s. Using safe fallback.",
+                input_data.ac_internal_temp, input_data.room_temp
+            )
+            # Store the fallback offset
+            self._last_offset = 0.0
+            return OffsetResult(
+                offset=0.0,
+                clamped=False,
+                reason="Critical sensor unavailable - using safe fallback",
+                confidence=0.0
+            )
+        
         try:
             # Calculate basic rule-based offset from temperature difference
             # When room_temp > ac_internal_temp: AC thinks it's cooler than reality, needs negative offset to cool more
@@ -399,6 +414,7 @@ class OffsetEngine:
                         pass
                 
                 # Determine if AC is in stable state (idle and temps converged)
+                # Note: At this point we've already verified temps are not None
                 if input_data.power_consumption is not None:
                     # Power sensor available - use both power and temperature
                     is_stable_state = (
@@ -716,6 +732,23 @@ class OffsetEngine:
         _LOGGER.debug("ML model update is not yet implemented")
         self._ml_model = None
     
+    def record_feedback(
+        self,
+        predicted_offset: float,
+        actual_offset: float,
+        input_data: OffsetInput,
+        outcome_quality: float = 0.8
+    ) -> None:
+        """Record feedback for learning (alias for record_actual_performance).
+        
+        Args:
+            predicted_offset: The offset that was predicted/used
+            actual_offset: The offset that actually worked best
+            input_data: The input conditions for this sample
+            outcome_quality: Quality metric (ignored, for compatibility)
+        """
+        self.record_actual_performance(predicted_offset, actual_offset, input_data)
+    
     def record_actual_performance(
         self,
         predicted_offset: float,
@@ -731,6 +764,14 @@ class OffsetEngine:
         """
         if not self._enable_learning or not self._learner:
             # Learning disabled, silently ignore
+            return
+        
+        # Skip recording if critical sensors are unavailable
+        if input_data.ac_internal_temp is None or input_data.room_temp is None:
+            _LOGGER.debug(
+                "Skipping learning sample due to unavailable sensors: ac_temp=%s, room_temp=%s",
+                input_data.ac_internal_temp, input_data.room_temp
+            )
             return
         
         try:
