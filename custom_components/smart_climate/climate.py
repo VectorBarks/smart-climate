@@ -15,7 +15,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult
-from .const import DOMAIN
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1141,19 +1141,29 @@ class SmartClimateEntity(ClimateEntity):
             self._coordinator.data.mode_adjustments if hasattr(self._coordinator.data, 'mode_adjustments') else "N/A"
         )
         
-        # Check for startup scenario OR significant offset change
+        # Check for startup scenario OR significant offset change OR room temperature deviation
         is_startup = getattr(self._coordinator.data, 'is_startup_calculation', False)
         offset_change = abs(new_offset - self._last_offset)
         
-        if is_startup or offset_change > OFFSET_UPDATE_THRESHOLD:
+        # Calculate room temperature deviation from target
+        room_temp = self._coordinator.data.room_temp if self._coordinator.data else None
+        target_temp = self.target_temperature
+        room_deviation = abs(room_temp - target_temp) if room_temp is not None and target_temp is not None else 0
+        
+        if is_startup or offset_change > OFFSET_UPDATE_THRESHOLD or room_deviation > TEMP_DEVIATION_THRESHOLD:
             _LOGGER.info(
-                "Triggering AC temperature update: startup=%s, offset_change=%.2f°C "
-                "(last=%.2f°C, new=%.2f°C, threshold=%.2f°C)",
+                "Triggering AC temperature update: startup=%s, offset_change=%.2f°C, room_deviation=%.2f°C "
+                "(last_offset=%.2f°C, new_offset=%.2f°C, offset_threshold=%.2f°C, "
+                "room_temp=%.1f°C, target_temp=%.1f°C, deviation_threshold=%.1f°C)",
                 is_startup,
                 offset_change,
+                room_deviation,
                 self._last_offset,
                 new_offset,
-                OFFSET_UPDATE_THRESHOLD
+                OFFSET_UPDATE_THRESHOLD,
+                room_temp if room_temp is not None else 0,
+                target_temp if target_temp is not None else 0,
+                TEMP_DEVIATION_THRESHOLD
             )
             
             # To call an async method from this synchronous callback, schedule it as a task.
@@ -1170,12 +1180,17 @@ class SmartClimateEntity(ClimateEntity):
                 _LOGGER.warning("Cannot apply automatic adjustment: target_temperature is None")
         else:
             _LOGGER.debug(
-                "No AC update needed: startup=%s, offset_change=%.2f°C (%.2f°C -> %.2f°C) within threshold %.2f°C",
+                "No AC update needed: startup=%s, offset_change=%.2f°C (%.2f°C -> %.2f°C) within threshold %.2f°C, "
+                "room_deviation=%.2f°C (room=%.1f°C, target=%.1f°C) within threshold %.1f°C",
                 is_startup,
                 offset_change,
                 self._last_offset, 
                 new_offset, 
-                OFFSET_UPDATE_THRESHOLD
+                OFFSET_UPDATE_THRESHOLD,
+                room_deviation,
+                room_temp if room_temp is not None else 0,
+                target_temp if target_temp is not None else 0,
+                TEMP_DEVIATION_THRESHOLD
             )
 
         # Always update the state to reflect the latest sensor values from the coordinator
