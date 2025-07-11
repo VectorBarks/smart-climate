@@ -1,6 +1,6 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.2.0--beta4-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.1--beta1-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
@@ -21,21 +21,24 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**NEW in v1.2.0-beta4: Sensor Availability Fix**
-- Fixed sensor availability issue causing red "!" indicators on dashboard sensors
-- All 5 dashboard sensors (Current Offset, Learning Progress, Accuracy, Calibration, Hysteresis) now show as available
-- Simplified sensor availability logic using KISS approach
-- Comprehensive test suite for sensor availability and integration
-- Fixed all major reported issues: training data persistence, startup failures, temperature logic
-- Configurable save intervals (5 minutes to 24 hours) with 60-minute default
-- Enhanced save diagnostics visible in Home Assistant UI
-- Robust startup retry mechanism for slow sensor initialization
-- Corrected temperature adjustment logic for proper AC operation
+**NEW in v1.2.1-beta1: Critical Bug Fixes**
+- Fixed AC continuing to cool/heat when room temperature reaches target (Issue #22)
+- Fixed dashboard service blocking I/O warnings (Issue #18)
+- Fixed crashes when wrapped entity becomes unavailable (Issue #19)
+- Fixed deprecated ApexCharts span properties in dashboard (Issue #20)
+- Room temperature deviation check prevents overcooling/overheating
+- Automatic recovery when entities come back online
+- Dashboard service now fully asynchronous
+
+**v1.2.0: Smart Climate Dashboard & Enhanced Learning**
 - Beautiful visualization dashboard for learning progress and system performance
 - Automatic sensor creation - no manual configuration needed
 - One-click dashboard generation service
-- Responsive design works on all devices
-- Real-time monitoring of offsets, accuracy, and AC behavior
+- Immediate temperature adjustments on Home Assistant startup
+- Real confidence progression (0-100%) instead of stuck at 50%
+- Configurable save intervals (5 minutes to 24 hours) with 60-minute default
+- Enhanced save diagnostics visible in Home Assistant UI
+- Robust startup retry mechanism for slow sensor initialization
 
 **v1.1.0: HysteresisLearner - AC Temperature Window Detection**
 - Automatically learns your AC's start/stop temperature thresholds
