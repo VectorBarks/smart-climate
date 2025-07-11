@@ -1237,23 +1237,22 @@ class OffsetEngine:
                         _LOGGER.debug("EnhancedLightweightOffsetLearner initialized during data load.")
             # --- END OF KEY FIX ---
 
-            # If learning is enabled (either from config or restored from persistence), load learner data
-            if self._enable_learning:
-                learner_data = persistent_data.get("learner_data")
-                if learner_data:
-                    # Ensure learner exists before restoring data
-                    if not self._learner:
-                        self._learner = EnhancedLightweightOffsetLearner()
+            # Load learner data if it exists, regardless of enable_learning state
+            # This preserves accumulated data even when learning is temporarily disabled
+            learner_data = persistent_data.get("learner_data")
+            if learner_data:
+                # Ensure learner exists before restoring data
+                if not self._learner:
+                    self._learner = EnhancedLightweightOffsetLearner()
 
-                    success = self._learner.restore_from_persistence(learner_data)
-                    if success:
-                        _LOGGER.info("Learning data loaded successfully.")
-                    else:
-                        _LOGGER.warning("Failed to restore learner state from loaded data.")
+                success = self._learner.restore_from_persistence(learner_data)
+                if success:
+                    _LOGGER.info("Learning data loaded successfully (learning currently %s).", 
+                                "enabled" if self._enable_learning else "disabled")
                 else:
-                    _LOGGER.debug("Learning is enabled, but no learner data found in persistence.")
+                    _LOGGER.warning("Failed to restore learner state from loaded data.")
             else:
-                _LOGGER.debug("Learning is disabled based on persisted state, skipping learner data load.")
+                _LOGGER.debug("No learner data found in persistence.")
 
             # Load hysteresis data if available (v2 schema) and hysteresis is enabled
             if self._hysteresis_enabled:
