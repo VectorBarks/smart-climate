@@ -1,6 +1,6 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.2.1--beta1-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.1--beta2-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
@@ -21,7 +21,12 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**NEW in v1.2.1-beta1: Critical Bug Fixes**
+**NEW in v1.2.1-beta2: Learning Data Preservation Fix**
+- Fixed learning data loss when learning switch is disabled before restart (Issue #25)
+- All accumulated learning samples are now preserved even when learning is temporarily disabled
+- Both save and load operations now handle learner data regardless of enable_learning state
+
+**Fixed in v1.2.1-beta1: Critical Bug Fixes**
 - Fixed AC continuing to cool/heat when room temperature reaches target (Issue #22)
 - Fixed dashboard service blocking I/O warnings (Issue #18)
 - Fixed crashes when wrapped entity becomes unavailable (Issue #19)

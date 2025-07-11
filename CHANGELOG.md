@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1-beta2] - 2025-07-11
+
+### 🐛 Bug Fixes
+
+#### **Learning Data Preservation** - Issue #25
+- **Fixed**: Learning data is now preserved when learning switch is disabled before restart
+- **Root Cause**: Save method only saved learner data when learning was enabled
+- **Solution**: Save and load learner data regardless of enable_learning state
+- **Impact**: Users no longer lose accumulated learning data when temporarily disabling learning
+- **Technical**: 
+  - Modified save logic to check if learner exists instead of enable_learning state
+  - Updated load logic to restore learner data even when learning is disabled
+  - Added comprehensive test suite with 9 test cases covering all scenarios
+
 ## [1.2.1-beta1] - 2025-07-11
 
 ### 🐛 Bug Fixes
