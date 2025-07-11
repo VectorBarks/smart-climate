@@ -1113,7 +1113,8 @@ class OffsetEngine:
 
         This method serializes the current engine state (including whether
         learning is enabled) and the learner's data, saving it to disk
-        to survive Home Assistant restarts.
+        to survive Home Assistant restarts. Learning data is preserved
+        even when learning is disabled to prevent data loss.
         """
         if not hasattr(self, "_data_store") or self._data_store is None:
             _LOGGER.warning("No data store configured, cannot save learning data")
@@ -1121,12 +1122,12 @@ class OffsetEngine:
             return
 
         try:
-            # Prepare learner data only if learning is enabled and learner exists
+            # Prepare learner data if learner exists (regardless of enable_learning state)
             learner_data = None
             sample_count = 0
-            if self._enable_learning and self._learner:
+            if self._learner:
                 learner_data = self._learner.serialize_for_persistence()
-                sample_count = learner_data.get("statistics", {}).get("samples", 0)
+                sample_count = learner_data.get("sample_count", 0)
                 _LOGGER.debug("Serializing learner data: %s samples, learning_enabled=%s", sample_count, self._enable_learning)
 
             # Prepare hysteresis data only if hysteresis is enabled
@@ -1156,7 +1157,7 @@ class OffsetEngine:
                 persistent_data["hysteresis_data"] = hysteresis_data
 
             _LOGGER.debug(
-                "Saving learning data: samples=%s, enabled=%s, has_learner_data=%s",
+                "Saving learning data: samples=%s, learning_enabled=%s, has_learner_data=%s",
                 sample_count, self._enable_learning, learner_data is not None
             )
 
@@ -1236,23 +1237,22 @@ class OffsetEngine:
                         _LOGGER.debug("EnhancedLightweightOffsetLearner initialized during data load.")
             # --- END OF KEY FIX ---
 
-            # If learning is enabled (either from config or restored from persistence), load learner data
-            if self._enable_learning:
-                learner_data = persistent_data.get("learner_data")
-                if learner_data:
-                    # Ensure learner exists before restoring data
-                    if not self._learner:
-                        self._learner = EnhancedLightweightOffsetLearner()
+            # Load learner data if it exists, regardless of enable_learning state
+            # This preserves accumulated data even when learning is temporarily disabled
+            learner_data = persistent_data.get("learner_data")
+            if learner_data:
+                # Ensure learner exists before restoring data
+                if not self._learner:
+                    self._learner = EnhancedLightweightOffsetLearner()
 
-                    success = self._learner.restore_from_persistence(learner_data)
-                    if success:
-                        _LOGGER.info("Learning data loaded successfully.")
-                    else:
-                        _LOGGER.warning("Failed to restore learner state from loaded data.")
+                success = self._learner.restore_from_persistence(learner_data)
+                if success:
+                    _LOGGER.info("Learning data loaded successfully (learning currently %s).", 
+                                "enabled" if self._enable_learning else "disabled")
                 else:
-                    _LOGGER.debug("Learning is enabled, but no learner data found in persistence.")
+                    _LOGGER.warning("Failed to restore learner state from loaded data.")
             else:
-                _LOGGER.debug("Learning is disabled based on persisted state, skipping learner data load.")
+                _LOGGER.debug("No learner data found in persistence.")
 
             # Load hysteresis data if available (v2 schema) and hysteresis is enabled
             if self._hysteresis_enabled:
