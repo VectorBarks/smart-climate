@@ -58,3 +58,6 @@ SERVICE_SET_OFFSET = "set_offset"
 SERVICE_RESET_OFFSET = "reset_offset"
 SERVICE_PAUSE_ML = "pause_ml"
 SERVICE_RESUME_ML = "resume_ml"
+
+# Temperature thresholds
+TEMP_DEVIATION_THRESHOLD = 0.5  # degrees Celsius
