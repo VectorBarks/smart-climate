@@ -40,6 +40,7 @@ from .const import (
     CONF_INITIAL_TIMEOUT,
     CONF_SAVE_INTERVAL,
     CONF_ADAPTIVE_DELAY,
+    CONF_DELAY_LEARNING_TIMEOUT,
     CONF_FORECAST_ENABLED,
     CONF_WEATHER_ENTITY,
     CONF_HEAT_WAVE_TEMP_THRESHOLD,
@@ -72,6 +73,9 @@ from .const import (
     DEFAULT_INITIAL_TIMEOUT,
     DEFAULT_SAVE_INTERVAL,
     DEFAULT_ADAPTIVE_DELAY,
+    DEFAULT_DELAY_LEARNING_TIMEOUT,
+    MIN_DELAY_LEARNING_TIMEOUT,
+    MAX_DELAY_LEARNING_TIMEOUT,
     DEFAULT_FORECAST_ENABLED,
     DEFAULT_HEAT_WAVE_TEMP_THRESHOLD,
     DEFAULT_HEAT_WAVE_MIN_DURATION_HOURS,
@@ -335,6 +339,15 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             ),
             vol.Optional(CONF_ADAPTIVE_DELAY, default=DEFAULT_ADAPTIVE_DELAY): selector.BooleanSelector(),
+            vol.Optional(CONF_DELAY_LEARNING_TIMEOUT, default=DEFAULT_DELAY_LEARNING_TIMEOUT): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=MIN_DELAY_LEARNING_TIMEOUT,
+                    max=MAX_DELAY_LEARNING_TIMEOUT,
+                    step=5,
+                    unit_of_measurement="minutes",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
             
             # Weather forecast configuration
             vol.Optional(CONF_FORECAST_ENABLED, default=DEFAULT_FORECAST_ENABLED): selector.BooleanSelector(),
