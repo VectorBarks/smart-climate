@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, AsyncMock, patch
 
 from custom_components.smart_climate.delay_learner import DelayLearner
-from homeassistant.const import HVACMode
+from homeassistant.components.climate.const import HVACMode
 
 
 @pytest.fixture
