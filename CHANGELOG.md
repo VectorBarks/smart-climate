@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1-beta4] - 2025-07-13
+
+### 🚨 **Critical Bug Fix Release**
+
+#### **Smart Climate Entity Attributes Resolution**
+- **FIXED**: **Missing ForecastEngine Import** - Added critical top-level import preventing entity initialization
+  - Resolved ImportError that prevented Smart Climate entity from loading with custom attributes
+  - Added proper `from .forecast_engine import ForecastEngine` at module level
+  - Fixed TYPE_CHECKING imports to prevent circular import issues
+- **FIXED**: **Invalid Method Calls** - Replaced non-existent `test_persistence()` calls with working alternatives
+  - Substituted with `get_data_file_path()` method for persistence latency measurement
+  - Prevents AttributeError exceptions during attribute calculation
+- **FIXED**: **Missing Forecast Properties** - Added `active_strategy_info` property to ForecastEngine
+  - Enables forecast strategy information in Smart Climate entity attributes
+  - Returns structured data about active weather strategies and adjustments
+
+#### **Learning Switch Technical Metrics Implementation**
+- **IMPLEMENTED**: **Direct Metrics Calculation** - Switch now calculates technical metrics directly from data sources
+  - Added 9 new technical metric calculation methods for comprehensive diagnostics
+  - Eliminates dependency on cross-entity state lookups that were failing
+  - Provides real-time performance analytics and system health monitoring
+- **ADDED**: **Technical Metrics Methods** - Complete implementation of missing calculations
+  - `_get_prediction_latency_ms()`: ML prediction timing measurement
+  - `_get_energy_efficiency_score()`: Performance efficiency scoring
+  - `_get_memory_usage_kb()`: System resource monitoring
+  - `_get_seasonal_pattern_count()`: Learning pattern tracking
+  - `_get_temperature_window_learned()`: AC window detection status
+  - `_get_convergence_trend()`: Learning progress analysis
+  - `_get_outlier_detection_active()`: Data quality monitoring
+  - `_get_power_correlation_accuracy()`: Correlation analysis
+  - `_get_hysteresis_cycle_count()`: AC cycle tracking
+
+#### **Architecture Improvements**
+- **ENHANCED**: **Import Structure** - Proper top-level imports without circular dependencies
+- **IMPROVED**: **Error Transparency** - Removed silent exception handling masking real import issues
+- **OPTIMIZED**: **Data Access Patterns** - Direct component access instead of entity state lookups
+
+### 🎯 **User Impact**
+- **Immediate Resolution**: All 30+ Smart Climate entity attributes now properly visible
+- **Enhanced Diagnostics**: Learning switch provides 9 comprehensive technical metrics
+- **Dashboard Ready**: All attributes available for custom dashboard creation
+- **Real-time Monitoring**: Complete visibility into ML performance and system health
+
+### 🏠 **Home Assistant Compatibility**
+- **Verified**: Full compatibility with Home Assistant 2025.5+ versions
+- **Modern APIs**: Uses current entity lifecycle and coordinator patterns
+- **Proper Integration**: Follows HA best practices for custom components
+
+### ⚠️ **Upgrade Note**
+This release fixes critical issues preventing entity attributes from appearing. **Restart Home Assistant** after update to load the fixed integration and access all technical attributes.
+
 ## [1.3.1-beta3] - 2025-07-13
 
 ### ✨ **Major Dashboard Enhancement Release**
