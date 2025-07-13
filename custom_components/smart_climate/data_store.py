@@ -114,8 +114,47 @@ class SmartClimateDataStore:
             except (IOError, OSError) as e:
                 _LOGGER.warning("Failed to create backup %s: %s", backup_path, e)
     
+    def _validate_json_file(self, file_path: Path) -> bool:
+        """Validate that a JSON file can be read and contains expected structure.
+        
+        Args:
+            file_path: Path to JSON file to validate
+            
+        Returns:
+            True if file is valid, False otherwise
+        """
+        try:
+            if not file_path.exists():
+                return False
+            
+            with file_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Basic validation - ensure it's a dict with required fields
+            if not isinstance(data, dict):
+                return False
+            
+            required_fields = ["version", "entity_id", "learning_data"]
+            if not all(field in data for field in required_fields):
+                return False
+            
+            # Ensure learning_data is a dict
+            if not isinstance(data["learning_data"], dict):
+                return False
+            
+            return True
+            
+        except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError):
+            return False
+    
     async def async_save_learning_data(self, learning_data: Dict[str, Any]) -> None:
         """Save learning data to JSON file safely and asynchronously.
+        
+        Uses a safe atomic write pattern that preserves backup data:
+        1. Write to temporary file first
+        2. Validate temporary file 
+        3. Only overwrite backup after validation succeeds
+        4. Atomic move of temp file to primary
         
         Args:
             learning_data: Dictionary containing learning patterns and statistics
@@ -134,14 +173,33 @@ class SmartClimateDataStore:
                 # Ensure directory exists
                 await self._hass.async_add_executor_job(self._ensure_data_directory)
                 
-                # Create backup if file exists
+                # SAFE ATOMIC WRITE PATTERN:
+                # Step 1: Write to temporary file first (do NOT touch backup yet)
+                temp_file = self._data_file_path.with_suffix(".json.tmp")
+                await self._hass.async_add_executor_job(
+                    atomic_json_write, temp_file, save_data
+                )
+                
+                # Step 2: Validate the temporary file
+                temp_file_valid = await self._hass.async_add_executor_job(
+                    self._validate_json_file, temp_file
+                )
+                
+                if not temp_file_valid:
+                    # Clean up invalid temp file
+                    await self._hass.async_add_executor_job(
+                        lambda: temp_file.unlink() if temp_file.exists() else None
+                    )
+                    raise IOError("Temporary file validation failed - data may be corrupted")
+                
+                # Step 3: NOW it's safe to create backup (temp file is validated)
                 await self._hass.async_add_executor_job(
                     self._create_backup_if_needed, self._data_file_path
                 )
                 
-                # Perform atomic write
+                # Step 4: Atomic move of validated temp file to primary location
                 await self._hass.async_add_executor_job(
-                    atomic_json_write, self._data_file_path, save_data
+                    lambda: temp_file.rename(self._data_file_path)
                 )
                 
                 _LOGGER.debug(
@@ -150,6 +208,18 @@ class SmartClimateDataStore:
                 )
                 
             except Exception as e:
+                # Clean up any temporary files that might have been created
+                temp_file = self._data_file_path.with_suffix(".json.tmp")
+                try:
+                    await self._hass.async_add_executor_job(
+                        lambda: temp_file.unlink() if temp_file.exists() else None
+                    )
+                except Exception as cleanup_err:
+                    _LOGGER.warning(
+                        "Failed to clean up temporary file %s: %s",
+                        temp_file, cleanup_err
+                    )
+                
                 _LOGGER.error(
                     "Failed to save learning data for %s: %s",
                     self._entity_id, e
