@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1-beta2] - 2025-07-13
+
+### 🐛 **Critical Fix**
+
+#### **Home Assistant Compatibility** 
+- **FIXED**: **HVACMode Import Compatibility Issue** - Resolved integration load failure
+  - Fixed deprecated import in `delay_learner.py` from `homeassistant.const` to `homeassistant.components.climate.const`
+  - Fixed deprecated import in `test_delay_learning_timeout.py` to use correct import path
+  - Added comprehensive test suite in `test_hvacmode_imports.py` to validate import fix (4 tests)
+  - Added integration loading verification tests in `test_integration_loading.py` (62 test methods)
+  - Ensures compatibility with current Home Assistant API where HVACMode moved to climate.const
+
+### 🎯 **Impact**
+- **Resolves**: Integration load failure: `ImportError: cannot import name 'HVACMode' from 'homeassistant.const'`
+- **Ensures**: Smart Climate Control integration loads successfully in current Home Assistant versions
+- **Testing**: 66 new comprehensive tests validating integration loading and import compatibility
+
+### ⚠️ **Upgrade Note**
+This release fixes a critical compatibility issue preventing integration load in current Home Assistant versions. **Immediate upgrade recommended** for users experiencing integration loading failures.
+
 ## [1.3.1-beta1] - 2025-07-13
 
 ### 🚨 **CRITICAL HOTFIXES** - All Known Issues Resolved
