@@ -171,7 +171,12 @@ views:
             series:
               - entity: REPLACE_ME_CLIMATE
                 attribute: current_temperature
-                name: Current Temperature
+                name: Indoor Temperature
+                color: cyan
+                stroke_width: 2
+                yaxis_id: temperature
+              - entity: REPLACE_ME_OUTDOOR_SENSOR
+                name: Outdoor Temperature
                 color: blue
                 stroke_width: 2
                 yaxis_id: temperature
@@ -213,6 +218,47 @@ views:
                 name: Current Accuracy
                 color: orange
                 stroke_width: 2
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: System Overview (24h)
+            graph_span: 24h
+            update_interval: 1min
+            series:
+              - entity: REPLACE_ME_ROOM_SENSOR
+                name: Indoor Temperature
+                color: cyan
+                stroke_width: 2
+                yaxis_id: temperature
+              - entity: REPLACE_ME_OUTDOOR_SENSOR
+                name: Outdoor Temperature
+                color: blue
+                stroke_width: 2
+                yaxis_id: temperature
+              - entity: REPLACE_ME_CLIMATE
+                attribute: temperature
+                name: Set Temperature
+                color: red
+                stroke_width: 2
+                yaxis_id: temperature
+              - entity: REPLACE_ME_POWER_SENSOR
+                name: Power Usage
+                color: green
+                stroke_width: 2
+                unit: W
+                yaxis_id: power
+            yaxis:
+              - id: temperature
+                decimals: 1
+                apex_config:
+                  title:
+                    text: Temperature (°C)
+              - id: power
+                opposite: true
+                decimals: 0
+                apex_config:
+                  title:
+                    text: Power (W)
       - type: vertical-stack
         cards:
           - type: markdown
