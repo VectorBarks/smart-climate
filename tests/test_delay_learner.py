@@ -8,7 +8,7 @@ from custom_components.smart_climate.delay_learner import DelayLearner
 
 # Constants for tests (matching implementation)
 CHECK_INTERVAL = timedelta(seconds=15)
-LEARNING_TIMEOUT = timedelta(minutes=10)
+LEARNING_TIMEOUT = timedelta(minutes=20)  # Updated to match new default timeout
 EMA_ALPHA = 0.3
 STABILITY_THRESHOLD = 0.1
 
@@ -156,7 +156,8 @@ class TestDelayLearner:
             assert learner._cancel_listener is None  # Should have stopped
 
     @patch("custom_components.smart_climate.delay_learner.async_track_time_interval")
-    async def test_learning_cycle_times_out(self, mock_tracker, mock_hass_and_store):
+    @patch("homeassistant.util.dt.utcnow")
+    async def test_learning_cycle_times_out(self, mock_utcnow, mock_tracker, mock_hass_and_store):
         """Test that the learning cycle stops after the timeout."""
         hass, store = mock_hass_and_store
         
@@ -173,6 +174,9 @@ class TestDelayLearner:
         mock_tracker.side_effect = capture_callback
         
         with freeze_time("2023-01-01 12:00:00") as freezer:
+            # Mock utcnow to return timezone-naive datetime for consistency
+            mock_utcnow.return_value = datetime(2023, 1, 1, 12, 0, 0)
+            
             learner = DelayLearner(hass, "climate.test", "sensor.test_temp", store)
             hass.states.get.return_value = MagicMock(state="25.0")
             learner.start_learning_cycle()
