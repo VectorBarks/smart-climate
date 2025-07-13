@@ -33,6 +33,7 @@ CONF_INITIAL_TIMEOUT = "initial_timeout"
 CONF_SAVE_INTERVAL = "save_interval"
 CONF_ADAPTIVE_DELAY = "adaptive_delay"
 CONF_PREDICTIVE = "predictive"
+CONF_DELAY_LEARNING_TIMEOUT = "delay_learning_timeout"
 
 # Weather forecast configuration keys
 CONF_FORECAST_ENABLED = "forecast_enabled"
@@ -79,6 +80,11 @@ DEFAULT_MAX_RETRY_ATTEMPTS = 4
 DEFAULT_INITIAL_TIMEOUT = 60
 DEFAULT_SAVE_INTERVAL = 3600
 DEFAULT_ADAPTIVE_DELAY = True
+DEFAULT_DELAY_LEARNING_TIMEOUT = 20
+
+# Delay learning timeout constraints
+MIN_DELAY_LEARNING_TIMEOUT = 5
+MAX_DELAY_LEARNING_TIMEOUT = 60
 
 # Weather forecast default values
 DEFAULT_FORECAST_ENABLED = False
@@ -105,3 +111,17 @@ SERVICE_RESUME_ML = "resume_ml"
 
 # Temperature thresholds
 TEMP_DEVIATION_THRESHOLD = 0.5  # degrees Celsius
+
+# ML input validation constants
+CONF_VALIDATION_OFFSET_MIN = "validation_offset_min"
+CONF_VALIDATION_OFFSET_MAX = "validation_offset_max"
+CONF_VALIDATION_TEMP_MIN = "validation_temp_min"
+CONF_VALIDATION_TEMP_MAX = "validation_temp_max"
+CONF_VALIDATION_RATE_LIMIT_SECONDS = "validation_rate_limit_seconds"
+
+# ML input validation default values
+DEFAULT_VALIDATION_OFFSET_MIN = -10.0  # degrees C/F
+DEFAULT_VALIDATION_OFFSET_MAX = 10.0   # degrees C/F
+DEFAULT_VALIDATION_TEMP_MIN = 10.0     # degrees C/F (reasonable indoor range)
+DEFAULT_VALIDATION_TEMP_MAX = 40.0     # degrees C/F (reasonable indoor range)
+DEFAULT_VALIDATION_RATE_LIMIT_SECONDS = 60  # minimum seconds between samples
