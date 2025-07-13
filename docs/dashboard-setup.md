@@ -76,6 +76,14 @@ data:
 2. Click on the notification to view the full dashboard code
 3. **Copy all the YAML code** from the notification
 
+**Important**: The generated dashboard automatically replaces placeholder values with your actual entity IDs:
+- `REPLACE_ME_ROOM_SENSOR` → Your configured room temperature sensor
+- `REPLACE_ME_OUTDOOR_SENSOR` → Your configured outdoor temperature sensor (if available)  
+- `REPLACE_ME_POWER_SENSOR` → Your configured power sensor (if available)
+- All Smart Climate entity references → Your actual Smart Climate entity IDs
+
+**Placeholder System**: The dashboard template uses placeholder values that are intelligently replaced during generation. This ensures proper entity ID replacement without manual YAML editing, providing zero-configuration dashboard setup.
+
 ### Step 4: Create Your Dashboard
 
 1. Navigate to **Settings → Dashboards**
@@ -109,9 +117,49 @@ The top section provides at-a-glance information:
 ### Learning Analytics
 
 Interactive charts showing:
-- **Offset History**: Line graph of offset values over time
-- **Accuracy Trend**: How prediction accuracy improves
+- **Multi-Layered Offset Analysis**: Reactive, predictive, and total offsets with component breakdowns
+- **Weather Intelligence**: Active weather strategies and predictive adjustments timeline
+- **Accuracy Trend**: How prediction accuracy improves over time
 - **Temperature Correlation**: Relationship between room and AC temperatures
+
+### v1.3.0+ Enhanced Intelligence Dashboard
+
+The enhanced dashboard showcases the comprehensive multi-layered intelligent architecture introduced in v1.3.0:
+
+#### Multi-Layered Intelligence Display
+Advanced offset visualization showing the sophisticated decision-making process:
+- **Reactive Offset**: Traditional ML-based learning offset from historical patterns
+- **Predictive Offset**: Weather-forecast-based preemptive temperature adjustments 
+- **Total Offset**: Combined intelligent offset for optimal precision control
+- **Component Breakdown**: Real-time contribution percentages from each intelligence layer
+
+#### Weather Intelligence Analytics
+Comprehensive weather-based predictive system monitoring:
+- **Active Strategy Display**: Current weather strategy (Heat Wave Pre-cooling, Clear Sky Optimization, etc.)
+- **Strategy Timeline**: Upcoming weather predictions and planned system responses
+- **Forecast Confidence**: Weather service reliability and prediction accuracy metrics
+- **Adjustment History**: Timeline of weather-based offset decisions and their effectiveness
+
+#### Adaptive Timing Intelligence
+Advanced AC response optimization with learned behavioral patterns:
+- **Learned Delays**: Adaptive feedback delays optimized for your specific AC unit
+- **Temperature Stability Detection**: Real-time monitoring of thermal equilibrium states
+- **Response Pattern Analysis**: Historical AC behavior and optimal timing recommendations
+- **Equilibrium Metrics**: Temperature deviation thresholds and stability confidence levels
+
+#### Seasonal Learning Analytics  
+Context-aware adaptation with outdoor temperature correlation:
+- **Outdoor Temperature Context**: Current conditions and seasonal pattern matching
+- **Pattern Bucket Status**: Active temperature range bucket and available historical data
+- **Seasonal Accuracy**: Performance metrics across different outdoor temperature ranges
+- **Adaptation Progress**: Learning coverage across seasonal temperature variations
+
+#### Enhanced Performance Metrics
+Technical diagnostic information for advanced users:
+- **Prediction Latency**: Real-time ML inference performance (<1ms target)
+- **Learning Confidence**: Multi-factor confidence calculation with sample diversity
+- **Pattern Recognition**: Time-series analysis and correlation strength indicators
+- **System Health**: Overall integration status and component availability
 
 ### System Status
 
@@ -199,6 +247,13 @@ If you have a power sensor configured, additional cards show:
 **Problem**: Service call doesn't create notification
 - **Solution**: Ensure you selected a valid Smart Climate entity
 - **Check**: Look in the Home Assistant logs for errors
+
+### Placeholder Values Not Replaced
+
+**Problem**: Dashboard shows "REPLACE_ME_" values instead of actual entity IDs
+- **Solution**: This indicates the dashboard generation service couldn't find your configured sensors
+- **Check**: Verify your Smart Climate entity has room sensor, outdoor sensor (optional), and power sensor (optional) properly configured
+- **Fix**: Reconfigure your Smart Climate entity with correct sensor entity IDs, then regenerate the dashboard
 
 ### Sensors Show "Unknown"
 

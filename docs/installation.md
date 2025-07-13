@@ -172,5 +172,17 @@ If you encounter errors during configuration:
 ## Next Steps
 
 - [Configure your Smart Climate device](configuration.md)
+- [Set up your visualization dashboard](dashboard-setup.md) - **Recommended**: Monitor learning progress and system performance
 - [Learn about usage and features](usage.md)
 - [Understand the learning system](learning-system.md)
+
+## Visualization and Monitoring
+
+After installation, Smart Climate Control provides comprehensive monitoring capabilities:
+
+- **Automatic Dashboard Sensors**: Five dashboard sensors are created automatically for each device
+- **One-Click Dashboard Generation**: Use the `smart_climate.generate_dashboard` service for instant visualization setup
+- **Advanced Analytics**: Monitor learning progress, confidence levels, and prediction accuracy
+- **Performance Metrics**: Track system health, prediction latency, and intelligent feature operation
+
+See the [Dashboard Setup Guide](dashboard-setup.md) for complete visualization setup instructions.

@@ -5,6 +5,8 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
+> ⚠️ **CRITICAL ISSUES IN v1.3.0**: Three critical bugs have been identified that can cause data loss and temperature instability. Please wait for v1.3.1 hotfix before production use. See [issues #34-36](https://github.com/VectorBarks/smart-climate/issues) for details.
+
 Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
 
 ## The Problem
@@ -139,14 +141,23 @@ That's it! Your new smart climate entity is ready to use. No YAML editing requir
 - Monitor real-time learning metrics, confidence levels, and prediction accuracy through rich entity attributes
 - Use preset modes for different thermal scenarios with mode-specific offset adjustments
 
-### Dashboard Setup (NEW!)
+### Enhanced Intelligence Dashboard (v1.3.0+)
 
-1. After installation, dashboard sensors are created automatically
-2. Go to Developer Tools → Services
-3. Search for "Smart Climate: Generate Dashboard"
-4. Select your Smart Climate entity and click "Call Service"
-5. A notification appears with your custom dashboard YAML
-6. Follow the instructions in the notification to create your dashboard
+**Zero-Configuration Visualization**: Complete dashboard setup with a single service call
+
+1. **Automatic Sensor Creation**: Dashboard sensors are created automatically for each Smart Climate device
+2. **One-Click Generation**: Go to Developer Tools → Services → "Smart Climate: Generate Dashboard"
+3. **Smart Entity Replacement**: Select your Smart Climate entity - the service automatically replaces placeholder values with your configured sensor entity IDs
+4. **Comprehensive Analytics**: Generated dashboard showcases multi-layered intelligence with weather integration, adaptive timing, and seasonal learning
+5. **Technical Diagnostics**: Advanced metrics including prediction latency monitoring, confidence analysis, and system health indicators
+6. **Ready-to-Use**: Notification contains complete dashboard YAML - just copy, paste, and save
+
+**Enhanced Features in v1.3.0+ Dashboard:**
+- **Multi-Layered Intelligence Display**: Real-time breakdown of reactive vs. predictive offset contributions
+- **Weather Strategy Analytics**: Active weather strategies, forecast timeline, and adjustment effectiveness
+- **Adaptive Timing Insights**: Learned AC response patterns and temperature stability optimization
+- **Seasonal Learning Progress**: Outdoor temperature correlation and pattern bucket analysis
+- **Performance Monitoring**: Sub-millisecond prediction latency tracking and learning system health
 
 ## Documentation
 

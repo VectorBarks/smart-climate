@@ -1,3 +1,16 @@
+# Smart Climate Control Dashboard Template
+# 
+# This template uses placeholder values that will be replaced by the dashboard generation service:
+# - REPLACE_ME_NAME: Your climate device name
+# - REPLACE_ME_CLIMATE: Your Smart Climate entity ID
+# - REPLACE_ME_SWITCH: Your learning switch entity ID
+# - REPLACE_ME_BUTTON: Your reset training data button entity ID
+# - REPLACE_ME_ROOM_SENSOR: Your room temperature sensor entity ID
+# - REPLACE_ME_OUTDOOR_SENSOR: Your outdoor temperature sensor entity ID (optional)
+# - REPLACE_ME_POWER_SENSOR: Your AC power sensor entity ID (optional)
+# - Dashboard sensors (auto-created): REPLACE_ME_SENSOR_OFFSET, REPLACE_ME_SENSOR_PROGRESS, 
+#   REPLACE_ME_SENSOR_ACCURACY, REPLACE_ME_SENSOR_CALIBRATION, REPLACE_ME_SENSOR_HYSTERESIS
+
 title: Smart Climate - REPLACE_ME_NAME
 views:
   - title: Overview
@@ -26,7 +39,7 @@ views:
             cards:
               - type: gauge
                 entity: REPLACE_ME_SENSOR_OFFSET
-                name: Current Offset
+                name: Total Offset
                 unit: °C
                 min: -5
                 max: 5
@@ -147,13 +160,142 @@ views:
               - type: attribute
                 entity: REPLACE_ME_SENSOR_HYSTERESIS
                 attribute: start_threshold
-                name: AC Start Threshold
-                icon: mdi:thermometer-chevron-up
+                name: Temperature Window High
+                icon: mdi:thermometer-high
               - type: attribute
                 entity: REPLACE_ME_SENSOR_HYSTERESIS
                 attribute: stop_threshold
-                name: AC Stop Threshold
-                icon: mdi:thermometer-chevron-down
+                name: Temperature Window Low
+                icon: mdi:thermometer-low
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## v1.3.0 Multi-Layered Intelligence'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {{ state_attr('REPLACE_ME_CLIMATE', 'reactive_offset') | default('0.0') | round(1) }}°C
+                secondary: Reactive Offset
+                icon: mdi:thermometer-lines
+                layout: vertical
+                badge_color: blue
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {{ state_attr('REPLACE_ME_CLIMATE', 'predictive_offset') | default('0.0') | round(1) }}°C
+                secondary: Predictive Offset
+                icon: mdi:weather-partly-cloudy
+                layout: vertical
+                badge_color: green
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {{ state_attr('REPLACE_ME_CLIMATE', 'total_offset') | default('0.0') | round(1) }}°C
+                secondary: Total Offset
+                icon: mdi:sigma
+                layout: vertical
+                badge_color: orange
+          - type: conditional
+            conditions:
+              - entity: REPLACE_ME_CLIMATE
+                attribute: predictive_strategy
+                state_not: null
+            card:
+              type: vertical-stack
+              cards:
+                - type: markdown
+                  content: '### Active Weather Strategy'
+                - type: custom:mushroom-entity-card
+                  entity: REPLACE_ME_CLIMATE
+                  name: >-
+                    {{ state_attr('REPLACE_ME_CLIMATE', 'predictive_strategy')['name'] if state_attr('REPLACE_ME_CLIMATE', 'predictive_strategy') else 'No Strategy' }}
+                  secondary_info: >-
+                    {{ state_attr('REPLACE_ME_CLIMATE', 'predictive_strategy')['adjustment'] if state_attr('REPLACE_ME_CLIMATE', 'predictive_strategy') else '' }}°C adjustment
+                  icon: mdi:strategy
+                  layout: vertical
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: reactive_offset
+                name: Reactive Offset (Traditional Learning)
+                icon: mdi:brain
+                format: precision1
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: predictive_offset
+                name: Predictive Offset (Weather-Based)
+                icon: mdi:weather-cloudy
+                format: precision1
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: total_offset
+                name: Total Combined Offset
+                icon: mdi:plus-circle
+                format: precision1
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## v1.3.0 Intelligent Features Configuration'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% if state_attr('REPLACE_ME_CLIMATE', 'adaptive_delay') %}
+                    {{ state_attr('REPLACE_ME_CLIMATE', 'adaptive_delay') | round(0) }}s
+                  {% else %}
+                    Disabled
+                  {% endif %}
+                secondary: Adaptive Feedback Delay
+                icon: mdi:timer-outline
+                layout: vertical
+                badge_color: purple
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% if state_attr('REPLACE_ME_CLIMATE', 'weather_forecast') %}
+                    Enabled
+                  {% else %}
+                    Disabled
+                  {% endif %}
+                secondary: Weather Integration
+                icon: mdi:weather-partly-cloudy
+                layout: vertical
+                badge_color: green
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_OUTDOOR_SENSOR
+                primary: >-
+                  {% if states('REPLACE_ME_OUTDOOR_SENSOR') not in ['unavailable', 'unknown'] %}
+                    {{ states('REPLACE_ME_OUTDOOR_SENSOR') | round(1) }}°C
+                  {% else %}
+                    Not Available
+                  {% endif %}
+                secondary: Outdoor Temperature
+                icon: mdi:thermometer
+                layout: vertical
+                badge_color: blue
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: adaptive_delay
+                name: Adaptive Delay (enabled/disabled)
+                icon: mdi:timer-cog
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: weather_forecast
+                name: Weather Forecast Integration
+                icon: mdi:weather-cloudy
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: seasonal_adaptation
+                name: Seasonal Learning
+                icon: mdi:calendar-range
       - type: vertical-stack
         cards:
           - type: markdown
@@ -165,7 +307,7 @@ views:
           - type: custom:apexcharts-card
             header:
               show: true
-              title: Temperature & Offset History (24h)
+              title: Multi-Layered Offset Analysis (24h)
             graph_span: 24h
             update_interval: 1min
             series:
@@ -180,29 +322,38 @@ views:
                 color: blue
                 stroke_width: 2
                 yaxis_id: temperature
-              - entity: REPLACE_ME_SENSOR_OFFSET
-                name: Applied Offset
-                color: red
+                show: >-
+                  ${ states('REPLACE_ME_OUTDOOR_SENSOR') not in ['unavailable', 'unknown'] }
+              - entity: REPLACE_ME_CLIMATE
+                attribute: reactive_offset
+                name: Reactive Offset
+                color: orange
                 stroke_width: 2
-                yaxis_id: temperature
-              - entity: REPLACE_ME_SENSOR_ACCURACY
-                name: Prediction Accuracy
+                yaxis_id: offset
+              - entity: REPLACE_ME_CLIMATE
+                attribute: predictive_offset
+                name: Predictive Offset
                 color: green
                 stroke_width: 2
-                unit: '%'
-                yaxis_id: percentage
+                yaxis_id: offset
+              - entity: REPLACE_ME_CLIMATE
+                attribute: total_offset
+                name: Total Offset
+                color: red
+                stroke_width: 3
+                yaxis_id: offset
             yaxis:
               - id: temperature
                 decimals: 1
                 apex_config:
                   title:
                     text: Temperature (°C)
-              - id: percentage
+              - id: offset
                 opposite: true
-                decimals: 0
+                decimals: 1
                 apex_config:
                   title:
-                    text: Accuracy (%)
+                    text: Offset (°C)
           - type: custom:apexcharts-card
             header:
               show: true
@@ -218,6 +369,44 @@ views:
                 name: Current Accuracy
                 color: orange
                 stroke_width: 2
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Weather Intelligence & Temperature Context (24h)
+            graph_span: 24h
+            update_interval: 5min
+            series:
+              - entity: REPLACE_ME_CLIMATE
+                attribute: predictive_offset
+                name: Weather Predictions
+                color: purple
+                stroke_width: 3
+                yaxis_id: offset
+              - entity: REPLACE_ME_CLIMATE
+                attribute: reactive_offset
+                name: Traditional Learning
+                color: orange
+                stroke_width: 2
+                yaxis_id: offset
+              - entity: REPLACE_ME_OUTDOOR_SENSOR
+                name: Outdoor Temperature
+                color: blue
+                stroke_width: 1
+                yaxis_id: temperature
+                show: >-
+                  ${ states('REPLACE_ME_OUTDOOR_SENSOR') not in ['unavailable', 'unknown'] }
+            yaxis:
+              - id: offset
+                decimals: 1
+                apex_config:
+                  title:
+                    text: Offset (°C)
+              - id: temperature
+                opposite: true
+                decimals: 1
+                apex_config:
+                  title:
+                    text: Outdoor Temp (°C)
           - type: custom:apexcharts-card
             header:
               show: true
@@ -247,6 +436,8 @@ views:
                 stroke_width: 2
                 unit: W
                 yaxis_id: power
+                show: >-
+                  ${ states('REPLACE_ME_POWER_SENSOR') not in ['unavailable', 'unknown'] }
             yaxis:
               - id: temperature
                 decimals: 1
@@ -365,6 +556,658 @@ views:
       - type: vertical-stack
         cards:
           - type: markdown
+            content: '## v1.3.0 Advanced Intelligence Metrics'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set reactive = state_attr('REPLACE_ME_CLIMATE', 'reactive_offset') | default(0) %}
+                  {% set predictive = state_attr('REPLACE_ME_CLIMATE', 'predictive_offset') | default(0) %}
+                  {% set total = reactive + predictive %}
+                  {% if total != 0 %}
+                    {{ ((predictive / total) * 100) | round(1) }}%
+                  {% else %}
+                    0%
+                  {% endif %}
+                secondary: Weather Contribution
+                icon: mdi:percent
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% if state_attr('REPLACE_ME_CLIMATE', 'predictive_strategy') %}
+                    {{ state_attr('REPLACE_ME_CLIMATE', 'predictive_strategy')['name'] | default('Active') }}
+                  {% else %}
+                    None
+                  {% endif %}
+                secondary: Weather Strategy
+                icon: mdi:strategy
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {{ state_attr('REPLACE_ME_CLIMATE', 'total_offset') | default('0.0') | round(1) }}°C
+                secondary: Total Intelligent Offset
+                icon: mdi:sigma
+                layout: vertical
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Intelligence Layer Comparison (7 days)
+            graph_span: 7d
+            update_interval: 10min
+            series:
+              - entity: REPLACE_ME_CLIMATE
+                attribute: reactive_offset
+                name: Traditional Learning
+                color: blue
+                stroke_width: 2
+                yaxis_id: offset
+              - entity: REPLACE_ME_CLIMATE
+                attribute: predictive_offset
+                name: Weather Intelligence
+                color: green
+                stroke_width: 2
+                yaxis_id: offset
+              - entity: REPLACE_ME_CLIMATE
+                attribute: total_offset
+                name: Combined Intelligence
+                color: red
+                stroke_width: 3
+                yaxis_id: offset
+            yaxis:
+              - id: offset
+                decimals: 1
+                apex_config:
+                  title:
+                    text: Offset (°C)
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: predictive_strategy
+                name: Active Weather Strategy
+                icon: mdi:strategy
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: adaptive_delay
+                name: Adaptive Delay Learning
+                icon: mdi:timer-cog
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: weather_forecast
+                name: Weather Forecast Integration
+                icon: mdi:weather-cloudy
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: seasonal_adaptation
+                name: Seasonal Learning
+                icon: mdi:weather-snowy-rainy
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 🧠 Real-Time Algorithm Performance'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set reactive = state_attr('REPLACE_ME_CLIMATE', 'reactive_offset') | default(0) | float %}
+                  {% set predictive = state_attr('REPLACE_ME_CLIMATE', 'predictive_offset') | default(0) | float %}
+                  {% set total = reactive + predictive %}
+                  {% if total != 0 %}
+                    {{ ((reactive / total) * 100) | round(1) }}%
+                  {% else %}
+                    100%
+                  {% endif %}
+                secondary: Traditional Learning
+                icon: mdi:brain
+                layout: vertical
+                badge_color: blue
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set reactive = state_attr('REPLACE_ME_CLIMATE', 'reactive_offset') | default(0) | float %}
+                  {% set predictive = state_attr('REPLACE_ME_CLIMATE', 'predictive_offset') | default(0) | float %}
+                  {% set total = reactive + predictive %}
+                  {% if total != 0 %}
+                    {{ ((predictive / total) * 100) | round(1) }}%
+                  {% else %}
+                    0%
+                  {% endif %}
+                secondary: Weather Intelligence
+                icon: mdi:weather-cloudy
+                layout: vertical
+                badge_color: green
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set seasonal = state_attr('REPLACE_ME_CLIMATE', 'seasonal_contribution') | default(0) | float %}
+                  {{ seasonal | round(1) }}%
+                secondary: Seasonal Patterns
+                icon: mdi:calendar-range
+                layout: vertical
+                badge_color: orange
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Algorithm Performance Distribution (24h)
+            graph_span: 24h
+            update_interval: 5min
+            chart_type: donut
+            series:
+              - entity: REPLACE_ME_CLIMATE
+                attribute: reactive_offset
+                name: Traditional Learning
+                color: blue
+              - entity: REPLACE_ME_CLIMATE
+                attribute: predictive_offset
+                name: Weather Intelligence
+                color: green
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## ⚡ Deep Technical Diagnostics'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set stability = state_attr('REPLACE_ME_CLIMATE', 'temperature_stability_detected') | default(false) %}
+                  {% if stability %}
+                    Detected
+                  {% else %}
+                    Learning
+                  {% endif %}
+                secondary: Temperature Stability
+                icon: mdi:thermometer-check
+                layout: vertical
+                badge_color: >-
+                  {% if state_attr('REPLACE_ME_CLIMATE', 'temperature_stability_detected') | default(false) %}
+                    green
+                  {% else %}
+                    yellow
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set delay = state_attr('REPLACE_ME_CLIMATE', 'learned_delay_seconds') | default(0) %}
+                  {% if delay > 0 %}
+                    {{ delay }}s
+                  {% else %}
+                    Default
+                  {% endif %}
+                secondary: Learned AC Delay
+                icon: mdi:timer-cog
+                layout: vertical
+                badge_color: purple
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set ema = state_attr('REPLACE_ME_CLIMATE', 'ema_coefficient') | default(0.1) %}
+                  {{ (ema * 100) | round(1) }}%
+                secondary: EMA Smoothing
+                icon: mdi:sine-wave
+                layout: vertical
+                badge_color: teal
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: temperature_stability_detected
+                name: Temperature Stability Detection
+                icon: mdi:thermometer-check
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: learned_delay_seconds
+                name: Learned Delay (seconds)
+                icon: mdi:timer-cog
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: ema_coefficient
+                name: EMA Coefficient
+                icon: mdi:sine-wave
+                format: precision3
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 🎯 Performance Analytics'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set latency = state_attr('REPLACE_ME_CLIMATE', 'prediction_latency_ms') | default(1.0) | float %}
+                  {% if latency < 1.0 %}
+                    {{ (latency * 1000) | round(0) }}μs
+                  {% else %}
+                    {{ latency | round(1) }}ms
+                  {% endif %}
+                secondary: Prediction Latency
+                icon: mdi:speedometer
+                layout: vertical
+                badge_color: >-
+                  {% set latency = state_attr('REPLACE_ME_CLIMATE', 'prediction_latency_ms') | default(1.0) | float %}
+                  {% if latency < 1.0 %}
+                    green
+                  {% elif latency < 5.0 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set efficiency = state_attr('REPLACE_ME_CLIMATE', 'energy_efficiency_score') | default(85) %}
+                  {{ efficiency | round(1) }}%
+                secondary: Energy Efficiency
+                icon: mdi:leaf
+                layout: vertical
+                badge_color: >-
+                  {% set efficiency = state_attr('REPLACE_ME_CLIMATE', 'energy_efficiency_score') | default(85) %}
+                  {% if efficiency >= 90 %}
+                    green
+                  {% elif efficiency >= 75 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set availability = state_attr('REPLACE_ME_CLIMATE', 'sensor_availability_score') | default(95) %}
+                  {{ availability | round(1) }}%
+                secondary: Sensor Uptime
+                icon: mdi:checkbox-marked-circle
+                layout: vertical
+                badge_color: >-
+                  {% set availability = state_attr('REPLACE_ME_CLIMATE', 'sensor_availability_score') | default(95) %}
+                  {% if availability >= 98 %}
+                    green
+                  {% elif availability >= 90 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: System Performance Metrics (24h)
+            graph_span: 24h
+            update_interval: 5min
+            series:
+              - entity: REPLACE_ME_CLIMATE
+                attribute: prediction_latency_ms
+                name: Prediction Latency (ms)
+                color: purple
+                stroke_width: 2
+                yaxis_id: latency
+              - entity: REPLACE_ME_CLIMATE
+                attribute: energy_efficiency_score
+                name: Energy Efficiency (%)
+                color: green
+                stroke_width: 2
+                yaxis_id: percentage
+              - entity: REPLACE_ME_CLIMATE
+                attribute: sensor_availability_score
+                name: Sensor Availability (%)
+                color: blue
+                stroke_width: 2
+                yaxis_id: percentage
+            yaxis:
+              - id: latency
+                decimals: 1
+                max: 10
+                apex_config:
+                  title:
+                    text: Latency (ms)
+              - id: percentage
+                opposite: true
+                decimals: 0
+                min: 50
+                max: 100
+                apex_config:
+                  title:
+                    text: Performance (%)
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 🌡️ Hysteresis Analysis'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set window = state_attr('REPLACE_ME_CLIMATE', 'temperature_window_learned') | default('Unknown') %}
+                  {{ window }}
+                secondary: Temperature Window
+                icon: mdi:thermometer-lines
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set correlation = state_attr('REPLACE_ME_CLIMATE', 'power_correlation_accuracy') | default(0) %}
+                  {{ correlation | round(1) }}%
+                secondary: Power Correlation
+                icon: mdi:lightning-bolt
+                layout: vertical
+                badge_color: >-
+                  {% set correlation = state_attr('REPLACE_ME_CLIMATE', 'power_correlation_accuracy') | default(0) %}
+                  {% if correlation >= 90 %}
+                    green
+                  {% elif correlation >= 70 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set cycles = state_attr('REPLACE_ME_CLIMATE', 'hysteresis_cycle_count') | default(0) %}
+                  {{ cycles }}
+                secondary: Learned Cycles
+                icon: mdi:refresh
+                layout: vertical
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: AC Power vs Temperature Correlation (24h)
+            graph_span: 24h
+            update_interval: 2min
+            series:
+              - entity: REPLACE_ME_POWER_SENSOR
+                name: AC Power
+                color: red
+                stroke_width: 2
+                yaxis_id: power
+                show: >-
+                  ${ states('REPLACE_ME_POWER_SENSOR') not in ['unavailable', 'unknown'] }
+              - entity: REPLACE_ME_ROOM_SENSOR
+                name: Room Temperature
+                color: blue
+                stroke_width: 2
+                yaxis_id: temperature
+              - entity: REPLACE_ME_CLIMATE
+                attribute: target_temperature
+                name: Target Temperature
+                color: orange
+                stroke_width: 1
+                yaxis_id: temperature
+            yaxis:
+              - id: power
+                decimals: 0
+                apex_config:
+                  title:
+                    text: Power (W)
+              - id: temperature
+                opposite: true
+                decimals: 1
+                apex_config:
+                  title:
+                    text: Temperature (°C)
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 🍂 Seasonal Learning Intelligence'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set patterns = state_attr('REPLACE_ME_CLIMATE', 'seasonal_pattern_count') | default(0) %}
+                  {{ patterns }}
+                secondary: Pattern Count
+                icon: mdi:pattern
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set bucket = state_attr('REPLACE_ME_CLIMATE', 'outdoor_temp_bucket') | default('Unknown') %}
+                  {{ bucket }}
+                secondary: Current Bucket
+                icon: mdi:thermometer-check
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set accuracy = state_attr('REPLACE_ME_CLIMATE', 'seasonal_accuracy') | default(0) %}
+                  {{ accuracy | round(1) }}%
+                secondary: Seasonal Accuracy
+                icon: mdi:target
+                layout: vertical
+                badge_color: >-
+                  {% set accuracy = state_attr('REPLACE_ME_CLIMATE', 'seasonal_accuracy') | default(0) %}
+                  {% if accuracy >= 85 %}
+                    green
+                  {% elif accuracy >= 70 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+          - type: conditional
+            conditions:
+              - entity: REPLACE_ME_OUTDOOR_SENSOR
+                state_not: 'unavailable'
+              - entity: REPLACE_ME_OUTDOOR_SENSOR
+                state_not: 'unknown'
+            card:
+              type: custom:apexcharts-card
+              header:
+                show: true
+                title: Seasonal Pattern Learning (7 days)
+              graph_span: 7d
+              update_interval: 30min
+              series:
+                - entity: REPLACE_ME_OUTDOOR_SENSOR
+                  name: Outdoor Temperature
+                  color: blue
+                  stroke_width: 2
+                  yaxis_id: temperature
+                - entity: REPLACE_ME_CLIMATE
+                  attribute: seasonal_offset_adjustment
+                  name: Seasonal Adjustment
+                  color: orange
+                  stroke_width: 2
+                  yaxis_id: offset
+              yaxis:
+                - id: temperature
+                  decimals: 1
+                  apex_config:
+                    title:
+                      text: Outdoor Temp (°C)
+                - id: offset
+                  opposite: true
+                  decimals: 2
+                  apex_config:
+                    title:
+                      text: Seasonal Offset (°C)
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 🛠️ System Health & Diagnostics'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set memory = state_attr('REPLACE_ME_CLIMATE', 'memory_usage_kb') | default(200) %}
+                  {% if memory < 1024 %}
+                    {{ memory }}KB
+                  {% else %}
+                    {{ (memory / 1024) | round(1) }}MB
+                  {% endif %}
+                secondary: Memory Usage
+                icon: mdi:memory
+                layout: vertical
+                badge_color: >-
+                  {% set memory = state_attr('REPLACE_ME_CLIMATE', 'memory_usage_kb') | default(200) %}
+                  {% if memory < 500 %}
+                    green
+                  {% elif memory < 1000 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set persistence = state_attr('REPLACE_ME_CLIMATE', 'persistence_latency_ms') | default(5.0) %}
+                  {{ persistence | round(1) }}ms
+                secondary: Data Persistence
+                icon: mdi:database-clock
+                layout: vertical
+                badge_color: >-
+                  {% set persistence = state_attr('REPLACE_ME_CLIMATE', 'persistence_latency_ms') | default(5.0) %}
+                  {% if persistence < 10 %}
+                    green
+                  {% elif persistence < 50 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set outlier = state_attr('REPLACE_ME_CLIMATE', 'outlier_detection_active') | default(false) %}
+                  {% if outlier %}
+                    Active
+                  {% else %}
+                    Inactive
+                  {% endif %}
+                secondary: Outlier Detection
+                icon: mdi:shield-search
+                layout: vertical
+                badge_color: >-
+                  {% if state_attr('REPLACE_ME_CLIMATE', 'outlier_detection_active') | default(false) %}
+                    green
+                  {% else %}
+                    red
+                  {% endif %}
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: memory_usage_kb
+                name: Memory Usage (KB)
+                icon: mdi:memory
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: persistence_latency_ms
+                name: Persistence Latency (ms)
+                icon: mdi:database-clock
+                format: precision1
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: outlier_detection_active
+                name: Outlier Detection Status
+                icon: mdi:shield-search
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 📈 Learning Velocity & Convergence'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set velocity = state_attr('REPLACE_ME_CLIMATE', 'samples_per_day') | default(8.5) %}
+                  {{ velocity | round(1) }}
+                secondary: Samples/Day
+                icon: mdi:speedometer
+                layout: vertical
+                badge_color: >-
+                  {% set velocity = state_attr('REPLACE_ME_CLIMATE', 'samples_per_day') | default(8.5) %}
+                  {% if velocity >= 10 %}
+                    green
+                  {% elif velocity >= 5 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set improvement = state_attr('REPLACE_ME_CLIMATE', 'accuracy_improvement_rate') | default(1.5) %}
+                  {{ improvement | round(1) }}%/week
+                secondary: Improvement Rate
+                icon: mdi:trending-up
+                layout: vertical
+                badge_color: >-
+                  {% set improvement = state_attr('REPLACE_ME_CLIMATE', 'accuracy_improvement_rate') | default(1.5) %}
+                  {% if improvement >= 2.0 %}
+                    green
+                  {% elif improvement >= 1.0 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set convergence = state_attr('REPLACE_ME_CLIMATE', 'convergence_trend') | default('stable') %}
+                  {{ convergence | title }}
+                secondary: Convergence
+                icon: mdi:chart-line-variant
+                layout: vertical
+                badge_color: >-
+                  {% set convergence = state_attr('REPLACE_ME_CLIMATE', 'convergence_trend') | default('stable') %}
+                  {% if convergence == 'improving' %}
+                    green
+                  {% elif convergence == 'stable' %}
+                    blue
+                  {% else %}
+                    yellow
+                  {% endif %}
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Learning Acceleration Metrics (30 days)
+            graph_span: 30d
+            update_interval: 1h
+            series:
+              - entity: REPLACE_ME_CLIMATE
+                attribute: accuracy_improvement_rate
+                name: Weekly Improvement Rate (%)
+                color: green
+                stroke_width: 2
+                yaxis_id: percentage
+              - entity: REPLACE_ME_CLIMATE
+                attribute: samples_per_day
+                name: Daily Sample Rate
+                color: blue
+                stroke_width: 2
+                yaxis_id: samples
+              - entity: REPLACE_ME_CLIMATE
+                attribute: learning_acceleration
+                name: Acceleration Factor
+                color: purple
+                stroke_width: 2
+                yaxis_id: factor
+            yaxis:
+              - id: percentage
+                decimals: 1
+                apex_config:
+                  title:
+                    text: Improvement (%/week)
+              - id: samples
+                opposite: true
+                decimals: 1
+                apex_config:
+                  title:
+                    text: Samples/Day
+              - id: factor
+                opposite: true
+                decimals: 2
+                apex_config:
+                  title:
+                    text: Acceleration Factor
+      - type: vertical-stack
+        cards:
+          - type: markdown
             content: '## System Diagnostics'
           - type: entities
             show_header_toggle: false
@@ -399,3 +1242,208 @@ views:
               name: Power Sensor Status
               icon: mdi:flash
               secondary_info: last-changed
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 🔬 Advanced Algorithm Internals'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set coeff = state_attr('REPLACE_ME_CLIMATE', 'correlation_coefficient') | default(0.75) %}
+                  {{ (coeff * 100) | round(1) }}%
+                secondary: Correlation Coefficient
+                icon: mdi:chart-scatter-plot
+                layout: vertical
+                badge_color: >-
+                  {% set coeff = state_attr('REPLACE_ME_CLIMATE', 'correlation_coefficient') | default(0.75) %}
+                  {% if coeff >= 0.8 %}
+                    green
+                  {% elif coeff >= 0.6 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set variance = state_attr('REPLACE_ME_CLIMATE', 'prediction_variance') | default(0.25) %}
+                  {{ variance | round(3) }}°C²
+                secondary: Prediction Variance
+                icon: mdi:sigma-lower
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set entropy = state_attr('REPLACE_ME_CLIMATE', 'model_entropy') | default(1.25) %}
+                  {{ entropy | round(2) }} bits
+                secondary: Model Entropy
+                icon: mdi:chart-histogram
+                layout: vertical
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: correlation_coefficient
+                name: Temperature-Power Correlation
+                icon: mdi:chart-scatter-plot
+                format: precision3
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: prediction_variance
+                name: Prediction Variance (°C²)
+                icon: mdi:sigma-lower
+                format: precision4
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: model_entropy
+                name: Model Information Entropy (bits)
+                icon: mdi:chart-histogram
+                format: precision2
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: temporal_stability_index
+                name: Temporal Stability Index
+                icon: mdi:chart-timeline-variant
+                format: precision3
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 🎛️ Algorithm Control Parameters'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set rate = state_attr('REPLACE_ME_CLIMATE', 'learning_rate') | default(0.1) %}
+                  {{ (rate * 100) | round(1) }}%
+                secondary: Learning Rate
+                icon: mdi:trending-up
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set momentum = state_attr('REPLACE_ME_CLIMATE', 'momentum_factor') | default(0.9) %}
+                  {{ (momentum * 100) | round(1) }}%
+                secondary: Momentum Factor
+                icon: mdi:vector-triangle
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set regularization = state_attr('REPLACE_ME_CLIMATE', 'regularization_strength') | default(0.01) %}
+                  {{ regularization | round(3) }}
+                secondary: L2 Regularization
+                icon: mdi:omega
+                layout: vertical
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: Control Parameter Evolution (7 days)
+            graph_span: 7d
+            update_interval: 1h
+            series:
+              - entity: REPLACE_ME_CLIMATE
+                attribute: learning_rate
+                name: Learning Rate
+                color: blue
+                stroke_width: 2
+                yaxis_id: rate
+              - entity: REPLACE_ME_CLIMATE
+                attribute: momentum_factor
+                name: Momentum Factor
+                color: green
+                stroke_width: 2
+                yaxis_id: factor
+              - entity: REPLACE_ME_CLIMATE
+                attribute: regularization_strength
+                name: Regularization
+                color: red
+                stroke_width: 2
+                yaxis_id: regularization
+            yaxis:
+              - id: rate
+                decimals: 3
+                apex_config:
+                  title:
+                    text: Learning Rate
+              - id: factor
+                opposite: true
+                decimals: 2
+                apex_config:
+                  title:
+                    text: Momentum
+              - id: regularization
+                opposite: true
+                decimals: 4
+                apex_config:
+                  title:
+                    text: Regularization
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: '## 🧮 Statistical Performance Metrics'
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set mse = state_attr('REPLACE_ME_CLIMATE', 'mean_squared_error') | default(0.85) %}
+                  {{ mse | round(3) }}
+                secondary: MSE
+                icon: mdi:calculator-variant
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set mae = state_attr('REPLACE_ME_CLIMATE', 'mean_absolute_error') | default(0.65) %}
+                  {{ mae | round(3) }}
+                secondary: MAE
+                icon: mdi:calculator
+                layout: vertical
+              - type: custom:mushroom-template-card
+                entity: REPLACE_ME_CLIMATE
+                primary: >-
+                  {% set r2 = state_attr('REPLACE_ME_CLIMATE', 'r_squared') | default(0.82) %}
+                  {{ (r2 * 100) | round(1) }}%
+                secondary: R² Score
+                icon: mdi:chart-line-stacked
+                layout: vertical
+                badge_color: >-
+                  {% set r2 = state_attr('REPLACE_ME_CLIMATE', 'r_squared') | default(0.82) %}
+                  {% if r2 >= 0.8 %}
+                    green
+                  {% elif r2 >= 0.6 %}
+                    yellow
+                  {% else %}
+                    red
+                  {% endif %}
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: mean_squared_error
+                name: Mean Squared Error
+                icon: mdi:calculator-variant
+                format: precision4
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: mean_absolute_error
+                name: Mean Absolute Error
+                icon: mdi:calculator
+                format: precision4
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: r_squared
+                name: R² Coefficient of Determination
+                icon: mdi:chart-line-stacked
+                format: precision3
+              - type: attribute
+                entity: REPLACE_ME_CLIMATE
+                attribute: cross_validation_score
+                name: Cross-Validation Score
+                icon: mdi:check-circle-outline
+                format: precision3

@@ -21,6 +21,7 @@ The core feature that addresses inaccurate internal sensors:
 
 ### Intelligent Learning System
 Advanced machine learning capabilities that improve accuracy over time:
+- **Multi-Layered Intelligence**: Combines reactive learning, predictive forecasting, and seasonal adaptation
 - **Lightweight ML Model**: <1ms prediction time with exponential smoothing
 - **Pattern Recognition**: Learns time-of-day, temperature correlation, and usage patterns  
 - **Hysteresis Learning**: Automatically detects AC on/off temperature thresholds
@@ -34,7 +35,7 @@ Advanced machine learning capabilities that improve accuracy over time:
 **How It Works:**
 - Monitors temperature changes every 15 seconds after HVAC mode changes
 - Detects when temperature stabilizes (change < 0.1°C)
-- Learns optimal delay timing using exponential moving average
+- Learns optimal delay timing using Exponential Moving Average (EMA) smoothing
 - Applies 5-second safety buffer to learned delays
 
 **Benefits:**
@@ -50,7 +51,7 @@ adaptive_delay: true  # Default: false (opt-in feature)
 **Technical Details:**
 - Uses Home Assistant Storage for persistence
 - 10-minute timeout protection prevents endless learning cycles
-- EMA smoothing factor: 0.3 (70% weight on new measurements)
+- Exponential Moving Average smoothing factor: 0.3 (70% weight on new measurements)
 - Triggers automatically on HVAC mode changes when enabled
 
 ### Weather Forecast Integration
@@ -105,9 +106,9 @@ forecast_strategies:
 *Context-aware learning that adapts to outdoor temperature patterns*
 
 **How It Works:**
-- Enhances hysteresis learning with outdoor temperature context
-- Groups learned patterns by outdoor temperature ranges (5°C buckets)
-- Retrieves relevant patterns based on current outdoor conditions
+- Enhances hysteresis learning with Outdoor Temperature context for seasonal awareness
+- Groups learned patterns by Outdoor Temperature ranges (5°C buckets)
+- Retrieves relevant patterns based on current Outdoor Temperature conditions
 - Uses 45-day data retention to capture seasonal patterns
 
 **Benefits:**
@@ -118,8 +119,8 @@ forecast_strategies:
 
 **Configuration:**
 ```yaml
-outdoor_sensor: "sensor.outdoor_temperature"
-seasonal_learning: true  # Auto-enabled when outdoor sensor present
+outdoor_sensor: "sensor.outdoor_temperature"  # Outdoor Temperature sensor for context
+seasonal_learning: true  # Auto-enabled when Outdoor Temperature sensor present
 ```
 
 **Technical Details:**
@@ -188,10 +189,34 @@ service: smart_climate.generate_dashboard
 data:
   climate_entity_id: climate.smart_climate_living_room
 ```
-- Generates complete dashboard YAML configuration
-- Automatically replaces entity IDs in template
-- Delivered via persistent notification for easy copy/paste
-- No manual YAML editing required
+- Generates complete dashboard YAML configuration with zero manual configuration
+- **v1.3.0+ Enhanced Intelligence Visualization**: Comprehensive multi-layered architecture showcase
+- **Advanced Analytics Display**: Weather intelligence, adaptive timing, seasonal learning metrics
+- **Smart Entity Replacement**: Automatically replaces placeholder values with your configured sensor entity IDs
+- **Technical Diagnostics**: Performance metrics, prediction latency monitoring, system health indicators
+- **Conditional Features**: Graceful handling of optional sensors with intelligent fallbacks
+- Delivered via persistent notification for easy copy/paste - no manual YAML editing required
+
+#### v1.3.0+ Dashboard Features
+The enhanced dashboard provides comprehensive visualization of the intelligent architecture:
+
+**Intelligence Layer Breakdown:**
+- Real-time component analysis showing reactive vs. predictive offset contributions
+- Weather strategy timeline with upcoming adjustments and confidence metrics
+- Adaptive timing analysis displaying learned AC response patterns and thermal stability
+- Seasonal adaptation progress with outdoor temperature correlation insights
+
+**Advanced Technical Metrics:**
+- Sub-millisecond prediction latency monitoring with performance trending
+- Multi-factor confidence calculation visualization with sample diversity analysis
+- Pattern recognition strength indicators and time-series correlation metrics
+- System health monitoring with component availability and integration status
+
+**Weather Intelligence Integration:**
+- Active strategy display (Heat Wave Pre-cooling, Clear Sky Optimization)
+- Forecast timeline with predicted adjustments and strategy effectiveness
+- Weather service reliability metrics and prediction accuracy tracking
+- Historical weather decision analysis and energy impact assessment
 
 ## Power Monitoring Integration
 
@@ -254,13 +279,32 @@ All Smart Climate entities expose comprehensive diagnostic information:
 - `hysteresis_state`: AC behavior state
 - `last_learning_update`: Timestamp of last learning update
 
-#### Advanced Diagnostics (v1.3.0)
-- `adaptive_delay_learned`: Learned feedback delay in seconds
-- `adaptive_delay_learning`: Whether delay learning is active
-- `forecast_active_strategy`: Current weather strategy details
-- `forecast_next_update`: Next forecast update time
-- `seasonal_patterns_count`: Number of seasonal patterns learned
-- `seasonal_current_bucket`: Current outdoor temperature bucket
+#### Advanced Diagnostics (v1.3.0+)
+Enhanced diagnostic attributes provide comprehensive system intelligence monitoring:
+
+**Adaptive Timing Intelligence:**
+- `adaptive_delay_learned`: Optimized feedback delay in seconds (EMA-smoothed)
+- `adaptive_delay_learning`: Active delay learning status and progress
+- `temperature_stability_threshold`: Current stability detection threshold (°C)
+- `stability_detection_confidence`: Confidence in temperature equilibrium detection
+
+**Weather Intelligence Integration:**
+- `forecast_active_strategy`: Current active weather strategy with parameters
+- `forecast_strategy_confidence`: Prediction confidence for active strategy
+- `forecast_next_update`: Next scheduled forecast evaluation timestamp
+- `weather_adjustment_history`: Recent weather-based offset decisions
+
+**Seasonal Learning Analytics:**
+- `seasonal_patterns_count`: Total seasonal patterns learned across all temperature buckets
+- `seasonal_current_bucket`: Active outdoor temperature bucket for pattern matching
+- `seasonal_bucket_coverage`: Learning coverage across different outdoor temperature ranges
+- `seasonal_pattern_confidence`: Confidence in current seasonal pattern matching
+
+**Performance & System Health:**
+- `prediction_latency_ms`: Real-time ML inference performance monitoring
+- `learning_system_health`: Overall learning system status and component availability
+- `data_persistence_status`: Learning data save/load status with error tracking
+- `ml_model_performance`: Model accuracy trends and prediction quality metrics
 
 ### Switch Entity Attributes
 The learning control switch provides additional diagnostics:
