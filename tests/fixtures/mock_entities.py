@@ -4,9 +4,9 @@ from unittest.mock import Mock, AsyncMock
 from typing import Optional, List
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
-    HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT, HVAC_MODE_AUTO,
-    SUPPORT_TARGET_TEMPERATURE, SUPPORT_PRESET_MODE, ATTR_TEMPERATURE
+    HVACMode, ClimateEntityFeature
 )
+from homeassistant.const import ATTR_TEMPERATURE
 from homeassistant.const import STATE_ON, STATE_OFF
 
 
@@ -17,11 +17,11 @@ class MockClimateEntity(ClimateEntity):
         """Initialize mock climate entity."""
         super().__init__()
         self.entity_id = entity_id
-        self._hvac_mode = HVAC_MODE_OFF
-        self._hvac_modes = [HVAC_MODE_OFF, HVAC_MODE_COOL, HVAC_MODE_HEAT, HVAC_MODE_AUTO]
+        self._hvac_mode = HVACMode.OFF
+        self._hvac_modes = [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT, HVACMode.AUTO]
         self._target_temperature = 20.0
         self._current_temperature = 20.0
-        self._supported_features = SUPPORT_TARGET_TEMPERATURE | SUPPORT_PRESET_MODE
+        self._supported_features = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
         self._preset_modes = ["none", "eco", "comfort"]
         self._preset_mode = "none"
         self._min_temp = 16.0
@@ -95,14 +95,33 @@ class MockClimateEntity(ClimateEntity):
 def create_mock_hass():
     """Create a mock Home Assistant instance."""
     mock_hass = Mock()
+    
+    # Create a proper state registry that stores and retrieves states
+    _state_registry = {}
+    
+    def mock_set_state(entity_id, state_obj):
+        _state_registry[entity_id] = state_obj
+    
+    def mock_get_state(entity_id):
+        return _state_registry.get(entity_id)
+    
     mock_hass.states = Mock()
+    mock_hass.states.set = mock_set_state
+    mock_hass.states.get = mock_get_state
+    
     mock_hass.services = Mock()
     mock_hass.services.async_call = AsyncMock()
+    mock_hass.async_create_task = Mock()
+    mock_hass.async_write_ha_state = Mock()
+    
+    # Also add common async methods used by entities
+    mock_hass.async_track_state_change = Mock()
+    mock_hass.async_track_time_interval = Mock()
     
     return mock_hass
 
 
-def create_mock_state(entity_id: str, state: str, attributes: dict = None):
+def create_mock_state(state: str, attributes: dict = None, entity_id: str = "test.entity"):
     """Create a mock state object."""
     mock_state = Mock()
     mock_state.entity_id = entity_id
