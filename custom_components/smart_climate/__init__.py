@@ -481,7 +481,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             "5. Click 'Raw Configuration Editor' (three dots menu)\n"
             "6. Replace the content with the YAML below\n"
             "7. Click 'Save'\n\n"
-            f"{dashboard_yaml}"
+            f"```yaml\n{dashboard_yaml}\n```"
         )
         
         # Create notification with dashboard YAML
