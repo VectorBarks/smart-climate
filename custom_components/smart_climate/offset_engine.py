@@ -1,6 +1,7 @@
 """Offset calculation engine for Smart Climate Control."""
 
 import logging
+import time
 from typing import Optional, Dict, List, Tuple, Callable, TYPE_CHECKING, Literal
 import statistics
 from datetime import datetime
@@ -14,6 +15,16 @@ from .const import (
     DEFAULT_POWER_MAX_THRESHOLD,
     DEFAULT_SAVE_INTERVAL,
     CONF_SAVE_INTERVAL,
+    CONF_VALIDATION_OFFSET_MIN,
+    CONF_VALIDATION_OFFSET_MAX,
+    CONF_VALIDATION_TEMP_MIN,
+    CONF_VALIDATION_TEMP_MAX,
+    CONF_VALIDATION_RATE_LIMIT_SECONDS,
+    DEFAULT_VALIDATION_OFFSET_MIN,
+    DEFAULT_VALIDATION_OFFSET_MAX,
+    DEFAULT_VALIDATION_TEMP_MIN,
+    DEFAULT_VALIDATION_TEMP_MAX,
+    DEFAULT_VALIDATION_RATE_LIMIT_SECONDS,
 )
 
 if TYPE_CHECKING:
@@ -208,6 +219,10 @@ class OffsetEngine:
         # Add state for the last calculated offset (for dashboard data)
         self._last_offset: float = 0.0
         
+        # ML feedback loop prevention - track adjustment sources
+        self._prediction_active: bool = False
+        self._adjustment_source: Optional[str] = None  # Track if adjustment from prediction vs user
+        
         # Seasonal learning integration
         self._seasonal_learner: Optional["SeasonalHysteresisLearner"] = seasonal_learner
         self._seasonal_features_enabled: bool = seasonal_learner is not None
@@ -218,13 +233,22 @@ class OffsetEngine:
         self._failed_save_count = 0
         self._last_save_time: Optional[datetime] = None
         
+        # ML input validation configuration
+        self._validation_offset_min = config.get(CONF_VALIDATION_OFFSET_MIN, DEFAULT_VALIDATION_OFFSET_MIN)
+        self._validation_offset_max = config.get(CONF_VALIDATION_OFFSET_MAX, DEFAULT_VALIDATION_OFFSET_MAX)
+        self._validation_temp_min = config.get(CONF_VALIDATION_TEMP_MIN, DEFAULT_VALIDATION_TEMP_MIN)
+        self._validation_temp_max = config.get(CONF_VALIDATION_TEMP_MAX, DEFAULT_VALIDATION_TEMP_MAX)
+        self._validation_rate_limit_seconds = config.get(CONF_VALIDATION_RATE_LIMIT_SECONDS, DEFAULT_VALIDATION_RATE_LIMIT_SECONDS)
+        self._last_sample_time: Optional[float] = None
+        
         if self._enable_learning:
             self._learner = EnhancedLightweightOffsetLearner()
             _LOGGER.debug("Learning enabled - EnhancedLightweightOffsetLearner initialized")
         
         _LOGGER.debug(
             "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s, "
-            "hysteresis_enabled=%s, seasonal_enabled=%s, power_thresholds(idle=%s, min=%s, max=%s), save_interval=%s",
+            "hysteresis_enabled=%s, seasonal_enabled=%s, power_thresholds(idle=%s, min=%s, max=%s), save_interval=%s, "
+            "validation_bounds(offset=%s to %s, temp=%s to %s, rate_limit=%ss)",
             self._max_offset,
             self._ml_enabled,
             self._enable_learning,
@@ -233,7 +257,12 @@ class OffsetEngine:
             self._power_idle_threshold,
             self._power_min_threshold,
             self._power_max_threshold,
-            self._save_interval
+            self._save_interval,
+            self._validation_offset_min,
+            self._validation_offset_max,
+            self._validation_temp_min,
+            self._validation_temp_max,
+            self._validation_rate_limit_seconds
         )
     
     @property
@@ -288,6 +317,100 @@ class OffsetEngine:
             return "moderate"
         else:
             return "high"
+    
+    def _validate_feedback(self, offset: float, room_temp: float, timestamp: float) -> bool:
+        """Validate feedback data before training to prevent data poisoning.
+        
+        Args:
+            offset: Temperature offset value to validate
+            room_temp: Room temperature to validate  
+            timestamp: Timestamp to validate
+            
+        Returns:
+            True if data is valid, False if it should be rejected
+        """
+        try:
+            # Type validation - ensure all values are numeric but not boolean
+            if not isinstance(offset, (int, float)) or offset is None or isinstance(offset, bool):
+                _LOGGER.warning("Invalid offset type: %s", type(offset).__name__)
+                return False
+            
+            if not isinstance(room_temp, (int, float)) or room_temp is None or isinstance(room_temp, bool):
+                _LOGGER.warning("Invalid room temperature type: %s", type(room_temp).__name__)
+                return False
+                
+            if not isinstance(timestamp, (int, float)) or timestamp is None or isinstance(timestamp, bool):
+                _LOGGER.warning("Invalid timestamp type: %s", type(timestamp).__name__)
+                return False
+            
+            # Offset bounds validation (-10°C to +10°C reasonable for any climate)
+            if not self._validation_offset_min <= offset <= self._validation_offset_max:
+                _LOGGER.warning("Invalid offset range: %s (bounds: %s to %s)", 
+                              offset, self._validation_offset_min, self._validation_offset_max)
+                return False
+            
+            # Timestamp validation (not in future)
+            current_time = time.time()
+            if timestamp > current_time:
+                _LOGGER.warning("Future timestamp rejected: %s (current: %s)", timestamp, current_time)
+                return False
+            
+            # Temperature bounds validation (configurable reasonable indoor range)
+            if not self._validation_temp_min <= room_temp <= self._validation_temp_max:
+                _LOGGER.warning("Invalid temperature: %s (bounds: %s to %s)", 
+                              room_temp, self._validation_temp_min, self._validation_temp_max)
+                return False
+            
+            # Rate limiting - max 1 sample per configured interval
+            # Only apply rate limiting if the new timestamp is after the last sample
+            if self._last_sample_time is not None and timestamp > self._last_sample_time:
+                time_since_last = timestamp - self._last_sample_time
+                if time_since_last < self._validation_rate_limit_seconds:
+                    _LOGGER.debug("Rate limit: too frequent samples (%.1fs < %ds)", 
+                                time_since_last, self._validation_rate_limit_seconds)
+                    return False
+            
+            # Update last sample time on successful validation (only if timestamp is newer)
+            if self._last_sample_time is None or timestamp > self._last_sample_time:
+                self._last_sample_time = timestamp
+            return True
+            
+        except Exception as exc:
+            _LOGGER.warning("Error during feedback validation: %s", exc)
+            return False
+    
+    async def apply_prediction(self, offset: float) -> float:
+        """Apply prediction and mark as prediction-sourced adjustment.
+        
+        Args:
+            offset: Temperature offset from prediction
+            
+        Returns:
+            The applied offset value
+        """
+        self._prediction_active = True
+        self._adjustment_source = "prediction"
+        _LOGGER.debug("Applied prediction offset: %.2f°C (marked as prediction source)", offset)
+        return offset
+    
+    def set_adjustment_source(self, source: str) -> None:
+        """Set the source of the current adjustment.
+        
+        Args:
+            source: Source of adjustment ("prediction", "manual", "external", etc.)
+        """
+        self._adjustment_source = source
+        if source == "prediction":
+            self._prediction_active = True
+        else:
+            self._prediction_active = False
+        _LOGGER.debug("Adjustment source set to: %s", source)
+    
+    def clear_prediction_state(self) -> None:
+        """Clear prediction state (called after non-prediction adjustments)."""
+        self._prediction_active = False
+        self._adjustment_source = None
+        _LOGGER.debug("Prediction state cleared")
     
     def register_update_callback(self, callback: Callable) -> Callable:
         """Register a callback to be called when the learning state changes.
@@ -360,6 +483,11 @@ class OffsetEngine:
         # Clear calibration phase cache
         self._stable_calibration_offset = None
         _LOGGER.debug("Calibration phase cache cleared")
+        
+        # Reset prediction tracking state
+        self._prediction_active = False
+        self._adjustment_source = None
+        _LOGGER.debug("Prediction tracking state reset")
         
         # Clear any cached learning info
         if hasattr(self, '_last_learning_info'):
@@ -858,12 +986,28 @@ class OffsetEngine:
             # Learning disabled, silently ignore
             return
         
+        # CRITICAL: Prevent ML feedback loop by checking adjustment source
+        if getattr(self, '_adjustment_source', None) == "prediction":
+            _LOGGER.debug(
+                "Skipping feedback recording from prediction to prevent feedback loop "
+                "(predicted=%.2f°C, actual=%.2f°C, source=%s)",
+                predicted_offset, actual_offset, getattr(self, '_adjustment_source', 'unknown')
+            )
+            return
+        
         # Skip recording if critical sensors are unavailable
         if input_data.ac_internal_temp is None or input_data.room_temp is None:
             _LOGGER.debug(
                 "Skipping learning sample due to unavailable sensors: ac_temp=%s, room_temp=%s",
                 input_data.ac_internal_temp, input_data.room_temp
             )
+            return
+        
+        # Validate feedback data before training to prevent data poisoning
+        current_timestamp = time.time()
+        if not self._validate_feedback(actual_offset, input_data.room_temp, current_timestamp):
+            _LOGGER.warning("Rejecting invalid feedback data for security: offset=%s, room_temp=%s", 
+                          actual_offset, input_data.room_temp)
             return
         
         try:
@@ -896,8 +1040,8 @@ class OffsetEngine:
                 hysteresis_state=hysteresis_state
             )
             _LOGGER.debug(
-                "Recorded enhanced learning sample: predicted=%.2f, actual=%.2f, hysteresis_state=%s",
-                predicted_offset, actual_offset, hysteresis_state
+                "Recorded enhanced learning sample: predicted=%.2f, actual=%.2f, hysteresis_state=%s, source=%s",
+                predicted_offset, actual_offset, hysteresis_state, getattr(self, '_adjustment_source', 'unknown')
             )
         except Exception as exc:
             _LOGGER.warning("Failed to record learning sample: %s", exc)
