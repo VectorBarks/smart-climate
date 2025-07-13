@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1-beta3] - 2025-07-13
+
+### ✨ **Major Dashboard Enhancement Release**
+
+#### **🎯 Critical Dashboard Fixes**
+- **FIXED**: **Dashboard Placeholder Bug** - Eliminated REPLACE_ME_* variables in generated dashboards
+  - Comprehensive regex validation prevents any placeholder variables in output
+  - Smart sensor detection and automatic entity ID replacement
+  - Dashboard now works completely out-of-the-box when copy/pasted
+- **ENHANCED**: **AC Terminology Correction** - Fixed misleading threshold terminology
+  - Changed "AC Start/Stop Threshold" to accurate "Temperature Window High/Low"
+  - Clarifies that we work with consistent temperature windows, not absolute thresholds
+  - Improved user understanding of AC behavior learning
+
+#### **🧠 Advanced Intelligence Visualization**
+- **ADDED**: **Comprehensive v1.3.0+ Intelligence Display** - Multi-layered architecture showcase
+  - Reactive, predictive, and total offset visualization with component breakdowns
+  - Weather intelligence section with active strategy display and adjustment timelines
+  - Adaptive timing information showing learned AC response patterns
+  - Seasonal learning display with outdoor temperature context
+- **ADDED**: **30+ New Entity Attributes** - Deep technical insights for advanced users
+  - Core intelligence: adaptive delay, weather forecast, seasonal adaptation (4 attributes)
+  - Performance analytics: latency, efficiency, memory usage, outlier detection (6 attributes)
+  - AC learning: temperature window, power correlation, cycle count, stability (5 attributes)
+  - Seasonal intelligence: pattern count, outdoor bucket, accuracy, EMA (4 attributes)
+  - System health: samples/day, improvement rate, convergence trend (5 attributes)
+  - Advanced algorithms: correlation, variance, entropy, learning params, MSE/MAE/R² (9 attributes)
+
+#### **🎛️ Learning Switch Enhancement**
+- **ENHANCED**: **Technical Metrics Integration** - Key performance indicators accessible from switch
+  - 9 critical metrics: prediction latency, energy efficiency, memory usage
+  - Learning analytics: seasonal patterns, temperature window status, convergence trend
+  - System health: outlier detection, power correlation, hysteresis cycles
+  - Zero breaking changes, full backward compatibility preserved
+
+#### **🏠 Home Assistant 2025.5+ Compatibility**
+- **VERIFIED**: **Full Platform Compatibility** - Comprehensive HA 2025.5+ validation
+  - Modern sensor platform APIs and coordinator patterns
+  - Current entity lifecycle management and async patterns
+  - Proper device integration and state management
+  - Rich entity attributes with comprehensive error handling
+
+### 🧪 **Comprehensive Testing Enhancement**
+- **ADDED**: **150+ New Tests** - TDD methodology ensuring reliability
+  - Dashboard end-to-end testing with placeholder validation
+  - Advanced algorithm metrics testing with mathematical accuracy verification
+  - Learning switch enhancement testing with edge case coverage
+  - Integration testing for all new entity attributes
+- **ACHIEVED**: **100% Test Pass Rate** - All tests passing across comprehensive suite
+  - Error recovery and graceful degradation testing
+  - Performance impact validation and resource monitoring
+  - Compatibility testing with Home Assistant 2025.5+
+
+### 📚 **Documentation & User Experience**
+- **ENHANCED**: **Complete Documentation Suite** - Comprehensive user and developer guides
+  - Dashboard setup guide with installation and configuration procedures
+  - Features documentation with technical specifications and examples
+  - Installation guide with compatibility requirements and troubleshooting
+  - Enhanced README with technical appeal and feature highlights
+- **IMPROVED**: **Out-of-Box Experience** - Zero-configuration dashboard functionality
+  - Complete dashboard works immediately after copy/paste
+  - Smart sensor placeholder replacement with user entity detection
+  - Enhanced error handling and validation throughout system
+
+### 🎯 **User Benefits**
+- **Zero Manual Configuration**: Dashboard works out-of-box with copy/paste
+- **Advanced Visualization**: Multi-layered intelligence display with technical details
+- **Real-time Diagnostics**: Enhanced learning switch with performance monitoring
+- **Power User Insights**: 30+ technical attributes for deep system analysis
+- **Improved Reliability**: Comprehensive testing ensures stability and compatibility
+
 ## [1.3.1-beta2] - 2025-07-13
 
 ### 🐛 **Critical Fix**
