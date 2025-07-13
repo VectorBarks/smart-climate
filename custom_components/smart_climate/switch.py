@@ -110,6 +110,85 @@ class LearningSwitch(SwitchEntity):
         except Exception as exc:
             _LOGGER.warning("Failed to save learning data for %s: %s", self._entity_id, exc)
 
+    def _get_climate_technical_metrics(self) -> Dict[str, Any]:
+        """Get technical metrics from the associated climate entity.
+        
+        Returns:
+            Dictionary of technical metrics or empty dict if unavailable.
+        """
+        try:
+            # Check if hass is available
+            if not hasattr(self, 'hass') or self.hass is None:
+                return {}
+            
+            # Get the climate entity state
+            climate_state = self.hass.states.get(self._entity_id)
+            if not climate_state:
+                _LOGGER.debug("Climate entity %s not found for technical metrics", self._entity_id)
+                return {}
+            
+            # Extract only the technical metrics we want for the switch
+            technical_metrics = {}
+            metrics_to_extract = [
+                "prediction_latency_ms",
+                "energy_efficiency_score", 
+                "memory_usage_kb",
+                "seasonal_pattern_count",
+                "temperature_window_learned",
+                "convergence_trend",
+                "outlier_detection_active",
+                "power_correlation_accuracy",
+                "hysteresis_cycle_count"
+            ]
+            
+            for metric in metrics_to_extract:
+                if metric in climate_state.attributes:
+                    value = climate_state.attributes[metric]
+                    # Only include valid values (not None, not empty strings, valid types)
+                    if value is not None and value != "":
+                        # Basic type validation
+                        if metric.endswith("_ms") or metric.endswith("_kb") or metric.endswith("_accuracy"):
+                            # Should be numeric
+                            try:
+                                float(value)
+                                technical_metrics[metric] = value
+                            except (ValueError, TypeError):
+                                continue
+                        elif metric.endswith("_count"):
+                            # Should be integer
+                            try:
+                                int(value)
+                                technical_metrics[metric] = value
+                            except (ValueError, TypeError):
+                                continue
+                        elif metric.endswith("_score"):
+                            # Should be numeric (integer score)
+                            try:
+                                int(value)
+                                technical_metrics[metric] = value
+                            except (ValueError, TypeError):
+                                continue
+                        elif metric.endswith("_learned") or metric.endswith("_active"):
+                            # Should be boolean
+                            if isinstance(value, bool):
+                                technical_metrics[metric] = value
+                        elif metric == "convergence_trend":
+                            # Should be string
+                            if isinstance(value, str):
+                                technical_metrics[metric] = value
+                        else:
+                            # Other metrics - include as-is if valid type
+                            technical_metrics[metric] = value
+            
+            _LOGGER.debug("Retrieved %d technical metrics from climate entity %s", 
+                         len(technical_metrics), self._entity_id)
+            return technical_metrics
+            
+        except Exception as exc:
+            _LOGGER.debug("Error getting technical metrics from climate entity %s: %s", 
+                         self._entity_id, exc)
+            return {}
+
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return the state attributes of the learning system for diagnostics."""
@@ -179,7 +258,8 @@ class LearningSwitch(SwitchEntity):
                 "error": "Error"
             }.get(hysteresis_state, hysteresis_state)
             
-            return {
+            # Base attributes from learning system
+            base_attributes = {
                 "samples_collected": learning_info.get("samples", 0),
                 "learning_accuracy": learning_info.get("accuracy", 0.0),
                 "confidence_level": learning_info.get("confidence", 0.0),
@@ -199,6 +279,14 @@ class LearningSwitch(SwitchEntity):
                 "failed_save_count": failed_save_count,
                 "last_save_time": last_save_display
             }
+            
+            # Get technical metrics from climate entity
+            technical_metrics = self._get_climate_technical_metrics()
+            
+            # Combine base attributes with technical metrics
+            base_attributes.update(technical_metrics)
+            
+            return base_attributes
         except Exception as exc:
             _LOGGER.warning("Failed to get learning info for switch attributes: %s", exc)
             # Try to get save statistics even if learning info fails
@@ -220,7 +308,8 @@ class LearningSwitch(SwitchEntity):
                 # If save statistics also fail, use error defaults
                 pass
             
-            return {
+            # Base error attributes
+            error_attributes = {
                 "samples_collected": 0,
                 "learning_accuracy": 0.0,
                 "confidence_level": 0.0,
@@ -241,6 +330,16 @@ class LearningSwitch(SwitchEntity):
                 "last_save_time": last_save_display,
                 "error": str(exc)
             }
+            
+            # Try to get technical metrics even if learning info failed
+            try:
+                technical_metrics = self._get_climate_technical_metrics()
+                error_attributes.update(technical_metrics)
+            except Exception:
+                # If technical metrics also fail, just continue with base attributes
+                pass
+            
+            return error_attributes
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks when the entity is added to Home Assistant."""

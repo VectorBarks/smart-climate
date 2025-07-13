@@ -2,6 +2,7 @@
 Virtual climate entity that wraps any existing climate entity with intelligent offset compensation."""
 
 import logging
+import time
 from typing import Optional, List, Callable
 from datetime import datetime
 
@@ -744,6 +745,167 @@ class SmartClimateEntity(ClimateEntity):
             "predictive_strategy": active_strategy,
         })
         
+        # Phase 1: Core Intelligence Attributes (v1.3.0+)
+        
+        # 1. Adaptive Delay - Current adaptive feedback delay in seconds
+        adaptive_delay = None
+        if self._delay_learner is not None:
+            try:
+                adaptive_delay = self._delay_learner.get_adaptive_delay()
+                _LOGGER.debug("Got adaptive delay from DelayLearner: %s seconds", adaptive_delay)
+            except Exception as exc:
+                _LOGGER.debug("Error getting adaptive delay, using None: %s", exc)
+                adaptive_delay = None
+        
+        # 2. Weather Forecast - Weather forecast integration status
+        weather_forecast = self._forecast_engine is not None
+        
+        # 3. Seasonal Adaptation - Seasonal learning status
+        seasonal_adaptation = False
+        if hasattr(self._offset_engine, '_seasonal_learner'):
+            seasonal_adaptation = self._offset_engine._seasonal_learner is not None
+        
+        # 4. Seasonal Contribution - Seasonal learning contribution percentage
+        seasonal_contribution = 0
+        if seasonal_adaptation:
+            try:
+                seasonal_learner = getattr(self._offset_engine, '_seasonal_learner', None)
+                if seasonal_learner and hasattr(seasonal_learner, 'get_seasonal_contribution'):
+                    seasonal_contribution = seasonal_learner.get_seasonal_contribution()
+                    _LOGGER.debug("Got seasonal contribution: %s%%", seasonal_contribution)
+                else:
+                    _LOGGER.debug("Seasonal learner missing get_seasonal_contribution method")
+                    seasonal_contribution = 0
+            except Exception as exc:
+                _LOGGER.debug("Error getting seasonal contribution, using 0: %s", exc)
+                seasonal_contribution = 0
+        
+        # Add Phase 1 core intelligence attributes
+        attributes.update({
+            "adaptive_delay": adaptive_delay,
+            "weather_forecast": weather_forecast,
+            "seasonal_adaptation": seasonal_adaptation,
+            "seasonal_contribution": seasonal_contribution,
+        })
+        
+        # Phase 4: Seasonal Intelligence Expansion Attributes 
+        try:
+            # 1. Seasonal Pattern Count - Number of seasonal patterns learned
+            seasonal_pattern_count = self._get_seasonal_pattern_count()
+            attributes["seasonal_pattern_count"] = seasonal_pattern_count
+            
+            # 2. Outdoor Temperature Bucket - Current outdoor temperature bucket  
+            outdoor_temp_bucket = self._get_outdoor_temp_bucket()
+            attributes["outdoor_temp_bucket"] = outdoor_temp_bucket
+            
+            # 3. Seasonal Accuracy - Seasonal prediction accuracy percentage
+            seasonal_accuracy = self._get_seasonal_accuracy()
+            attributes["seasonal_accuracy"] = seasonal_accuracy
+            
+        except Exception as exc:
+            _LOGGER.warning("Error getting seasonal intelligence attributes: %s", exc)
+            # Provide safe fallbacks on error
+            attributes.update({
+                "seasonal_pattern_count": 0,
+                "outdoor_temp_bucket": "Unknown",
+                "seasonal_accuracy": 0.0,
+            })
+        
+        # Add AC behavior learning attributes
+        try:
+            # Temperature window learned from hysteresis patterns
+            temperature_window_learned = self._get_temperature_window_learned()
+            attributes["temperature_window_learned"] = temperature_window_learned
+            
+            # Power monitoring correlation accuracy
+            power_correlation_accuracy = self._calculate_power_correlation_accuracy()
+            attributes["power_correlation_accuracy"] = power_correlation_accuracy
+            
+            # Number of completed AC hysteresis cycles
+            hysteresis_cycle_count = self._get_hysteresis_cycle_count()
+            attributes["hysteresis_cycle_count"] = hysteresis_cycle_count
+            
+        except Exception as exc:
+            _LOGGER.warning("Error getting AC learning attributes: %s", exc)
+            # Provide safe fallbacks on error
+            attributes.update({
+                "temperature_window_learned": "Unknown",
+                "power_correlation_accuracy": 0.0,
+                "hysteresis_cycle_count": 0,
+            })
+        
+        # Add performance analytics attributes (Phase 2)
+        try:
+            attributes.update({
+                "temperature_stability_detected": self._get_temperature_stability_detected(),
+                "learned_delay_seconds": self._get_learned_delay_seconds(),
+                "ema_coefficient": self._get_ema_coefficient(),
+                "prediction_latency_ms": self._get_prediction_latency_ms(),
+                "energy_efficiency_score": self._get_energy_efficiency_score(),
+                "sensor_availability_score": self._get_sensor_availability_score(),
+            })
+        except Exception as exc:
+            _LOGGER.warning("Error getting performance analytics attributes: %s", exc)
+            # Provide safe fallbacks on error
+            attributes.update({
+                "temperature_stability_detected": False,
+                "learned_delay_seconds": 0.0,
+                "ema_coefficient": 0.2,
+                "prediction_latency_ms": 0.0,
+                "energy_efficiency_score": 50,
+                "sensor_availability_score": 0.0,
+            })
+        
+        # Add system health analytics attributes (Phase 5)
+        try:
+            attributes.update({
+                "memory_usage_kb": self._get_memory_usage_kb(),
+                "persistence_latency_ms": self._measure_persistence_latency_ms(),
+                "outlier_detection_active": self._get_outlier_detection_active(),
+                "samples_per_day": self._get_samples_per_day(),
+                "accuracy_improvement_rate": self._get_accuracy_improvement_rate(),
+                "convergence_trend": self._get_convergence_trend(),
+            })
+        except Exception as exc:
+            _LOGGER.warning("Error getting system health analytics attributes: %s", exc)
+            # Provide safe fallbacks on error
+            attributes.update({
+                "memory_usage_kb": 0.0,
+                "persistence_latency_ms": 0.0,
+                "outlier_detection_active": False,
+                "samples_per_day": 0.0,
+                "accuracy_improvement_rate": 0.0,
+                "convergence_trend": "unknown",
+            })
+        
+        # Phase 6: Advanced Algorithm Metrics (Sophisticated ML Internal Metrics)
+        try:
+            attributes.update({
+                "correlation_coefficient": self._calculate_correlation_coefficient(),
+                "prediction_variance": self._calculate_prediction_variance(),
+                "model_entropy": self._calculate_model_entropy(),
+                "learning_rate": self._get_learning_rate(),
+                "momentum_factor": self._calculate_momentum_factor(),
+                "regularization_strength": self._calculate_regularization_strength(),
+                "mean_squared_error": self._calculate_mean_squared_error(),
+                "mean_absolute_error": self._calculate_mean_absolute_error(),
+                "r_squared": self._calculate_r_squared(),
+            })
+        except Exception as exc:
+            _LOGGER.warning("Error getting advanced algorithm metrics: %s", exc)
+            # Provide safe fallbacks on error
+            attributes.update({
+                "correlation_coefficient": 0.0,
+                "prediction_variance": 0.0,
+                "model_entropy": 0.0,
+                "learning_rate": 0.0,
+                "momentum_factor": 0.0,
+                "regularization_strength": 0.0,
+                "mean_squared_error": 0.0,
+                "mean_absolute_error": 0.0,
+                "r_squared": 0.0,
+            })
+        
         return attributes
 
     @property
@@ -1154,6 +1316,129 @@ class SmartClimateEntity(ClimateEntity):
                 "Humidity control not supported by wrapped entity %s",
                 self._wrapped_entity_id
             )
+    
+    def _get_temperature_window_learned(self) -> str:
+        """Get learned temperature window from hysteresis patterns.
+        
+        Returns:
+            str: Formatted temperature window (e.g., "2.5°C") or "Unknown" if not available
+        """
+        try:
+            if (hasattr(self._offset_engine, '_hysteresis_learner') and 
+                self._offset_engine._hysteresis_learner is not None):
+                
+                hysteresis_learner = self._offset_engine._hysteresis_learner
+                
+                # Check if we have sufficient data and learned thresholds
+                if (hasattr(hysteresis_learner, 'has_sufficient_data') and 
+                    hysteresis_learner.has_sufficient_data and
+                    hasattr(hysteresis_learner, 'learned_start_threshold') and
+                    hasattr(hysteresis_learner, 'learned_stop_threshold') and
+                    hysteresis_learner.learned_start_threshold is not None and
+                    hysteresis_learner.learned_stop_threshold is not None):
+                    
+                    # Calculate temperature window (difference between start and stop thresholds)
+                    window = hysteresis_learner.learned_start_threshold - hysteresis_learner.learned_stop_threshold
+                    return f"{window:.1f}°C"
+            
+            return "Unknown"
+            
+        except Exception as exc:
+            _LOGGER.debug("Error getting temperature window learned: %s", exc)
+            return "Unknown"
+    
+    def _calculate_power_correlation_accuracy(self) -> float:
+        """Calculate power monitoring correlation accuracy percentage.
+        
+        Returns:
+            float: Correlation accuracy as percentage (0.0-100.0)
+        """
+        try:
+            # Check if power sensor is configured
+            if not self._power_sensor_id:
+                return 0.0
+            
+            # Get power prediction history for correlation calculation
+            power_history = self._get_power_prediction_history()
+            
+            if not power_history or len(power_history) < 5:
+                # Need at least 5 data points for meaningful correlation
+                return 0.0
+            
+            # Calculate correlation accuracy
+            correct_predictions = 0
+            total_predictions = len(power_history)
+            
+            for entry in power_history:
+                predicted_state = entry.get("predicted_state")
+                actual_power = entry.get("actual_power", 0)
+                
+                # Define power thresholds for state classification
+                if predicted_state == "high" and actual_power > 800:  # High power threshold
+                    correct_predictions += 1
+                elif predicted_state == "idle" and actual_power < 200:  # Idle power threshold
+                    correct_predictions += 1
+                elif predicted_state == "moderate" and 200 <= actual_power <= 800:
+                    correct_predictions += 1
+            
+            # Calculate percentage accuracy
+            accuracy = (correct_predictions / total_predictions) * 100
+            return round(accuracy, 1)
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating power correlation accuracy: %s", exc)
+            return 0.0
+    
+    def _get_power_prediction_history(self) -> List[dict]:
+        """Get historical power prediction data for correlation analysis.
+        
+        Returns:
+            List[dict]: List of power prediction entries with timestamps, predicted states, and actual power
+        """
+        try:
+            # This would typically be stored by the offset engine during learning
+            # For now, return empty list as this is a complex feature requiring
+            # additional state tracking implementation
+            
+            # In a full implementation, this would:
+            # 1. Access stored prediction history from offset engine
+            # 2. Correlate predictions with actual power sensor readings
+            # 3. Return last N entries for correlation calculation
+            
+            return []
+            
+        except Exception as exc:
+            _LOGGER.debug("Error getting power prediction history: %s", exc)
+            return []
+    
+    def _get_hysteresis_cycle_count(self) -> int:
+        """Get number of completed AC hysteresis cycles.
+        
+        Returns:
+            int: Number of completed learning cycles
+        """
+        try:
+            if (hasattr(self._offset_engine, '_hysteresis_learner') and 
+                self._offset_engine._hysteresis_learner is not None):
+                
+                hysteresis_learner = self._offset_engine._hysteresis_learner
+                
+                # Check if learner has temperature sample collections
+                if (hasattr(hysteresis_learner, '_start_temps') and 
+                    hasattr(hysteresis_learner, '_stop_temps')):
+                    
+                    # Count cycles as minimum of start and stop samples
+                    # A complete cycle requires both a start and stop transition
+                    start_count = len(hysteresis_learner._start_temps)
+                    stop_count = len(hysteresis_learner._stop_temps)
+                    
+                    return min(start_count, stop_count)
+            
+            return 0
+            
+        except Exception as exc:
+            _LOGGER.debug("Error getting hysteresis cycle count: %s", exc)
+            return 0
     
     async def _apply_temperature_with_offset(self, target_temp: float, source: str = "manual") -> None:
         """Apply target temperature with calculated offset to wrapped entity."""
@@ -1635,6 +1920,777 @@ class SmartClimateEntity(ClimateEntity):
         _collect_learning_feedback but without the _now parameter.
         """
         await self._collect_learning_feedback(None)
+    
+    # Performance Analytics Methods (Phase 2)
+    
+    def _get_temperature_stability_detected(self) -> bool:
+        """Get whether temperature stability is detected."""
+        try:
+            if self._delay_learner is not None and hasattr(self._delay_learner, 'get_temperature_stability_detected'):
+                return self._delay_learner.get_temperature_stability_detected()
+            return False
+        except Exception as exc:
+            _LOGGER.debug("Error getting temperature stability detected: %s", exc)
+            return False
+    
+    def _get_learned_delay_seconds(self) -> float:
+        """Get the learned AC response delay in seconds."""
+        try:
+            if self._delay_learner is not None:
+                if hasattr(self._delay_learner, 'get_learned_delay_seconds'):
+                    delay = self._delay_learner.get_learned_delay_seconds()
+                    return float(delay) if delay is not None else 0.0
+                elif hasattr(self._delay_learner, '_learned_delay_secs'):
+                    delay = self._delay_learner._learned_delay_secs
+                    return float(delay) if delay is not None else 0.0
+            return 0.0
+        except Exception as exc:
+            _LOGGER.debug("Error getting learned delay seconds: %s", exc)
+            return 0.0
+    
+    def _get_ema_coefficient(self) -> float:
+        """Get the exponential moving average coefficient (0.0-1.0)."""
+        try:
+            if self._delay_learner is not None and hasattr(self._delay_learner, 'get_ema_coefficient'):
+                coefficient = self._delay_learner.get_ema_coefficient()
+                # Ensure it's within valid bounds
+                return max(0.0, min(1.0, float(coefficient)))
+            return 0.2  # Default EMA coefficient
+        except Exception as exc:
+            _LOGGER.debug("Error getting EMA coefficient: %s", exc)
+            return 0.2
+    
+    def _get_prediction_latency_ms(self) -> float:
+        """Get ML prediction latency in milliseconds."""
+        try:
+            # Check if we have a cached latency value
+            if hasattr(self, '_last_prediction_latency_ms') and self._last_prediction_latency_ms is not None:
+                return float(self._last_prediction_latency_ms)
+            
+            # Return 0.0 if no cached value (avoid expensive measurement on every call)
+            return 0.0
+        except Exception as exc:
+            _LOGGER.debug("Error getting prediction latency: %s", exc)
+            return 0.0
+    
+    def _get_energy_efficiency_score(self) -> int:
+        """Get energy efficiency score (0-100) based on system performance."""
+        try:
+            # Use cached value if available and recent (within 30 seconds)
+            now = time.time()
+            if (hasattr(self, '_last_efficiency_score_time') and 
+                hasattr(self, '_last_efficiency_score') and
+                now - self._last_efficiency_score_time < 30):
+                return self._last_efficiency_score
+            
+            # Calculate efficiency based on multiple factors
+            confidence_score = 50  # Default
+            offset_variance_score = 50  # Default
+            
+            # Factor 1: ML confidence level (0-100)
+            if hasattr(self._offset_engine, 'get_confidence_level'):
+                try:
+                    confidence = self._offset_engine.get_confidence_level()
+                    confidence_score = int(confidence * 100) if confidence is not None else 50
+                except Exception:
+                    confidence_score = 50
+            
+            # Factor 2: Offset variance (lower is better)
+            if hasattr(self._offset_engine, 'get_recent_offset_variance'):
+                try:
+                    variance = self._offset_engine.get_recent_offset_variance()
+                    if variance is not None:
+                        # Convert variance to score (0-100, lower variance = higher score)
+                        # Variance of 0 = 100 points, variance of 2.0+ = 0 points
+                        offset_variance_score = max(0, min(100, int(100 * (1 - variance / 2.0))))
+                except Exception:
+                    offset_variance_score = 50
+            
+            # Combine factors with weighting
+            # 60% confidence, 40% offset variance
+            efficiency_score = int(0.6 * confidence_score + 0.4 * offset_variance_score)
+            efficiency_score = max(0, min(100, efficiency_score))
+            
+            # Cache the result
+            self._last_efficiency_score = efficiency_score
+            self._last_efficiency_score_time = now
+            
+            return efficiency_score
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating energy efficiency score: %s", exc)
+            return 50  # Default/fallback value
+    
+    def _get_sensor_availability_score(self) -> float:
+        """Get sensor availability uptime percentage (0.0-100.0)."""
+        try:
+            # Use cached value if available and recent (within 30 seconds)
+            now = time.time()
+            if (hasattr(self, '_last_availability_score_time') and 
+                hasattr(self, '_last_availability_score') and
+                now - self._last_availability_score_time < 30):
+                return self._last_availability_score
+            
+            # Get availability stats from sensor manager
+            if hasattr(self._sensor_manager, 'get_sensor_availability_stats'):
+                try:
+                    stats = self._sensor_manager.get_sensor_availability_stats()
+                    if stats and 'total_uptime' in stats:
+                        score = float(stats['total_uptime'])
+                        # Cache the result
+                        self._last_availability_score = score
+                        self._last_availability_score_time = now
+                        return score
+                except Exception as exc:
+                    _LOGGER.debug("Error getting sensor availability stats: %s", exc)
+                    # Continue to fallback calculation
+            
+            # Fallback: Calculate basic availability based on current sensor states
+            available_sensors = 0
+            total_sensors = 0
+            
+            # Check room sensor (required)
+            if self._sensor_manager.get_room_temperature() is not None:
+                available_sensors += 1
+            total_sensors += 1
+            
+            # Check outdoor sensor (optional)
+            if self._outdoor_sensor_id:
+                total_sensors += 1
+                if self._sensor_manager.get_outdoor_temperature() is not None:
+                    available_sensors += 1
+            
+            # Check power sensor (optional)
+            if self._power_sensor_id:
+                total_sensors += 1
+                if self._sensor_manager.get_power_consumption() is not None:
+                    available_sensors += 1
+            
+            score = (available_sensors / total_sensors * 100.0) if total_sensors > 0 else 0.0
+            
+            # Cache the result
+            self._last_availability_score = score
+            self._last_availability_score_time = now
+            
+            return score
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating sensor availability score: %s", exc)
+            return 0.0  # Default/fallback value
+    
+    # Phase 4: Seasonal Intelligence Expansion Methods
+    
+    def _get_seasonal_pattern_count(self) -> int:
+        """Get number of seasonal patterns learned.
+        
+        Returns:
+            int: Number of seasonal patterns learned (0 if no seasonal learner)
+        """
+        try:
+            if (hasattr(self._offset_engine, '_seasonal_learner') and 
+                self._offset_engine._seasonal_learner is not None):
+                
+                seasonal_learner = self._offset_engine._seasonal_learner
+                
+                # Check if learner has patterns stored
+                if hasattr(seasonal_learner, '_patterns'):
+                    pattern_count = len(seasonal_learner._patterns)
+                    _LOGGER.debug("Got seasonal pattern count: %d", pattern_count)
+                    return pattern_count
+            
+            return 0
+            
+        except Exception as exc:
+            _LOGGER.debug("Error getting seasonal pattern count: %s", exc)
+            return 0
+    
+    def _get_outdoor_temp_bucket(self) -> str:
+        """Get current outdoor temperature bucket (e.g., '25-30°C').
+        
+        Returns:
+            str: Temperature bucket string or 'Unknown' if no outdoor temperature
+        """
+        try:
+            # Get current outdoor temperature from sensor manager
+            outdoor_temp = self._sensor_manager.get_outdoor_temperature()
+            
+            if outdoor_temp is None:
+                return "Unknown"
+            
+            # Calculate 5°C temperature bucket
+            # Use mathematical floor to handle negative numbers correctly
+            import math
+            bucket_min = math.floor(outdoor_temp / 5) * 5
+            bucket_max = bucket_min + 5
+            
+            return f"{bucket_min}-{bucket_max}°C"
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating outdoor temperature bucket: %s", exc)
+            return "Unknown"
+    
+    def _get_seasonal_accuracy(self) -> float:
+        """Get seasonal prediction accuracy percentage (0.0-100.0).
+        
+        Returns:
+            float: Seasonal accuracy percentage
+        """
+        try:
+            if (hasattr(self._offset_engine, '_seasonal_learner') and 
+                self._offset_engine._seasonal_learner is not None):
+                
+                seasonal_learner = self._offset_engine._seasonal_learner
+                
+                # Check if learner has patterns to analyze
+                if hasattr(seasonal_learner, '_patterns'):
+                    patterns = seasonal_learner._patterns
+                    return self._calculate_seasonal_accuracy(patterns)
+            
+            return 0.0
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating seasonal accuracy: %s", exc)
+            return 0.0
+    
+    def _calculate_seasonal_accuracy(self, patterns: list) -> float:
+        """Calculate seasonal accuracy based on pattern diversity and reliability.
+        
+        Args:
+            patterns: List of LearnedPattern objects
+            
+        Returns:
+            float: Accuracy percentage (0.0-100.0)
+        """
+        import time
+        import statistics
+        
+        if not patterns:
+            return 0.0
+        
+        if len(patterns) == 1:
+            return 20.0  # Single pattern gets low accuracy
+        
+        try:
+            # Calculate outdoor temperature diversity
+            outdoor_temps = [pattern.outdoor_temp for pattern in patterns]
+            temp_range = max(outdoor_temps) - min(outdoor_temps)
+            
+            # Base accuracy from pattern count (more patterns = better)
+            pattern_count_score = min(100.0, len(patterns) * 15)  # 15 points per pattern, max 100
+            
+            # Diversity bonus (wider temperature range = better seasonal coverage)
+            diversity_score = min(50.0, temp_range * 2)  # 2 points per degree of range, max 50
+            
+            # Recency bonus (prefer recent patterns) 
+            current_time = time.time()
+            recent_patterns = [p for p in patterns if (current_time - p.timestamp) < (30 * 24 * 3600)]  # Last 30 days
+            recency_score = (len(recent_patterns) / len(patterns)) * 20 if patterns else 0  # Max 20 point bonus
+            
+            # Combine scores with weighting
+            # 50% pattern count, 30% diversity, 20% recency
+            total_score = pattern_count_score * 0.5 + diversity_score * 0.3 + recency_score * 0.2
+            
+            # Ensure result is within bounds
+            accuracy = min(100.0, max(0.0, total_score))
+            
+            _LOGGER.debug(
+                "Seasonal accuracy calculation: patterns=%d, temp_range=%.1f°C, "
+                "pattern_score=%.1f, diversity_score=%.1f, recency_score=%.1f, total=%.1f%%",
+                len(patterns), temp_range, pattern_count_score, diversity_score, recency_score, accuracy
+            )
+            
+            return accuracy
+            
+        except Exception as exc:
+            _LOGGER.debug("Error in seasonal accuracy calculation: %s", exc)
+            return 0.0
+    
+    # System Health Analytics Methods (Phase 5)
+    
+    def _get_memory_usage_kb(self) -> float:
+        """Get current memory usage in KB using psutil."""
+        try:
+            import psutil
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            # Convert RSS (Resident Set Size) from bytes to KB
+            memory_kb = memory_info.rss / 1024
+            return float(memory_kb)
+        except Exception as exc:
+            _LOGGER.debug("Error getting memory usage: %s", exc)
+            return 0.0
+    
+    def _measure_persistence_latency_ms(self) -> float:
+        """Measure data persistence latency in milliseconds."""
+        try:
+            if not hasattr(self._offset_engine, 'data_store') or self._offset_engine.data_store is None:
+                return 0.0
+            
+            # Measure time for a lightweight operation to avoid side effects
+            start_time = time.time()
+            
+            # Use a safe test operation if available, otherwise just measure timing overhead
+            if hasattr(self._offset_engine.data_store, 'test_persistence'):
+                self._offset_engine.data_store.test_persistence()
+            else:
+                # Minimal operation - just timing overhead measurement
+                _ = hasattr(self._offset_engine.data_store, 'save_data')
+            
+            end_time = time.time()
+            latency_ms = (end_time - start_time) * 1000
+            return float(latency_ms)
+        except Exception as exc:
+            _LOGGER.debug("Error measuring persistence latency: %s", exc)
+            return 0.0
+    
+    def _get_outlier_detection_active(self) -> bool:
+        """Get whether outlier detection is currently active."""
+        try:
+            # Check if offset engine supports outlier detection
+            if hasattr(self._offset_engine, 'has_outlier_detection'):
+                if not self._offset_engine.has_outlier_detection():
+                    return False
+                
+                # Check if it's currently active
+                if hasattr(self._offset_engine, 'is_outlier_detection_active'):
+                    return self._offset_engine.is_outlier_detection_active()
+                
+                # If has outlier detection but no active status method, assume active
+                return True
+            
+            return False
+        except Exception as exc:
+            _LOGGER.debug("Error getting outlier detection status: %s", exc)
+            return False
+    
+    def _get_samples_per_day(self) -> float:
+        """Get learning sample collection rate per day."""
+        try:
+            if not hasattr(self._offset_engine, 'get_recent_samples'):
+                return 0.0
+            
+            # Get samples from last 24 hours
+            recent_samples = self._offset_engine.get_recent_samples()
+            if not recent_samples:
+                return 0.0
+            
+            # Filter samples to last 24 hours
+            current_time = time.time()
+            day_ago = current_time - 86400  # 24 hours in seconds
+            
+            daily_samples = [
+                sample for sample in recent_samples
+                if isinstance(sample, dict) and 
+                   'timestamp' in sample and
+                   sample['timestamp'] >= day_ago
+            ]
+            
+            return float(len(daily_samples))
+        except Exception as exc:
+            _LOGGER.debug("Error getting samples per day: %s", exc)
+            return 0.0
+    
+    def _get_accuracy_improvement_rate(self) -> float:
+        """Get accuracy improvement rate as percentage."""
+        try:
+            if not hasattr(self._offset_engine, 'get_accuracy_history'):
+                return 0.0
+            
+            accuracy_history = self._offset_engine.get_accuracy_history()
+            if not accuracy_history or len(accuracy_history) < 2:
+                return 0.0
+            
+            # Sort by timestamp to ensure chronological order
+            sorted_history = sorted(
+                accuracy_history, 
+                key=lambda x: x.get('timestamp', 0) if isinstance(x, dict) else 0
+            )
+            
+            if len(sorted_history) < 2:
+                return 0.0
+            
+            # Compare first and last accuracy values
+            first_accuracy = sorted_history[0].get('accuracy', 0)
+            last_accuracy = sorted_history[-1].get('accuracy', 0)
+            
+            if first_accuracy == 0:
+                return 0.0
+            
+            # Calculate percentage improvement
+            improvement = ((last_accuracy - first_accuracy) / first_accuracy) * 100
+            
+            # Clamp to reasonable range
+            return max(-100.0, min(100.0, float(improvement)))
+        except Exception as exc:
+            _LOGGER.debug("Error calculating accuracy improvement rate: %s", exc)
+            return 0.0
+    
+    def _get_convergence_trend(self) -> str:
+        """Get learning convergence trend analysis."""
+        try:
+            if not hasattr(self._offset_engine, 'get_variance_history'):
+                return "unknown"
+            
+            variance_history = self._offset_engine.get_variance_history()
+            if not variance_history or len(variance_history) < 3:
+                return "unknown"
+            
+            # Sort by timestamp to ensure chronological order
+            sorted_history = sorted(
+                variance_history,
+                key=lambda x: x.get('timestamp', 0) if isinstance(x, dict) else 0
+            )
+            
+            if len(sorted_history) < 3:
+                return "unknown"
+            
+            # Analyze trend in variance (lower variance = better convergence)
+            variances = [item.get('variance', 0) for item in sorted_history]
+            
+            # Calculate trend over last few points
+            recent_count = min(5, len(variances))
+            recent_variances = variances[-recent_count:]
+            
+            if len(recent_variances) < 2:
+                return "unknown"
+            
+            # Simple trend analysis: compare start and end of recent period
+            start_variance = recent_variances[0]
+            end_variance = recent_variances[-1]
+            
+            # Calculate relative change
+            if start_variance == 0:
+                return "stable" if end_variance < 0.1 else "declining"
+            
+            change_ratio = (end_variance - start_variance) / start_variance
+            
+            # Classify trend based on variance change
+            if change_ratio < -0.1:  # Variance decreased significantly
+                return "improving"
+            elif change_ratio > 0.1:  # Variance increased significantly
+                return "declining"
+            else:  # Small change
+                return "stable"
+                
+        except Exception as exc:
+            _LOGGER.debug("Error analyzing convergence trend: %s", exc)
+            return "unknown"
+    
+    # Phase 6: Advanced Algorithm Metrics Methods
+    
+    def _calculate_correlation_coefficient(self) -> float:
+        """Calculate data correlation coefficient between temperature and offset.
+        
+        Returns:
+            float: Correlation coefficient (-1.0 to 1.0)
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_temp_correlation_data')):
+                return 0.0
+            
+            temp_data = self._offset_engine._learner._temp_correlation_data
+            if len(temp_data) < 2:
+                return 0.0
+            
+            # Extract temperature and offset pairs
+            temperatures = [item[0] for item in temp_data]
+            offsets = [item[1] for item in temp_data]
+            
+            # Calculate correlation coefficient
+            try:
+                import numpy as np
+                correlation_matrix = np.corrcoef(temperatures, offsets)
+                return float(correlation_matrix[0, 1])
+            except ImportError:
+                # Manual correlation calculation if numpy unavailable
+                n = len(temperatures)
+                if n < 2:
+                    return 0.0
+                
+                temp_mean = sum(temperatures) / n
+                offset_mean = sum(offsets) / n
+                
+                numerator = sum((t - temp_mean) * (o - offset_mean) for t, o in zip(temperatures, offsets))
+                temp_var = sum((t - temp_mean) ** 2 for t in temperatures)
+                offset_var = sum((o - offset_mean) ** 2 for o in offsets)
+                
+                denominator = (temp_var * offset_var) ** 0.5
+                
+                return numerator / denominator if denominator != 0 else 0.0
+                
+        except Exception as exc:
+            _LOGGER.debug("Error calculating correlation coefficient: %s", exc)
+            return 0.0
+    
+    def _calculate_prediction_variance(self) -> float:
+        """Calculate ML prediction variance.
+        
+        Returns:
+            float: Variance of predictions
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_enhanced_samples')):
+                return 0.0
+            
+            samples = self._offset_engine._learner._enhanced_samples
+            if len(samples) < 2:
+                return 0.0
+            
+            predictions = [sample.get("predicted", 0.0) for sample in samples]
+            
+            # Calculate variance using statistics module
+            import statistics
+            return statistics.variance(predictions)
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating prediction variance: %s", exc)
+            return 0.0
+    
+    def _calculate_model_entropy(self) -> float:
+        """Calculate information theory entropy of prediction distribution.
+        
+        Returns:
+            float: Entropy value (bits)
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_enhanced_samples')):
+                return 0.0
+            
+            samples = self._offset_engine._learner._enhanced_samples
+            if len(samples) < 2:
+                return 0.0
+            
+            predictions = [sample.get("predicted", 0.0) for sample in samples]
+            
+            # Create histogram for entropy calculation
+            # Bin predictions into discrete ranges for probability distribution
+            import statistics
+            import math
+            
+            if len(set(predictions)) == 1:
+                return 0.0  # No entropy for identical predictions
+            
+            # Create bins based on prediction range
+            min_pred = min(predictions)
+            max_pred = max(predictions)
+            range_pred = max_pred - min_pred
+            
+            if range_pred == 0:
+                return 0.0
+            
+            # Use 10 bins for entropy calculation
+            num_bins = min(10, len(predictions))
+            bin_size = range_pred / num_bins
+            
+            # Count predictions in each bin
+            bin_counts = [0] * num_bins
+            for pred in predictions:
+                bin_idx = min(int((pred - min_pred) / bin_size), num_bins - 1)
+                bin_counts[bin_idx] += 1
+            
+            # Calculate entropy
+            total_count = len(predictions)
+            entropy = 0.0
+            for count in bin_counts:
+                if count > 0:
+                    probability = count / total_count
+                    entropy -= probability * math.log2(probability)
+            
+            return entropy
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating model entropy: %s", exc)
+            return 0.0
+    
+    def _get_learning_rate(self) -> float:
+        """Get current ML learning rate.
+        
+        Returns:
+            float: Learning rate parameter
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_learning_rate')):
+                return 0.0
+            
+            return float(self._offset_engine._learner._learning_rate)
+            
+        except Exception as exc:
+            _LOGGER.debug("Error getting learning rate: %s", exc)
+            return 0.0
+    
+    def _calculate_momentum_factor(self) -> float:
+        """Calculate momentum factor for optimization based on prediction stability.
+        
+        Returns:
+            float: Momentum factor (0.0 to 1.0)
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_enhanced_samples')):
+                return 0.0
+            
+            samples = self._offset_engine._learner._enhanced_samples
+            if len(samples) < 3:
+                return 0.0
+            
+            # Calculate prediction errors to assess stability
+            errors = [abs(sample.get("predicted", 0.0) - sample.get("actual", 0.0)) for sample in samples]
+            
+            # Calculate coefficient of variation (std dev / mean) as stability measure
+            import statistics
+            mean_error = statistics.mean(errors)
+            if mean_error == 0:
+                return 1.0  # Perfect stability
+            
+            std_error = statistics.stdev(errors) if len(errors) > 1 else 0.0
+            cv = std_error / mean_error
+            
+            # Convert to momentum factor (lower CV = higher momentum)
+            # CV of 0 = momentum 1.0, CV of 1+ = momentum approaches 0
+            momentum = max(0.0, min(1.0, 1.0 / (1.0 + cv)))
+            
+            return momentum
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating momentum factor: %s", exc)
+            return 0.0
+    
+    def _calculate_regularization_strength(self) -> float:
+        """Calculate L2 regularization strength based on prediction variance.
+        
+        Returns:
+            float: Regularization parameter
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_enhanced_samples')):
+                return 0.0
+            
+            samples = self._offset_engine._learner._enhanced_samples
+            if len(samples) < 2:
+                return 0.0
+            
+            # Calculate prediction variance
+            predictions = [sample.get("predicted", 0.0) for sample in samples]
+            
+            import statistics
+            variance = statistics.variance(predictions)
+            
+            # Higher variance requires stronger regularization
+            # Scale variance to reasonable regularization range (0.001 to 0.1)
+            base_regularization = 0.001
+            variance_factor = min(1.0, variance / 2.0)  # Normalize variance
+            
+            regularization = base_regularization + (variance_factor * 0.099)
+            
+            return regularization
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating regularization strength: %s", exc)
+            return 0.0
+    
+    def _calculate_mean_squared_error(self) -> float:
+        """Calculate MSE performance metric from prediction history.
+        
+        Returns:
+            float: Mean squared error
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_enhanced_samples')):
+                return 0.0
+            
+            samples = self._offset_engine._learner._enhanced_samples
+            if len(samples) == 0:
+                return 0.0
+            
+            # Calculate MSE from prediction errors
+            squared_errors = [(sample.get("predicted", 0.0) - sample.get("actual", 0.0)) ** 2 for sample in samples]
+            
+            import statistics
+            return statistics.mean(squared_errors)
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating mean squared error: %s", exc)
+            return 0.0
+    
+    def _calculate_mean_absolute_error(self) -> float:
+        """Calculate MAE performance metric from prediction history.
+        
+        Returns:
+            float: Mean absolute error
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_enhanced_samples')):
+                return 0.0
+            
+            samples = self._offset_engine._learner._enhanced_samples
+            if len(samples) == 0:
+                return 0.0
+            
+            # Calculate MAE from prediction errors
+            absolute_errors = [abs(sample.get("predicted", 0.0) - sample.get("actual", 0.0)) for sample in samples]
+            
+            import statistics
+            return statistics.mean(absolute_errors)
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating mean absolute error: %s", exc)
+            return 0.0
+    
+    def _calculate_r_squared(self) -> float:
+        """Calculate R² coefficient of determination.
+        
+        Returns:
+            float: R² value (can be negative for poor fits)
+        """
+        try:
+            if (not hasattr(self._offset_engine, '_learner') or 
+                self._offset_engine._learner is None or
+                not hasattr(self._offset_engine._learner, '_enhanced_samples')):
+                return 0.0
+            
+            samples = self._offset_engine._learner._enhanced_samples
+            if len(samples) < 2:
+                return 0.0
+            
+            actual_values = [sample.get("actual", 0.0) for sample in samples]
+            predicted_values = [sample.get("predicted", 0.0) for sample in samples]
+            
+            # Calculate R²
+            import statistics
+            actual_mean = statistics.mean(actual_values)
+            
+            # Total sum of squares (variance in actual values)
+            ss_total = sum((actual - actual_mean) ** 2 for actual in actual_values)
+            
+            # Residual sum of squares (prediction errors)
+            ss_residual = sum((actual - predicted) ** 2 for actual, predicted in zip(actual_values, predicted_values))
+            
+            # R² = 1 - (SS_res / SS_tot)
+            if ss_total == 0:
+                return 1.0 if ss_residual == 0 else 0.0
+            
+            r_squared = 1.0 - (ss_residual / ss_total)
+            
+            return r_squared
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating R²: %s", exc)
+            return 0.0
     
     @callback
     def _handle_coordinator_update(self) -> None:

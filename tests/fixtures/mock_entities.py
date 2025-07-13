@@ -141,6 +141,18 @@ def create_mock_offset_engine():
         reason="Test offset",
         confidence=1.0
     )
+    
+    # Configure system health analytics methods to return proper types
+    mock_engine.has_outlier_detection.return_value = False
+    mock_engine.is_outlier_detection_active.return_value = False
+    mock_engine.get_recent_samples.return_value = []
+    mock_engine.get_accuracy_history.return_value = []
+    mock_engine.get_variance_history.return_value = []
+    
+    # Configure data store for persistence latency testing
+    mock_engine.data_store = Mock()
+    mock_engine.data_store.save_data = Mock()
+    
     return mock_engine
 
 
