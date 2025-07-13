@@ -3,7 +3,7 @@ Virtual climate entity that wraps any existing climate entity with intelligent o
 
 import logging
 import time
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, TYPE_CHECKING
 from datetime import datetime
 
 from homeassistant.components.climate import ClimateEntity
@@ -20,6 +20,13 @@ from homeassistant.exceptions import HomeAssistantError
 from .models import OffsetInput, OffsetResult
 from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE
 from .delay_learner import DelayLearner
+from .forecast_engine import ForecastEngine
+
+if TYPE_CHECKING:
+    from .offset_engine import OffsetEngine
+    from .sensor_manager import SensorManager
+    from .mode_manager import ModeManager
+    from .temperature_controller import TemperatureController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -2229,12 +2236,9 @@ class SmartClimateEntity(ClimateEntity):
             # Measure time for a lightweight operation to avoid side effects
             start_time = time.time()
             
-            # Use a safe test operation if available, otherwise just measure timing overhead
-            if hasattr(self._offset_engine.data_store, 'test_persistence'):
-                self._offset_engine.data_store.test_persistence()
-            else:
-                # Minimal operation - just timing overhead measurement
-                _ = hasattr(self._offset_engine.data_store, 'save_data')
+            # Use a safe test operation - just measure timing overhead for data store access
+            # Test basic data store functionality by checking file path access
+            _ = self._offset_engine.data_store.get_data_file_path()
             
             end_time = time.time()
             latency_ms = (end_time - start_time) * 1000
@@ -2827,7 +2831,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     from .coordinator import SmartClimateCoordinator
     from .integration import validate_configuration, get_unique_id, get_entity_name
     from .const import DOMAIN
-    from .forecast_engine import ForecastEngine
     
     _LOGGER.info("Setting up Smart Climate platform from config entry")
     

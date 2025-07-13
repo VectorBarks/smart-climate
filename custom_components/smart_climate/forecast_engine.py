@@ -41,6 +41,26 @@ class ForecastEngine:
         
         return 0.0
 
+    @property
+    def active_strategy_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Return information about the currently active strategy.
+        Returns None if no strategy is active or if the active strategy has expired.
+        """
+        if self._active_strategy:
+            if dt_util.utcnow() < self._active_strategy.end_time:
+                return {
+                    "name": self._active_strategy.name,
+                    "adjustment": self._active_strategy.adjustment,
+                    "end_time": self._active_strategy.end_time.isoformat(),
+                    "reason": self._active_strategy.reason
+                }
+            else:
+                _LOGGER.info("Predictive strategy '%s' has ended.", self._active_strategy.name)
+                self._active_strategy = None
+        
+        return None
+
     async def async_update(self) -> None:
         """
         Fetch latest forecast and re-evaluate strategies.
