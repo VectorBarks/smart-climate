@@ -213,7 +213,7 @@ class SmartClimateEntity(ClimateEntity):
                             )
                             # Schedule temperature update
                             self.hass.async_create_task(
-                                self._apply_temperature_with_offset(self._attr_target_temperature)
+                                self._apply_temperature_with_offset(self._attr_target_temperature, source="recovery")
                             )
             
             # Cache and return availability based on wrapped entity state
@@ -870,7 +870,7 @@ class SmartClimateEntity(ClimateEntity):
             self._attr_target_temperature = target_temp
             
             # Calculate offset and apply to wrapped entity
-            await self._apply_temperature_with_offset(target_temp)
+            await self._apply_temperature_with_offset(target_temp, source="manual")
             
             # Schedule a state update to refresh the UI
             self.async_write_ha_state()
@@ -895,7 +895,7 @@ class SmartClimateEntity(ClimateEntity):
             
             # Recalculate temperature with new mode
             if self._attr_target_temperature is not None:
-                await self._apply_temperature_with_offset(self._attr_target_temperature)
+                await self._apply_temperature_with_offset(self._attr_target_temperature, source="mode_change")
             
             # Schedule a state update to refresh the UI
             self.async_write_ha_state()
@@ -1155,7 +1155,7 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id
             )
     
-    async def _apply_temperature_with_offset(self, target_temp: float) -> None:
+    async def _apply_temperature_with_offset(self, target_temp: float, source: str = "manual") -> None:
         """Apply target temperature with calculated offset to wrapped entity."""
         _LOGGER.debug(
             "=== _apply_temperature_with_offset START ===\n"
@@ -1323,6 +1323,10 @@ class SmartClimateEntity(ClimateEntity):
             
             _LOGGER.debug("=== _apply_temperature_with_offset END ===")
             
+            # Set adjustment source to prevent ML feedback loops
+            if hasattr(self._offset_engine, 'set_adjustment_source'):
+                self._offset_engine.set_adjustment_source(source)
+            
             # Schedule learning feedback if learning is enabled
             if (hasattr(self._offset_engine, '_enable_learning') and 
                 self._offset_engine._enable_learning and
@@ -1457,12 +1461,20 @@ class SmartClimateEntity(ClimateEntity):
                 storage_key = f"smart_climate_delay_learner_{self._wrapped_entity_id}"
                 store = Store(self.hass, version=1, key=storage_key)
                 
+                # Get timeout configuration
+                timeout_minutes = self._config.get(
+                    "delay_learning_timeout", 
+                    20  # Default timeout
+                )
+                
                 # Initialize DelayLearner
                 self._delay_learner = DelayLearner(
                     self.hass,
                     self._wrapped_entity_id,
                     self._room_sensor_id,
-                    store
+                    store,
+                    timeout_minutes=timeout_minutes,
+                    sensor_manager=self._sensor_manager
                 )
                 
                 # Load any previously learned delays
@@ -1506,7 +1518,7 @@ class SmartClimateEntity(ClimateEntity):
                 await self._coordinator.async_force_startup_refresh()
                 
                 # Apply current offset to AC if significant
-                await self._apply_temperature_with_offset(self._attr_target_temperature)
+                await self._apply_temperature_with_offset(self._attr_target_temperature, source="startup")
                 
                 _LOGGER.info("Startup temperature update completed successfully")
             except Exception as exc:
@@ -1695,7 +1707,7 @@ class SmartClimateEntity(ClimateEntity):
                     self.target_temperature
                 )
                 self.hass.async_create_task(
-                    self._apply_temperature_with_offset(self.target_temperature)
+                    self._apply_temperature_with_offset(self.target_temperature, source="prediction")
                 )
             else:
                 _LOGGER.warning("Cannot apply automatic adjustment: target_temperature is None")
