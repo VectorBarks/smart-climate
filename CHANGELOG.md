@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1-beta3] - 2025-07-13
+
+### ✨ Enhancements
+
+#### **Enhanced Dashboard Charts** - Issues #28 & #29
+- **Enhanced**: Temperature & Offset History chart with improved color assignments
+  - Changed indoor temperature color from red to cyan for better distinction
+  - Added conditional outdoor temperature display in blue
+  - Improved 24-hour temperature chart visualization
+- **Added**: Comprehensive System Overview chart showing complete system state
+  - New 24-hour chart with indoor/outdoor temperature, set temperature, and power usage
+  - Conditional sensor handling for optional outdoor and power sensors
+  - Single view of all key system metrics
+- **Technical**: 
+  - Modified dashboard_generic.yaml template with proper color coding
+  - Enhanced conditional sensor logic for optional sensors
+  - Added 18 comprehensive tests validating all chart enhancements
+  - Maintained backward compatibility and all REPLACE_ME placeholders
+- **Impact**: Better dashboard visualization with distinct colors and comprehensive system overview
+
 ## [1.2.1-beta2] - 2025-07-11
 
 ### 🐛 Bug Fixes
