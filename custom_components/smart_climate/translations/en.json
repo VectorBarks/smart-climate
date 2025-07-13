@@ -27,7 +27,20 @@
           "enable_retry": "Enable Retry on Startup",
           "max_retry_attempts": "Maximum Retry Attempts",
           "initial_timeout": "Initial Timeout (seconds)",
-          "save_interval": "Data Save Interval (seconds)"
+          "save_interval": "Data Save Interval (seconds)",
+          "adaptive_delay": "Enable Adaptive Feedback Delays",
+          "forecast_enabled": "Enable Weather Forecast Integration",
+          "weather_entity": "Weather Entity",
+          "heat_wave_temp_threshold": "Heat Wave Temperature Threshold (°C)",
+          "heat_wave_min_duration_hours": "Heat Wave Minimum Duration (hours)",
+          "heat_wave_lookahead_hours": "Heat Wave Lookahead Period (hours)",
+          "heat_wave_pre_action_hours": "Heat Wave Pre-Action Time (hours)",
+          "heat_wave_adjustment": "Heat Wave Pre-Cool Adjustment (°C)",
+          "clear_sky_condition": "Clear Sky Weather Condition",
+          "clear_sky_min_duration_hours": "Clear Sky Minimum Duration (hours)",
+          "clear_sky_lookahead_hours": "Clear Sky Lookahead Period (hours)",
+          "clear_sky_pre_action_hours": "Clear Sky Pre-Action Time (hours)",
+          "clear_sky_adjustment": "Clear Sky Pre-Cool Adjustment (°C)"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -52,7 +65,20 @@
           "enable_retry": "Enable automatic retry when sensors are unavailable during Home Assistant startup",
           "max_retry_attempts": "Maximum number of retry attempts before giving up (1-10)",
           "initial_timeout": "Time to wait before first retry attempt (30-300 seconds)",
-          "save_interval": "How frequently to save learning data to disk (300-86400 seconds, default 3600 = 1 hour)"
+          "save_interval": "How frequently to save learning data to disk (300-86400 seconds, default 3600 = 1 hour)",
+          "adaptive_delay": "Automatically adjust feedback delay timing based on AC response patterns",
+          "forecast_enabled": "Enable predictive temperature adjustments based on weather forecast data",
+          "weather_entity": "Select a weather entity to provide forecast data for predictive adjustments",
+          "heat_wave_temp_threshold": "Temperature threshold to trigger heat wave pre-cooling strategy (20-40°C)",
+          "heat_wave_min_duration_hours": "Minimum duration of high temperatures to trigger heat wave strategy (1-24 hours)",
+          "heat_wave_lookahead_hours": "How far ahead to check forecast for heat wave conditions (1-72 hours)",
+          "heat_wave_pre_action_hours": "How many hours before heat wave to start pre-cooling (1-12 hours)",
+          "heat_wave_adjustment": "Temperature adjustment for heat wave pre-cooling (negative values for cooling, -5.0 to 0.0°C)",
+          "clear_sky_condition": "Weather condition to trigger clear sky pre-cooling strategy",
+          "clear_sky_min_duration_hours": "Minimum duration of clear conditions to trigger strategy (1-24 hours)",
+          "clear_sky_lookahead_hours": "How far ahead to check forecast for clear conditions (1-48 hours)",
+          "clear_sky_pre_action_hours": "How many hours before clear conditions to start pre-cooling (1-6 hours)",
+          "clear_sky_adjustment": "Temperature adjustment for clear sky pre-cooling (negative values for cooling, -3.0 to 0.0°C)"
         }
       }
     },
@@ -63,7 +89,9 @@
       "no_temperature_sensors": "No temperature sensors found in your Home Assistant",
       "invalid_temperature_range": "Invalid temperature range specified",
       "away_temperature_out_of_range": "Away temperature must be between the minimum and maximum temperatures",
-      "power_threshold_invalid": "Power thresholds must be in order: idle < minimum < maximum"
+      "power_threshold_invalid": "Power thresholds must be in order: idle < minimum < maximum",
+      "weather_entity_not_found": "Selected weather entity was not found",
+      "forecast_weather_entity_required": "Weather entity is required when forecast integration is enabled"
     },
     "abort": {
       "already_configured": "This climate entity is already configured"
@@ -93,7 +121,20 @@
           "enable_retry": "Enable Retry on Startup",
           "max_retry_attempts": "Maximum Retry Attempts",
           "initial_timeout": "Initial Timeout (seconds)",
-          "save_interval": "Data Save Interval (seconds)"
+          "save_interval": "Data Save Interval (seconds)",
+          "adaptive_delay": "Enable Adaptive Feedback Delays",
+          "forecast_enabled": "Enable Weather Forecast Integration",
+          "weather_entity": "Weather Entity",
+          "heat_wave_temp_threshold": "Heat Wave Temperature Threshold (°C)",
+          "heat_wave_min_duration_hours": "Heat Wave Minimum Duration (hours)",
+          "heat_wave_lookahead_hours": "Heat Wave Lookahead Period (hours)",
+          "heat_wave_pre_action_hours": "Heat Wave Pre-Action Time (hours)",
+          "heat_wave_adjustment": "Heat Wave Pre-Cool Adjustment (°C)",
+          "clear_sky_condition": "Clear Sky Weather Condition",
+          "clear_sky_min_duration_hours": "Clear Sky Minimum Duration (hours)",
+          "clear_sky_lookahead_hours": "Clear Sky Lookahead Period (hours)",
+          "clear_sky_pre_action_hours": "Clear Sky Pre-Action Time (hours)",
+          "clear_sky_adjustment": "Clear Sky Pre-Cool Adjustment (°C)"
         },
         "data_description": {
           "max_offset": "Maximum temperature offset to apply (safety limit)",
@@ -114,7 +155,20 @@
           "enable_retry": "Enable automatic retry when sensors are unavailable during Home Assistant startup",
           "max_retry_attempts": "Maximum number of retry attempts before giving up (1-10)",
           "initial_timeout": "Time to wait before first retry attempt (30-300 seconds)",
-          "save_interval": "How frequently to save learning data to disk (300-86400 seconds, default 3600 = 1 hour)"
+          "save_interval": "How frequently to save learning data to disk (300-86400 seconds, default 3600 = 1 hour)",
+          "adaptive_delay": "Automatically adjust feedback delay timing based on AC response patterns",
+          "forecast_enabled": "Enable predictive temperature adjustments based on weather forecast data",
+          "weather_entity": "Select a weather entity to provide forecast data for predictive adjustments",
+          "heat_wave_temp_threshold": "Temperature threshold to trigger heat wave pre-cooling strategy (20-40°C)",
+          "heat_wave_min_duration_hours": "Minimum duration of high temperatures to trigger heat wave strategy (1-24 hours)",
+          "heat_wave_lookahead_hours": "How far ahead to check forecast for heat wave conditions (1-72 hours)",
+          "heat_wave_pre_action_hours": "How many hours before heat wave to start pre-cooling (1-12 hours)",
+          "heat_wave_adjustment": "Temperature adjustment for heat wave pre-cooling (negative values for cooling, -5.0 to 0.0°C)",
+          "clear_sky_condition": "Weather condition to trigger clear sky pre-cooling strategy",
+          "clear_sky_min_duration_hours": "Minimum duration of clear conditions to trigger strategy (1-24 hours)",
+          "clear_sky_lookahead_hours": "How far ahead to check forecast for clear conditions (1-48 hours)",
+          "clear_sky_pre_action_hours": "How many hours before clear conditions to start pre-cooling (1-6 hours)",
+          "clear_sky_adjustment": "Temperature adjustment for clear sky pre-cooling (negative values for cooling, -3.0 to 0.0°C)"
         }
       }
     }

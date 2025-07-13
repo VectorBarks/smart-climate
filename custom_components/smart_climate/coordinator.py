@@ -2,7 +2,7 @@
 
 import logging
 from datetime import timedelta, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .sensor_manager import SensorManager
     from .offset_engine import OffsetEngine
     from .mode_manager import ModeManager
+    from .forecast_engine import ForecastEngine
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,7 +28,8 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         update_interval: int,
         sensor_manager: "SensorManager",
         offset_engine: "OffsetEngine",
-        mode_manager: "ModeManager"
+        mode_manager: "ModeManager",
+        forecast_engine: Optional["ForecastEngine"] = None
     ):
         """Initialize the coordinator."""
         super().__init__(
@@ -39,6 +41,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         self._sensor_manager = sensor_manager
         self._offset_engine = offset_engine
         self._mode_manager = mode_manager
+        self._forecast_engine = forecast_engine
         self._is_startup = True  # Flag for startup calculation
     
     async def async_force_startup_refresh(self) -> None:
@@ -50,6 +53,13 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
     async def _async_update_data(self) -> SmartClimateData:
         """Fetch latest data from all sources."""
         try:
+            # Update forecast engine (it handles its own throttling)
+            if self._forecast_engine:
+                try:
+                    await self._forecast_engine.async_update()
+                    _LOGGER.debug("ForecastEngine updated successfully")
+                except Exception as exc:
+                    _LOGGER.warning("Error updating ForecastEngine: %s", exc)
             # Gather sensor data
             room_temp = self._sensor_manager.get_room_temperature()
             outdoor_temp = self._sensor_manager.get_outdoor_temperature()

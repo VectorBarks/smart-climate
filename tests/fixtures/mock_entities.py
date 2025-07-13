@@ -192,4 +192,6 @@ def create_mock_coordinator():
     )
     mock_coordinator.async_config_entry_first_refresh = AsyncMock()
     mock_coordinator.async_request_refresh = AsyncMock()
+    mock_coordinator.async_force_startup_refresh = AsyncMock()
+    mock_coordinator.async_add_listener = Mock(return_value=Mock())  # Return a mock remove function
     return mock_coordinator

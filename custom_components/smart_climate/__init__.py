@@ -23,6 +23,7 @@ from .const import DOMAIN, PLATFORMS
 from .data_store import SmartClimateDataStore
 from .entity_waiter import EntityWaiter, EntityNotAvailableError
 from .offset_engine import OffsetEngine
+from .seasonal_learner import SeasonalHysteresisLearner
 
 # Version and basic metadata
 __version__ = "0.1.0"
@@ -149,6 +150,67 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await _schedule_retry(hass, entry, retry_attempt)
         return False
 
+    # --- SEASONAL ADAPTATION INTEGRATION ---
+    # Set up seasonal learning infrastructure for each climate entity
+    climate_entities = []
+    
+    # Handle both single entity (climate_entity) and multiple entities configurations
+    if "climate_entity" in entry.data:
+        climate_entities = [entry.data["climate_entity"]]
+    elif "climate_entities" in entry.data:
+        climate_entities = entry.data["climate_entities"]
+    
+    if climate_entities:
+        _LOGGER.debug("Setting up seasonal adaptation for climate entities: %s", climate_entities)
+        
+        # Initialize seasonal learners storage
+        entry_data["seasonal_learners"] = {}
+        
+        # Check for outdoor sensor configuration
+        outdoor_sensor_id = entry.data.get("outdoor_sensor")
+        
+        # Handle empty string as None (invalid configuration)
+        if outdoor_sensor_id == "":
+            outdoor_sensor_id = None
+        
+        for entity_id in climate_entities:
+            if outdoor_sensor_id is not None:
+                try:
+                    # Create seasonal learner for this entity
+                    seasonal_learner = SeasonalHysteresisLearner(hass, outdoor_sensor_id)
+                    
+                    # Store for OffsetEngine integration
+                    entry_data["seasonal_learners"][entity_id] = seasonal_learner
+                    
+                    # Load seasonal patterns from storage
+                    try:
+                        await seasonal_learner.async_load()
+                    except Exception as load_exc:
+                        _LOGGER.warning(
+                            "Failed to load seasonal patterns for entity %s: %s",
+                            entity_id, load_exc
+                        )
+                        # Continue with empty patterns - graceful degradation
+                    
+                    _LOGGER.info(
+                        "Seasonal adaptation features enabled for entity %s with outdoor sensor %s",
+                        entity_id, outdoor_sensor_id
+                    )
+                    
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "Failed to create seasonal learner for entity %s: %s - continuing without seasonal features",
+                        entity_id, exc
+                    )
+                    # Continue setup without seasonal features (graceful degradation)
+            else:
+                _LOGGER.info(
+                    "Seasonal adaptation features disabled for entity %s (no outdoor sensor configured)",
+                    entity_id
+                )
+    
+    # --- END SEASONAL ADAPTATION INTEGRATION ---
+
     # --- PERSISTENCE INTEGRATION ---
     # Set up persistence for each climate entity
     climate_entities = []
@@ -202,8 +264,12 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
     """Set up persistence for a single climate entity."""
     _LOGGER.debug("Setting up persistence for entity: %s", entity_id)
 
-    # 1. Always create a dedicated OffsetEngine for this entity
-    offset_engine = OffsetEngine(entry.data)
+    # 1. Get seasonal learner for this entity (if available)
+    entry_data = hass.data[DOMAIN][entry.entry_id]
+    seasonal_learner = entry_data.get("seasonal_learners", {}).get(entity_id, None)
+    
+    # 2. Always create a dedicated OffsetEngine for this entity
+    offset_engine = OffsetEngine(entry.data, seasonal_learner)
     
     # Store the engine instance for the platform to use, keyed by entity_id
     hass.data[DOMAIN][entry.entry_id]["offset_engines"][entity_id] = offset_engine
@@ -229,17 +295,17 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
     # Store the coordinator instance for the sensor platform to use
     hass.data[DOMAIN][entry.entry_id]["coordinators"][entity_id] = coordinator
 
-    # 2. Try to create persistence - graceful degradation if it fails
+    # 3. Try to create persistence - graceful degradation if it fails
     try:
         data_store = SmartClimateDataStore(hass, entity_id)
         
         # Store the data store instance for the button platform to use
         hass.data[DOMAIN][entry.entry_id]["data_stores"][entity_id] = data_store
         
-        # 3. Link the data store to the engine for persistence operations
+        # 4. Link the data store to the engine for persistence operations
         offset_engine.set_data_store(data_store)
         
-        # 4. Load saved learning data and restore engine state
+        # 5. Load saved learning data and restore engine state
         try:
             learning_data_loaded = await offset_engine.async_load_learning_data()
             if learning_data_loaded:
@@ -250,7 +316,7 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             _LOGGER.warning("Failed to load learning data for %s: %s", entity_id, exc)
             # Continue setup without loaded data
 
-        # 5. Set up periodic saving and store the unload callback for cleanup
+        # 6. Set up periodic saving and store the unload callback for cleanup
         try:
             unload_listener = await offset_engine.async_setup_periodic_save(hass)
             hass.data[DOMAIN][entry.entry_id]["unload_listeners"].append(unload_listener)
@@ -268,7 +334,7 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
         )
         # Entity will work without persistence - graceful degradation
     
-    # 6. Perform initial coordinator data fetch
+    # 7. Perform initial coordinator data fetch
     try:
         await coordinator.async_config_entry_first_refresh()
         _LOGGER.debug("Initial coordinator data fetched for entity: %s", entity_id)

@@ -39,6 +39,19 @@ from .const import (
     CONF_MAX_RETRY_ATTEMPTS,
     CONF_INITIAL_TIMEOUT,
     CONF_SAVE_INTERVAL,
+    CONF_ADAPTIVE_DELAY,
+    CONF_FORECAST_ENABLED,
+    CONF_WEATHER_ENTITY,
+    CONF_HEAT_WAVE_TEMP_THRESHOLD,
+    CONF_HEAT_WAVE_MIN_DURATION_HOURS,
+    CONF_HEAT_WAVE_LOOKAHEAD_HOURS,
+    CONF_HEAT_WAVE_PRE_ACTION_HOURS,
+    CONF_HEAT_WAVE_ADJUSTMENT,
+    CONF_CLEAR_SKY_CONDITION,
+    CONF_CLEAR_SKY_MIN_DURATION_HOURS,
+    CONF_CLEAR_SKY_LOOKAHEAD_HOURS,
+    CONF_CLEAR_SKY_PRE_ACTION_HOURS,
+    CONF_CLEAR_SKY_ADJUSTMENT,
     DEFAULT_MAX_OFFSET,
     DEFAULT_MIN_TEMPERATURE,
     DEFAULT_MAX_TEMPERATURE,
@@ -58,6 +71,18 @@ from .const import (
     DEFAULT_MAX_RETRY_ATTEMPTS,
     DEFAULT_INITIAL_TIMEOUT,
     DEFAULT_SAVE_INTERVAL,
+    DEFAULT_ADAPTIVE_DELAY,
+    DEFAULT_FORECAST_ENABLED,
+    DEFAULT_HEAT_WAVE_TEMP_THRESHOLD,
+    DEFAULT_HEAT_WAVE_MIN_DURATION_HOURS,
+    DEFAULT_HEAT_WAVE_LOOKAHEAD_HOURS,
+    DEFAULT_HEAT_WAVE_PRE_ACTION_HOURS,
+    DEFAULT_HEAT_WAVE_ADJUSTMENT,
+    DEFAULT_CLEAR_SKY_CONDITION,
+    DEFAULT_CLEAR_SKY_MIN_DURATION_HOURS,
+    DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS,
+    DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS,
+    DEFAULT_CLEAR_SKY_ADJUSTMENT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -134,6 +159,8 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors[CONF_OUTDOOR_SENSOR] = "entity_not_found"
                 elif "power_sensor" in str(ex):
                     errors[CONF_POWER_SENSOR] = "entity_not_found"
+                elif "weather_entity" in str(ex):
+                    errors[CONF_WEATHER_ENTITY] = "entity_not_found"
                 elif "temperature_range" in str(ex):
                     errors["base"] = "invalid_temperature_range"
                 elif "away_temperature_out_of_range" in str(ex):
@@ -148,6 +175,7 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         climate_entities = await self._get_climate_entities()
         temperature_sensors = await self._get_temperature_sensors()
         power_sensors = await self._get_power_sensors()
+        weather_entities = await self._get_weather_entities()
 
         # Build the form schema
         data_schema = vol.Schema({
@@ -306,6 +334,115 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),
+            vol.Optional(CONF_ADAPTIVE_DELAY, default=DEFAULT_ADAPTIVE_DELAY): selector.BooleanSelector(),
+            
+            # Weather forecast configuration
+            vol.Optional(CONF_FORECAST_ENABLED, default=DEFAULT_FORECAST_ENABLED): selector.BooleanSelector(),
+            vol.Optional(CONF_WEATHER_ENTITY): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in weather_entities.items()
+                    ] if weather_entities else [],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            
+            # Heat wave strategy configuration
+            vol.Optional(CONF_HEAT_WAVE_TEMP_THRESHOLD, default=DEFAULT_HEAT_WAVE_TEMP_THRESHOLD): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=20.0,
+                    max=40.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_HEAT_WAVE_MIN_DURATION_HOURS, default=DEFAULT_HEAT_WAVE_MIN_DURATION_HOURS): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=24,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_HEAT_WAVE_LOOKAHEAD_HOURS, default=DEFAULT_HEAT_WAVE_LOOKAHEAD_HOURS): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=72,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_HEAT_WAVE_PRE_ACTION_HOURS, default=DEFAULT_HEAT_WAVE_PRE_ACTION_HOURS): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=12,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_HEAT_WAVE_ADJUSTMENT, default=DEFAULT_HEAT_WAVE_ADJUSTMENT): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-5.0,
+                    max=0.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            
+            # Clear sky strategy configuration
+            vol.Optional(CONF_CLEAR_SKY_CONDITION, default=DEFAULT_CLEAR_SKY_CONDITION): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="sunny", label="Sunny"),
+                        selector.SelectOptionDict(value="clear", label="Clear"),
+                        selector.SelectOptionDict(value="clear-night", label="Clear Night"),
+                        selector.SelectOptionDict(value="partly-cloudy", label="Partly Cloudy"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(CONF_CLEAR_SKY_MIN_DURATION_HOURS, default=DEFAULT_CLEAR_SKY_MIN_DURATION_HOURS): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=24,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_CLEAR_SKY_LOOKAHEAD_HOURS, default=DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=48,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_CLEAR_SKY_PRE_ACTION_HOURS, default=DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=6,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_CLEAR_SKY_ADJUSTMENT, default=DEFAULT_CLEAR_SKY_ADJUSTMENT): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-3.0,
+                    max=0.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
         })
         
         # Add power threshold fields if power sensor is provided in user_input
@@ -379,6 +516,40 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         validated[CONF_MAX_RETRY_ATTEMPTS] = user_input.get(CONF_MAX_RETRY_ATTEMPTS, DEFAULT_MAX_RETRY_ATTEMPTS)
         validated[CONF_INITIAL_TIMEOUT] = user_input.get(CONF_INITIAL_TIMEOUT, DEFAULT_INITIAL_TIMEOUT)
         validated[CONF_SAVE_INTERVAL] = user_input.get(CONF_SAVE_INTERVAL, DEFAULT_SAVE_INTERVAL)
+        validated[CONF_ADAPTIVE_DELAY] = user_input.get(CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY)
+        
+        # Validate weather forecast configuration
+        forecast_enabled = user_input.get(CONF_FORECAST_ENABLED, DEFAULT_FORECAST_ENABLED)
+        validated[CONF_FORECAST_ENABLED] = forecast_enabled
+        
+        if forecast_enabled:
+            # Weather entity is required when forecast is enabled
+            weather_entity = user_input.get(CONF_WEATHER_ENTITY)
+            if weather_entity:
+                if not await self._entity_exists(weather_entity, "weather"):
+                    raise vol.Invalid("weather_entity not found")
+                validated[CONF_WEATHER_ENTITY] = weather_entity
+            else:
+                raise vol.Invalid("weather_entity required when forecast is enabled")
+        elif user_input.get(CONF_WEATHER_ENTITY):
+            # Weather entity provided even when forecast disabled - still validate if present
+            weather_entity = user_input.get(CONF_WEATHER_ENTITY)
+            if not await self._entity_exists(weather_entity, "weather"):
+                raise vol.Invalid("weather_entity not found")
+            validated[CONF_WEATHER_ENTITY] = weather_entity
+        
+        # Copy forecast strategy parameters (these are always saved for future use)
+        validated[CONF_HEAT_WAVE_TEMP_THRESHOLD] = user_input.get(CONF_HEAT_WAVE_TEMP_THRESHOLD, DEFAULT_HEAT_WAVE_TEMP_THRESHOLD)
+        validated[CONF_HEAT_WAVE_MIN_DURATION_HOURS] = user_input.get(CONF_HEAT_WAVE_MIN_DURATION_HOURS, DEFAULT_HEAT_WAVE_MIN_DURATION_HOURS)
+        validated[CONF_HEAT_WAVE_LOOKAHEAD_HOURS] = user_input.get(CONF_HEAT_WAVE_LOOKAHEAD_HOURS, DEFAULT_HEAT_WAVE_LOOKAHEAD_HOURS)
+        validated[CONF_HEAT_WAVE_PRE_ACTION_HOURS] = user_input.get(CONF_HEAT_WAVE_PRE_ACTION_HOURS, DEFAULT_HEAT_WAVE_PRE_ACTION_HOURS)
+        validated[CONF_HEAT_WAVE_ADJUSTMENT] = user_input.get(CONF_HEAT_WAVE_ADJUSTMENT, DEFAULT_HEAT_WAVE_ADJUSTMENT)
+        
+        validated[CONF_CLEAR_SKY_CONDITION] = user_input.get(CONF_CLEAR_SKY_CONDITION, DEFAULT_CLEAR_SKY_CONDITION)
+        validated[CONF_CLEAR_SKY_MIN_DURATION_HOURS] = user_input.get(CONF_CLEAR_SKY_MIN_DURATION_HOURS, DEFAULT_CLEAR_SKY_MIN_DURATION_HOURS)
+        validated[CONF_CLEAR_SKY_LOOKAHEAD_HOURS] = user_input.get(CONF_CLEAR_SKY_LOOKAHEAD_HOURS, DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS)
+        validated[CONF_CLEAR_SKY_PRE_ACTION_HOURS] = user_input.get(CONF_CLEAR_SKY_PRE_ACTION_HOURS, DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS)
+        validated[CONF_CLEAR_SKY_ADJUSTMENT] = user_input.get(CONF_CLEAR_SKY_ADJUSTMENT, DEFAULT_CLEAR_SKY_ADJUSTMENT)
         
         # Validate power thresholds if power sensor is configured
         if power_sensor:
@@ -444,6 +615,17 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 state.entity_id.startswith("sensor.") and
                 state.attributes.get("device_class") == "power"
             ):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                entities[state.entity_id] = friendly_name
+        
+        return entities
+
+    async def _get_weather_entities(self) -> Dict[str, str]:
+        """Get all weather entities."""
+        entities = {}
+        
+        for state in self.hass.states.async_all():
+            if state.entity_id.startswith("weather."):
                 friendly_name = state.attributes.get("friendly_name", state.entity_id)
                 entities[state.entity_id] = friendly_name
         
@@ -675,6 +857,146 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                     max=86400,
                     step=300,
                     unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_ADAPTIVE_DELAY,
+                default=current_options.get(CONF_ADAPTIVE_DELAY, current_config.get(CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY))
+            ): selector.BooleanSelector(),
+            
+            # Weather forecast configuration
+            vol.Optional(
+                CONF_FORECAST_ENABLED,
+                default=current_options.get(CONF_FORECAST_ENABLED, current_config.get(CONF_FORECAST_ENABLED, DEFAULT_FORECAST_ENABLED))
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_WEATHER_ENTITY,
+                default=current_options.get(CONF_WEATHER_ENTITY, current_config.get(CONF_WEATHER_ENTITY))
+            ): selector.TextSelector(),
+            
+            # Heat wave strategy configuration
+            vol.Optional(
+                CONF_HEAT_WAVE_TEMP_THRESHOLD,
+                default=current_options.get(CONF_HEAT_WAVE_TEMP_THRESHOLD, current_config.get(CONF_HEAT_WAVE_TEMP_THRESHOLD, DEFAULT_HEAT_WAVE_TEMP_THRESHOLD))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=20.0,
+                    max=40.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_HEAT_WAVE_MIN_DURATION_HOURS,
+                default=current_options.get(CONF_HEAT_WAVE_MIN_DURATION_HOURS, current_config.get(CONF_HEAT_WAVE_MIN_DURATION_HOURS, DEFAULT_HEAT_WAVE_MIN_DURATION_HOURS))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=24,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_HEAT_WAVE_LOOKAHEAD_HOURS,
+                default=current_options.get(CONF_HEAT_WAVE_LOOKAHEAD_HOURS, current_config.get(CONF_HEAT_WAVE_LOOKAHEAD_HOURS, DEFAULT_HEAT_WAVE_LOOKAHEAD_HOURS))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=72,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_HEAT_WAVE_PRE_ACTION_HOURS,
+                default=current_options.get(CONF_HEAT_WAVE_PRE_ACTION_HOURS, current_config.get(CONF_HEAT_WAVE_PRE_ACTION_HOURS, DEFAULT_HEAT_WAVE_PRE_ACTION_HOURS))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=12,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_HEAT_WAVE_ADJUSTMENT,
+                default=current_options.get(CONF_HEAT_WAVE_ADJUSTMENT, current_config.get(CONF_HEAT_WAVE_ADJUSTMENT, DEFAULT_HEAT_WAVE_ADJUSTMENT))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-5.0,
+                    max=0.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            
+            # Clear sky strategy configuration
+            vol.Optional(
+                CONF_CLEAR_SKY_CONDITION,
+                default=current_options.get(CONF_CLEAR_SKY_CONDITION, current_config.get(CONF_CLEAR_SKY_CONDITION, DEFAULT_CLEAR_SKY_CONDITION))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="sunny", label="Sunny"),
+                        selector.SelectOptionDict(value="clear", label="Clear"),
+                        selector.SelectOptionDict(value="clear-night", label="Clear Night"),
+                        selector.SelectOptionDict(value="partly-cloudy", label="Partly Cloudy"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_CLEAR_SKY_MIN_DURATION_HOURS,
+                default=current_options.get(CONF_CLEAR_SKY_MIN_DURATION_HOURS, current_config.get(CONF_CLEAR_SKY_MIN_DURATION_HOURS, DEFAULT_CLEAR_SKY_MIN_DURATION_HOURS))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=24,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_CLEAR_SKY_LOOKAHEAD_HOURS,
+                default=current_options.get(CONF_CLEAR_SKY_LOOKAHEAD_HOURS, current_config.get(CONF_CLEAR_SKY_LOOKAHEAD_HOURS, DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=48,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_CLEAR_SKY_PRE_ACTION_HOURS,
+                default=current_options.get(CONF_CLEAR_SKY_PRE_ACTION_HOURS, current_config.get(CONF_CLEAR_SKY_PRE_ACTION_HOURS, DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1,
+                    max=6,
+                    step=1,
+                    unit_of_measurement="hours",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_CLEAR_SKY_ADJUSTMENT,
+                default=current_options.get(CONF_CLEAR_SKY_ADJUSTMENT, current_config.get(CONF_CLEAR_SKY_ADJUSTMENT, DEFAULT_CLEAR_SKY_ADJUSTMENT))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-3.0,
+                    max=0.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),

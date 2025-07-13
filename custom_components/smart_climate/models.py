@@ -1,7 +1,7 @@
 """Data models for Smart Climate Control integration."""
 
 from dataclasses import dataclass
-from datetime import time
+from datetime import time, datetime
 from typing import Optional
 
 
@@ -60,3 +60,19 @@ class SmartClimateData:
     calculated_offset: float
     mode_adjustments: ModeAdjustments
     is_startup_calculation: bool = False
+
+
+@dataclass
+class Forecast:
+    """Represents a single point in a weather forecast."""
+    datetime: datetime
+    temperature: float
+    condition: Optional[str] = None
+
+
+@dataclass
+class ActiveStrategy:
+    """Represents a strategy that is currently active."""
+    name: str
+    adjustment: float
+    end_time: datetime

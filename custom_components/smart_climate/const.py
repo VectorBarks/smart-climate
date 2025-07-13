@@ -31,6 +31,32 @@ CONF_ENABLE_RETRY = "enable_retry"
 CONF_MAX_RETRY_ATTEMPTS = "max_retry_attempts"
 CONF_INITIAL_TIMEOUT = "initial_timeout"
 CONF_SAVE_INTERVAL = "save_interval"
+CONF_ADAPTIVE_DELAY = "adaptive_delay"
+CONF_PREDICTIVE = "predictive"
+
+# Weather forecast configuration keys
+CONF_FORECAST_ENABLED = "forecast_enabled"
+CONF_WEATHER_ENTITY = "weather_entity"
+CONF_FORECAST_STRATEGIES = "forecast_strategies"
+
+# Forecast strategy configuration keys
+CONF_STRATEGY_NAME = "strategy_name"
+CONF_STRATEGY_ENABLED = "strategy_enabled"
+CONF_STRATEGY_TYPE = "strategy_type"
+
+# Heat wave strategy configuration keys
+CONF_HEAT_WAVE_TEMP_THRESHOLD = "heat_wave_temp_threshold"
+CONF_HEAT_WAVE_MIN_DURATION_HOURS = "heat_wave_min_duration_hours"
+CONF_HEAT_WAVE_LOOKAHEAD_HOURS = "heat_wave_lookahead_hours"
+CONF_HEAT_WAVE_PRE_ACTION_HOURS = "heat_wave_pre_action_hours"
+CONF_HEAT_WAVE_ADJUSTMENT = "heat_wave_adjustment"
+
+# Clear sky strategy configuration keys
+CONF_CLEAR_SKY_CONDITION = "clear_sky_condition"
+CONF_CLEAR_SKY_MIN_DURATION_HOURS = "clear_sky_min_duration_hours"
+CONF_CLEAR_SKY_LOOKAHEAD_HOURS = "clear_sky_lookahead_hours"
+CONF_CLEAR_SKY_PRE_ACTION_HOURS = "clear_sky_pre_action_hours"
+CONF_CLEAR_SKY_ADJUSTMENT = "clear_sky_adjustment"
 
 # Default values
 DEFAULT_MAX_OFFSET = 5.0
@@ -52,6 +78,24 @@ DEFAULT_ENABLE_RETRY = True
 DEFAULT_MAX_RETRY_ATTEMPTS = 4
 DEFAULT_INITIAL_TIMEOUT = 60
 DEFAULT_SAVE_INTERVAL = 3600
+DEFAULT_ADAPTIVE_DELAY = True
+
+# Weather forecast default values
+DEFAULT_FORECAST_ENABLED = False
+
+# Heat wave strategy default values
+DEFAULT_HEAT_WAVE_TEMP_THRESHOLD = 29.0
+DEFAULT_HEAT_WAVE_MIN_DURATION_HOURS = 5
+DEFAULT_HEAT_WAVE_LOOKAHEAD_HOURS = 24
+DEFAULT_HEAT_WAVE_PRE_ACTION_HOURS = 2
+DEFAULT_HEAT_WAVE_ADJUSTMENT = -2.0
+
+# Clear sky strategy default values
+DEFAULT_CLEAR_SKY_CONDITION = "sunny"
+DEFAULT_CLEAR_SKY_MIN_DURATION_HOURS = 6
+DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS = 12
+DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS = 1
+DEFAULT_CLEAR_SKY_ADJUSTMENT = -1.0
 
 # Service names
 SERVICE_SET_OFFSET = "set_offset"

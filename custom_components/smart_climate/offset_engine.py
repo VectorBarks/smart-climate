@@ -19,6 +19,7 @@ from .const import (
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from .data_store import SmartClimateDataStore
+    from .seasonal_learner import SeasonalHysteresisLearner
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -174,8 +175,13 @@ class HysteresisLearner:
 class OffsetEngine:
     """Calculates temperature offset for accurate climate control."""
     
-    def __init__(self, config: dict):
-        """Initialize the offset engine with configuration."""
+    def __init__(self, config: dict, seasonal_learner: Optional["SeasonalHysteresisLearner"] = None):
+        """Initialize the offset engine with configuration.
+        
+        Args:
+            config: Configuration dictionary
+            seasonal_learner: Optional seasonal learner for enhanced predictions
+        """
         self._max_offset = config.get("max_offset", 5.0)
         self._ml_enabled = config.get("ml_enabled", True)
         self._ml_model = None  # Loaded when available
@@ -202,6 +208,10 @@ class OffsetEngine:
         # Add state for the last calculated offset (for dashboard data)
         self._last_offset: float = 0.0
         
+        # Seasonal learning integration
+        self._seasonal_learner: Optional["SeasonalHysteresisLearner"] = seasonal_learner
+        self._seasonal_features_enabled: bool = seasonal_learner is not None
+        
         # Save configuration and statistics
         self._save_interval = config.get(CONF_SAVE_INTERVAL, DEFAULT_SAVE_INTERVAL)
         self._save_count = 0
@@ -214,11 +224,12 @@ class OffsetEngine:
         
         _LOGGER.debug(
             "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s, "
-            "hysteresis_enabled=%s, power_thresholds(idle=%s, min=%s, max=%s), save_interval=%s",
+            "hysteresis_enabled=%s, seasonal_enabled=%s, power_thresholds(idle=%s, min=%s, max=%s), save_interval=%s",
             self._max_offset,
             self._ml_enabled,
             self._enable_learning,
             self._hysteresis_enabled,
+            self._seasonal_features_enabled,
             self._power_idle_threshold,
             self._power_min_threshold,
             self._power_max_threshold,
@@ -359,6 +370,78 @@ class OffsetEngine:
         
         _LOGGER.info("Learning data reset completed")
     
+    def get_predicted_hysteresis_delta(self, outdoor_temp: Optional[float] = None) -> Optional[float]:
+        """Get predicted hysteresis delta with seasonal context when available.
+        
+        Args:
+            outdoor_temp: Outdoor temperature for seasonal context (optional)
+            
+        Returns:
+            Predicted hysteresis delta or None if no prediction available
+        """
+        # Use seasonal learner if available
+        if self._seasonal_features_enabled and self._seasonal_learner:
+            try:
+                return self._seasonal_learner.get_relevant_hysteresis_delta(outdoor_temp)
+            except Exception as exc:
+                _LOGGER.warning("Seasonal hysteresis prediction failed: %s", exc)
+                # Fall through to traditional method
+        
+        # Fall back to traditional hysteresis learner
+        if self._hysteresis_enabled and self._hysteresis_learner.has_sufficient_data:
+            try:
+                # Traditional hysteresis learner doesn't use outdoor temp
+                start_threshold = self._hysteresis_learner.learned_start_threshold
+                stop_threshold = self._hysteresis_learner.learned_stop_threshold
+                
+                if start_threshold is not None and stop_threshold is not None:
+                    return start_threshold - stop_threshold
+            except Exception as exc:
+                _LOGGER.warning("Traditional hysteresis prediction failed: %s", exc)
+        
+        # No prediction available
+        return None
+    
+    def calculate_seasonal_offset(self, room_temp: float, ac_temp: float, outdoor_temp: Optional[float]) -> float:
+        """Calculate offset using seasonal context for improved accuracy.
+        
+        Args:
+            room_temp: Current room temperature
+            ac_temp: Current AC internal temperature
+            outdoor_temp: Current outdoor temperature (optional)
+            
+        Returns:
+            Seasonally-adjusted temperature offset
+        """
+        # Basic offset calculation
+        base_offset = ac_temp - room_temp
+        
+        # Try to enhance with seasonal context
+        if self._seasonal_features_enabled and self._seasonal_learner and outdoor_temp is not None:
+            try:
+                # Get seasonal hysteresis prediction
+                seasonal_delta = self._seasonal_learner.get_relevant_hysteresis_delta(outdoor_temp)
+                
+                if seasonal_delta is not None:
+                    # Apply seasonal adjustment to the base offset
+                    # This is a simplified implementation - more sophisticated logic could be added
+                    seasonal_factor = seasonal_delta / 2.5  # Normalize around typical hysteresis delta
+                    seasonal_adjustment = base_offset * (0.8 + 0.4 * seasonal_factor)
+                    
+                    _LOGGER.debug(
+                        "Seasonal offset calculation: base=%.2f, seasonal_delta=%.2f, "
+                        "seasonal_factor=%.2f, adjusted=%.2f",
+                        base_offset, seasonal_delta, seasonal_factor, seasonal_adjustment
+                    )
+                    
+                    return seasonal_adjustment
+            except Exception as exc:
+                _LOGGER.warning("Seasonal offset calculation failed: %s", exc)
+        
+        # Fall back to basic calculation
+        _LOGGER.debug("Using basic offset calculation: %.2f", base_offset)
+        return base_offset
+    
     def calculate_offset(self, input_data: OffsetInput) -> OffsetResult:
         """Calculate temperature offset based on current conditions.
         
@@ -390,7 +473,16 @@ class OffsetEngine:
             # Calculate basic rule-based offset from temperature difference
             # When room_temp > ac_internal_temp: AC thinks it's cooler than reality, needs negative offset to cool more
             # When room_temp < ac_internal_temp: AC thinks it's warmer than reality, needs positive offset to cool less
-            base_offset = input_data.ac_internal_temp - input_data.room_temp
+            
+            # Use seasonal offset calculation if available, otherwise basic calculation
+            if self._seasonal_features_enabled:
+                base_offset = self.calculate_seasonal_offset(
+                    input_data.room_temp, 
+                    input_data.ac_internal_temp, 
+                    input_data.outdoor_temp
+                )
+            else:
+                base_offset = input_data.ac_internal_temp - input_data.room_temp
             
             # Apply mode-specific adjustments
             mode_adjusted_offset = self._apply_mode_adjustments(base_offset, input_data)
@@ -1021,6 +1113,12 @@ class OffsetEngine:
         elif input_data.ac_internal_temp < input_data.room_temp:
             reasons.append("AC sensor cooler than room")
         
+        # Seasonal information
+        if self._seasonal_features_enabled and input_data.outdoor_temp is not None:
+            reasons.append(f"seasonal-enhanced (outdoor: {input_data.outdoor_temp:.1f}°C)")
+        elif self._seasonal_features_enabled:
+            reasons.append("seasonal available but no outdoor temp")
+        
         # Learning information
         if self._enable_learning and self._learner:
             if learning_error:
@@ -1082,6 +1180,9 @@ class OffsetEngine:
         # More data points increase confidence
         if input_data.outdoor_temp is not None:
             base_confidence += 0.2
+            # Additional boost if seasonal features are enabled
+            if self._seasonal_features_enabled:
+                base_confidence += 0.1
         if input_data.power_consumption is not None:
             base_confidence += 0.2
         

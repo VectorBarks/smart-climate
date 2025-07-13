@@ -667,12 +667,359 @@ automation:
           message: "Large difference between room and AC sensors"
 ```
 
+## v1.3.0 Advanced Features Troubleshooting
+
+### Adaptive Feedback Delays Issues
+
+#### Adaptive Delays Not Learning
+
+**Symptoms**: Learned delay stays at default value, no learning progress
+
+**Diagnostic Steps**:
+1. Check if feature is enabled:
+   ```yaml
+   # In entity attributes
+   adaptive_delay: true
+   adaptive_delay_learned: null  # Should show learned value after cycles
+   ```
+
+2. Enable debug logging:
+   ```yaml
+   logger:
+     logs:
+       custom_components.smart_climate.delay_learner: debug
+   ```
+
+3. Monitor learning cycle triggers:
+   ```
+   DEBUG: DelayLearner: Starting learning cycle for climate.ac
+   DEBUG: DelayLearner: Temperature stabilized after 47 seconds
+   DEBUG: DelayLearner: Updated learned delay: 45s → 48s
+   ```
+
+**Common Causes & Solutions**:
+
+- **No HVAC Mode Changes**: Learning only triggers on mode changes
+  - *Solution*: Turn AC on/off or change modes to trigger learning
+  
+- **Temperature Sensor Updates Too Slow**: Need updates every 1-2 minutes
+  - *Solution*: Check sensor update frequency, consider different sensor
+  
+- **Very Stable Environment**: Temperature never varies enough to detect stabilization
+  - *Solution*: May need to manually trigger mode changes initially
+  
+- **Learning Timeout**: Cycles timing out after 10 minutes
+  - *Solution*: Check for external temperature influences, sensor placement
+
+#### Learned Delays Seem Wrong
+
+**Symptoms**: Learned delays much shorter/longer than expected
+
+**Diagnostic Steps**:
+1. Check current learned value:
+   ```yaml
+   # Entity attributes
+   adaptive_delay_learned: 65  # seconds
+   ```
+
+2. Compare with manual timing:
+   - Change AC temperature manually
+   - Time how long until temperature reading stabilizes
+   - Should match learned delay ± 5-10 seconds
+
+**Solutions**:
+- **Too Short**: May indicate rapid sensor response but slow AC response
+  - Check sensor placement relative to AC vents
+- **Too Long**: May indicate slow sensor or external influences
+  - Verify sensor isn't affected by drafts, sunlight, etc.
+
+### Weather Forecast Integration Issues
+
+#### Weather Predictions Not Working
+
+**Symptoms**: No predictive offsets applied, weather strategies inactive
+
+**Diagnostic Steps**:
+1. Verify weather entity configuration:
+   ```yaml
+   # Developer Tools → Services
+   service: weather.get_forecasts
+   data:
+     entity_id: weather.home
+     type: hourly
+   ```
+
+2. Check forecast data format:
+   ```json
+   {
+     "forecast": [
+       {
+         "datetime": "2025-07-13T14:00:00+00:00",
+         "temperature": 32.5,
+         "condition": "sunny"
+       }
+     ]
+   }
+   ```
+
+3. Enable debug logging:
+   ```yaml
+   logger:
+     logs:
+       custom_components.smart_climate.forecast_engine: debug
+   ```
+
+4. Monitor strategy evaluation:
+   ```
+   DEBUG: ForecastEngine: Evaluating heat_wave strategy
+   DEBUG: ForecastEngine: Found 4 consecutive hours above 30°C
+   DEBUG: ForecastEngine: Activating heat_wave strategy with -1.0°C adjustment
+   ```
+
+**Common Causes & Solutions**:
+
+- **Weather Entity Not Found**: Entity ID incorrect or integration not configured
+  - *Solution*: Verify weather integration is working, check entity ID spelling
+  
+- **No Hourly Forecasts**: Some weather integrations only provide daily forecasts
+  - *Solution*: Use weather integration that provides hourly data (OpenWeatherMap, etc.)
+  
+- **Forecast Triggers Not Met**: Strategy conditions too restrictive
+  - *Solution*: Adjust trigger_temp, trigger_duration to match local climate
+  
+- **API Rate Limiting**: Forecast updates throttled to 30 minutes
+  - *Solution*: Normal behavior, wait for next update cycle
+
+#### Weather Strategies Not Activating
+
+**Symptoms**: Conditions met but no strategy activated
+
+**Diagnostic Steps**:
+1. Check strategy configuration:
+   ```yaml
+   forecast_strategies:
+     - type: "heat_wave"
+       enabled: true  # Must be true
+       trigger_temp: 30.0
+       trigger_duration: 3
+   ```
+
+2. Verify trigger conditions:
+   - Check actual forecast temperatures against trigger_temp
+   - Confirm consecutive hours meet trigger_duration
+   - Verify current time falls within any time_range restrictions
+
+3. Check entity attributes:
+   ```yaml
+   # Should show active strategy
+   forecast_active_strategy: "heat_wave"
+   forecast_next_update: "2025-07-13T15:30:00"
+   ```
+
+**Solutions**:
+- **Strategy Disabled**: Check `enabled: true` in configuration
+- **Trigger Too High**: Lower trigger_temp for your climate
+- **Duration Too Long**: Reduce trigger_duration hours required
+- **Time Restrictions**: Remove or adjust time_range if strategy has one
+
+### Seasonal Adaptation Issues
+
+#### Seasonal Learning Not Active
+
+**Symptoms**: No seasonal patterns learned, outdoor temperature not considered
+
+**Diagnostic Steps**:
+1. Verify outdoor sensor configuration:
+   ```yaml
+   outdoor_sensor: sensor.outdoor_temperature
+   seasonal_learning: true  # Should be auto-enabled
+   ```
+
+2. Check outdoor sensor data:
+   ```yaml
+   # Developer Tools → States
+   sensor.outdoor_temperature: 28.5  # Must be numeric
+   ```
+
+3. Monitor pattern collection:
+   ```yaml
+   # Entity attributes
+   seasonal_patterns_count: 15  # Number of patterns learned
+   seasonal_current_bucket: "25-30°C"  # Current temperature bucket
+   ```
+
+4. Enable debug logging:
+   ```yaml
+   logger:
+     logs:
+       custom_components.smart_climate.seasonal_learner: debug
+   ```
+
+**Common Causes & Solutions**:
+
+- **Outdoor Sensor Invalid**: Sensor not providing numeric values
+  - *Solution*: Check sensor entity, ensure it reports temperature as number
+  
+- **Insufficient Data**: Need 3+ samples per temperature bucket (5°C ranges)
+  - *Solution*: Allow more time for data collection during AC operation
+  
+- **Seasonal Learning Disabled**: Explicitly disabled in configuration
+  - *Solution*: Enable via UI or set `seasonal_learning: true`
+  
+- **Temperature Range Too Narrow**: All patterns fall in same bucket
+  - *Solution*: Normal in stable climates, system will still learn general patterns
+
+#### Seasonal Patterns Not Improving Accuracy
+
+**Symptoms**: Seasonal adaptation enabled but no accuracy improvement
+
+**Diagnostic Steps**:
+1. Check pattern distribution:
+   ```yaml
+   # In debug logs
+   DEBUG: SeasonalLearner: Current bucket 25-30°C has 5 patterns
+   DEBUG: SeasonalLearner: Using median delta: 2.3°C
+   ```
+
+2. Verify outdoor temperature varies enough:
+   - Need patterns across different outdoor temperature ranges
+   - Single temperature bucket won't show seasonal differences
+
+3. Monitor pattern usage:
+   - Patterns should be retrieved based on current outdoor temperature
+   - Check if fallback to general patterns is being used
+
+**Solutions**:
+- **Limited Temperature Range**: Normal in stable climates, benefits may be subtle
+- **Insufficient Time**: Need data across seasonal temperature variations
+- **Pattern Pruning**: Old patterns automatically pruned after 45 days, may reduce data
+
+### Performance and Resource Issues
+
+#### High CPU Usage
+
+**Symptoms**: Home Assistant performance impact with v1.3.0 features
+
+**Diagnostic Steps**:
+1. Monitor update intervals:
+   ```yaml
+   # Reduce update frequency if needed
+   update_interval: 300  # 5 minutes instead of 3
+   ```
+
+2. Check debug logging impact:
+   ```yaml
+   # Disable debug logs in production
+   logger:
+     logs:
+       custom_components.smart_climate: info
+   ```
+
+**Solutions**:
+- **Disable Unused Features**: Turn off adaptive_delay, weather integration if not needed
+- **Increase Update Intervals**: Less frequent updates reduce CPU load
+- **Disable Debug Logging**: Only enable for troubleshooting
+
+#### Storage Space Issues
+
+**Symptoms**: Growing storage usage from learned patterns
+
+**Diagnostic Steps**:
+1. Check pattern retention:
+   ```yaml
+   data_retention_days: 45  # Default for seasonal
+   # Standard learning uses 30-60 days
+   ```
+
+2. Monitor storage usage in logs:
+   ```
+   DEBUG: SeasonalLearner: Pruned 15 old patterns, 45 remaining
+   ```
+
+**Solutions**:
+- **Reduce Retention Period**: Lower data_retention_days if storage is limited
+- **Pattern Pruning**: System automatically prunes old data
+
+### Integration Compatibility Issues
+
+#### Conflicts with Other Integrations
+
+**Symptoms**: Weather/climate integrations not working together
+
+**Solutions**:
+- **Multiple Weather Entities**: Use different weather entity IDs
+- **Climate Entity Conflicts**: Don't wrap the same climate entity multiple times
+- **Sensor Conflicts**: Ensure sensor entities are unique per Smart Climate instance
+
+## Advanced Debugging Techniques
+
+### Complete Debug Configuration
+```yaml
+logger:
+  default: info
+  logs:
+    # Core components
+    custom_components.smart_climate: debug
+    custom_components.smart_climate.offset_engine: debug
+    custom_components.smart_climate.climate: debug
+    
+    # v1.3.0 features
+    custom_components.smart_climate.delay_learner: debug
+    custom_components.smart_climate.forecast_engine: debug
+    custom_components.smart_climate.seasonal_learner: debug
+    
+    # Data persistence  
+    custom_components.smart_climate.data_store: debug
+    custom_components.smart_climate.coordinator: debug
+```
+
+### Log Analysis Commands
+```bash
+# Filter Smart Climate logs
+grep "smart_climate" home-assistant.log
+
+# Monitor real-time Smart Climate activity
+tail -f home-assistant.log | grep "smart_climate"
+
+# Check for specific v1.3.0 feature activity
+grep -E "(DelayLearner|ForecastEngine|SeasonalLearner)" home-assistant.log
+```
+
+### Performance Monitoring
+```yaml
+# Monitor update timing
+DEBUG: SmartClimateCoordinator: Update completed in 2.3ms
+DEBUG: OffsetEngine: Calculation completed in 0.8ms
+DEBUG: DelayLearner: Temperature check completed in 0.1ms
+```
+
+### Entity State Inspection
+Use Developer Tools → States to monitor these diagnostic attributes:
+```yaml
+# Core diagnostics
+current_offset: -1.2
+confidence_level: 0.85
+sample_count: 142
+calibration_status: "active_learning"
+
+# v1.3.0 diagnostics
+adaptive_delay_learned: 52
+adaptive_delay_learning: false
+forecast_active_strategy: "heat_wave"
+forecast_next_update: "2025-07-13T15:30:00"
+seasonal_patterns_count: 28
+seasonal_current_bucket: "30-35°C"
+```
+
 ## Conclusion
 
-Most issues with Smart Climate Control can be resolved by:
-1. Verifying sensor accuracy and placement
-2. Ensuring proper configuration
-3. Allowing time for learning adaptation
-4. Checking logs for specific errors
+Most issues with Smart Climate Control v1.3.0 can be resolved by:
+1. Verifying sensor accuracy and regular updates
+2. Ensuring proper configuration of new features
+3. Allowing sufficient time for learning systems to collect data
+4. Checking logs for specific errors and warnings
+5. Understanding feature requirements and limitations
+
+The v1.3.0 features are designed to be optional and backward-compatible. If experiencing issues, features can be disabled individually while troubleshooting.
 
 For persistent issues not covered here, please check the [GitHub repository](https://github.com/VectorBarks/smart-climate) for updates and community support.

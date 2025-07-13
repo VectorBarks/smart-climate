@@ -13,10 +13,12 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.storage import Store
 from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE
+from .delay_learner import DelayLearner
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,7 +40,8 @@ class SmartClimateEntity(ClimateEntity):
         sensor_manager,
         mode_manager,
         temperature_controller,
-        coordinator
+        coordinator,
+        forecast_engine=None
     ):
         """Initialize the SmartClimateEntity.
         
@@ -52,6 +55,7 @@ class SmartClimateEntity(ClimateEntity):
             mode_manager: ModeManager instance
             temperature_controller: TemperatureController instance
             coordinator: SmartClimateCoordinator instance
+            forecast_engine: Optional ForecastEngine instance for predictive adjustments
         """
         super().__init__()
         
@@ -65,8 +69,10 @@ class SmartClimateEntity(ClimateEntity):
         self._mode_manager = mode_manager
         self._temperature_controller = temperature_controller
         self._coordinator = coordinator
+        self._forecast_engine = forecast_engine
         self._config = config
         self._last_offset = 0.0
+        self._last_total_offset = 0.0  # Track total offset for update logic
         self._manual_override = None
         
         # Track availability state changes
@@ -98,6 +104,10 @@ class SmartClimateEntity(ClimateEntity):
         self._last_predicted_offset: Optional[float] = None
         self._last_offset_input: Optional[OffsetInput] = None
         self._feedback_delay = config.get("feedback_delay", 45)  # Default 45 seconds
+        
+        # DelayLearner for adaptive feedback delays
+        self._delay_learner: Optional[DelayLearner] = None
+        self._adaptive_delay_enabled = config.get(CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY)
         
         # Initialize Home Assistant required attributes
         self._attr_target_temperature = None
@@ -711,6 +721,32 @@ class SmartClimateEntity(ClimateEntity):
             return None
     
     @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        attributes = {}
+        
+        # Get predictive offset and strategy info
+        predictive_offset = 0.0
+        active_strategy = None
+        
+        if self._forecast_engine:
+            try:
+                predictive_offset = self._forecast_engine.predictive_offset
+                active_strategy = self._forecast_engine.active_strategy_info
+            except Exception as exc:
+                _LOGGER.warning("Could not get attributes from ForecastEngine: %s", exc)
+        
+        # Add forecast-related attributes
+        attributes.update({
+            "reactive_offset": self._last_offset,
+            "predictive_offset": predictive_offset,
+            "total_offset": self._last_offset + predictive_offset,
+            "predictive_strategy": active_strategy,
+        })
+        
+        return attributes
+
+    @property
     def target_temperature_low(self) -> Optional[float]:
         """Forward to wrapped entity with defensive programming."""
         try:
@@ -906,12 +942,41 @@ class SmartClimateEntity(ClimateEntity):
                 )
                 return
             
+            # Get current HVAC mode for learning cycle management
+            previous_hvac_mode = self.hvac_mode
+            
             _LOGGER.debug(
                 "Setting HVAC mode to %s (was %s) for %s",
                 hvac_mode,
-                self.hvac_mode,
+                previous_hvac_mode,
                 self._wrapped_entity_id
             )
+            
+            # Manage DelayLearner learning cycles based on mode transitions
+            if self._delay_learner is not None:
+                try:
+                    # Start learning cycle on OFF -> ON transitions
+                    if previous_hvac_mode == HVACMode.OFF and hvac_mode != HVACMode.OFF:
+                        _LOGGER.debug(
+                            "Starting DelayLearner cycle for %s (OFF -> %s)",
+                            self._wrapped_entity_id,
+                            hvac_mode
+                        )
+                        self._delay_learner.start_learning_cycle()
+                    # Stop learning cycle on ON -> OFF transitions  
+                    elif previous_hvac_mode != HVACMode.OFF and hvac_mode == HVACMode.OFF:
+                        _LOGGER.debug(
+                            "Stopping DelayLearner cycle for %s (%s -> OFF)",
+                            self._wrapped_entity_id,
+                            previous_hvac_mode
+                        )
+                        self._delay_learner.stop_learning_cycle()
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "Error managing DelayLearner cycle for %s: %s",
+                        self._wrapped_entity_id,
+                        exc
+                    )
             
             await self.hass.services.async_call(
                 "climate",
@@ -1180,16 +1245,38 @@ class SmartClimateEntity(ClimateEntity):
                 self._mode_manager.current_mode
             )
             
-            # Calculate offset
+            # Calculate reactive offset
             offset_result = self._offset_engine.calculate_offset(offset_input)
-            self._last_offset = offset_result.offset
+            reactive_offset = offset_result.offset
+            self._last_offset = reactive_offset  # Store reactive offset
             
             _LOGGER.debug(
-                "OffsetEngine result: offset=%.2f°C, clamped=%s, reason='%s', confidence=%.2f",
-                offset_result.offset,
+                "OffsetEngine result: reactive_offset=%.2f°C, clamped=%s, reason='%s', confidence=%.2f",
+                reactive_offset,
                 offset_result.clamped,
                 offset_result.reason,
                 offset_result.confidence
+            )
+            
+            # Get predictive offset
+            predictive_offset = 0.0
+            if self._forecast_engine:
+                try:
+                    predictive_offset = self._forecast_engine.predictive_offset
+                    _LOGGER.debug("ForecastEngine predictive_offset=%.2f°C", predictive_offset)
+                except Exception as exc:
+                    _LOGGER.warning("Error getting predictive offset, defaulting to 0.0: %s", exc)
+                    predictive_offset = 0.0
+            
+            # Combine offsets
+            total_offset = reactive_offset + predictive_offset
+            self._last_total_offset = total_offset  # Store for update logic
+            
+            _LOGGER.debug(
+                "Offset combination: reactive=%.2f°C + predictive=%.2f°C = total=%.2f°C",
+                reactive_offset,
+                predictive_offset,
+                total_offset
             )
             
             # Get mode adjustments
@@ -1202,18 +1289,18 @@ class SmartClimateEntity(ClimateEntity):
                 mode_adjustments.boost_offset
             )
             
-            # Apply offset and limits
+            # Apply total offset and limits
             adjusted_temp = self._temperature_controller.apply_offset_and_limits(
                 target_temp,
-                offset_result.offset,
+                total_offset,
                 mode_adjustments,
                 room_temp
             )
             
             _LOGGER.debug(
-                "FINAL CALCULATION: target=%.1f°C + offset=%.2f°C = adjusted=%.1f°C",
+                "FINAL CALCULATION: target=%.1f°C + total_offset=%.2f°C = adjusted=%.1f°C",
                 target_temp,
-                offset_result.offset,
+                total_offset,
                 adjusted_temp
             )
             
@@ -1224,10 +1311,13 @@ class SmartClimateEntity(ClimateEntity):
             )
             
             _LOGGER.info(
-                "Temperature adjustment complete: target=%.1f°C -> adjusted=%.1f°C (offset=%.2f°C, reason='%s')",
+                "Temperature adjustment complete: target=%.1f°C -> adjusted=%.1f°C "
+                "(total_offset=%.2f°C [reactive=%.2f°C + predictive=%.2f°C], reason='%s')",
                 target_temp,
                 adjusted_temp,
-                offset_result.offset,
+                total_offset,
+                reactive_offset,
+                predictive_offset,
                 offset_result.reason
             )
             
@@ -1238,22 +1328,50 @@ class SmartClimateEntity(ClimateEntity):
                 self._offset_engine._enable_learning and
                 offset_result.offset != 0.0):  # Only schedule if there was an offset
                 
-                # Store current prediction data
-                self._last_predicted_offset = offset_result.offset
+                # Store current prediction data (use reactive offset for learning)
+                self._last_predicted_offset = reactive_offset
                 self._last_offset_input = offset_input
+                
+                # Determine feedback delay (adaptive or fixed)
+                feedback_delay = self._feedback_delay  # Default fixed delay
+                if self._delay_learner is not None:
+                    try:
+                        learned_delay = self._delay_learner.get_adaptive_delay(self._feedback_delay)
+                        # Add 5-second safety buffer to learned delays
+                        feedback_delay = learned_delay + 5
+                        _LOGGER.debug(
+                            "Using adaptive feedback delay for %s: %d seconds (learned: %d + 5 safety buffer)",
+                            self._wrapped_entity_id,
+                            feedback_delay,
+                            learned_delay
+                        )
+                    except Exception as exc:
+                        _LOGGER.warning(
+                            "Error getting adaptive delay for %s, using fixed delay %d seconds: %s",
+                            self._wrapped_entity_id,
+                            self._feedback_delay,
+                            exc
+                        )
+                        feedback_delay = self._feedback_delay
+                else:
+                    _LOGGER.debug(
+                        "Using fixed feedback delay for %s: %d seconds",
+                        self._wrapped_entity_id,
+                        feedback_delay
+                    )
                 
                 # Schedule feedback collection
                 cancel_callback = async_call_later(
                     self.hass,
-                    self._feedback_delay,
+                    feedback_delay,
                     self._collect_learning_feedback
                 )
                 self._feedback_tasks.append(cancel_callback)
                 
                 _LOGGER.debug(
-                    "Scheduled learning feedback in %d seconds for offset %.2f°C",
-                    self._feedback_delay,
-                    offset_result.offset
+                    "Scheduled learning feedback in %d seconds for reactive offset %.2f°C",
+                    feedback_delay,
+                    reactive_offset
                 )
             
         except Exception as exc:
@@ -1277,7 +1395,10 @@ class SmartClimateEntity(ClimateEntity):
     
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass."""
-        await super().async_added_to_hass()
+        # ClimateEntity doesn't have async_added_to_hass, but Entity does
+        # Check if parent has the method before calling
+        if hasattr(super(), 'async_added_to_hass'):
+            await super().async_added_to_hass()
         
         # Validate that wrapped entity exists and is available
         wrapped_state = self.hass.states.get(self._wrapped_entity_id)
@@ -1329,6 +1450,43 @@ class SmartClimateEntity(ClimateEntity):
         # Start listening to sensor updates
         await self._sensor_manager.start_listening()
         
+        # Initialize DelayLearner if adaptive delays are enabled
+        if self._adaptive_delay_enabled:
+            try:
+                # Create unique storage key for this climate entity
+                storage_key = f"smart_climate_delay_learner_{self._wrapped_entity_id}"
+                store = Store(self.hass, version=1, key=storage_key)
+                
+                # Initialize DelayLearner
+                self._delay_learner = DelayLearner(
+                    self.hass,
+                    self._wrapped_entity_id,
+                    self._room_sensor_id,
+                    store
+                )
+                
+                # Load any previously learned delays
+                await self._delay_learner.async_load()
+                
+                _LOGGER.debug(
+                    "DelayLearner initialized for %s with storage key: %s",
+                    self._wrapped_entity_id,
+                    storage_key
+                )
+            except Exception as exc:
+                _LOGGER.warning(
+                    "Failed to initialize DelayLearner for %s: %s. Will use fixed feedback delays.",
+                    self._wrapped_entity_id,
+                    exc
+                )
+                self._delay_learner = None
+        else:
+            _LOGGER.debug(
+                "Adaptive delays disabled for %s, using fixed feedback delay: %d seconds",
+                self._wrapped_entity_id,
+                self._feedback_delay
+            )
+        
         # Register our new handler for coordinator updates.
         # This replaces the old listener and ensures automatic cleanup on removal.
         self.async_on_remove(
@@ -1337,7 +1495,8 @@ class SmartClimateEntity(ClimateEntity):
         
         # Log full debug state for troubleshooting
         debug_info = self.debug_state()
-        _LOGGER.debug("SmartClimateEntity added to hass: %s, debug state: %s", self.entity_id, debug_info)
+        entity_id = getattr(self, 'entity_id', self.unique_id)
+        _LOGGER.debug("SmartClimateEntity added to hass: %s, debug state: %s", entity_id, debug_info)
         
         # NEW: Trigger initial temperature calculation after setup
         if self._attr_target_temperature is not None:
@@ -1353,7 +1512,8 @@ class SmartClimateEntity(ClimateEntity):
             except Exception as exc:
                 _LOGGER.warning("Startup temperature update failed: %s", exc)
         
-        _LOGGER.debug("SmartClimateEntity fully initialized: %s", self.entity_id)
+        entity_id = getattr(self, 'entity_id', self.unique_id)
+        _LOGGER.debug("SmartClimateEntity fully initialized: %s", entity_id)
         
     def _sync_target_temperature_from_wrapped(self) -> bool:
         """Sync target temperature from wrapped entity if it has changed.
@@ -1479,20 +1639,32 @@ class SmartClimateEntity(ClimateEntity):
             self.async_write_ha_state()  # Update state even if off
             return
 
-        new_offset = self._coordinator.data.calculated_offset
+        new_reactive_offset = self._coordinator.data.calculated_offset
+        
+        # Get current predictive offset to calculate total offset
+        new_predictive_offset = 0.0
+        if self._forecast_engine:
+            try:
+                new_predictive_offset = self._forecast_engine.predictive_offset
+            except Exception as exc:
+                _LOGGER.warning("Could not get predictive offset for coordinator update: %s", exc)
+
+        new_total_offset = new_reactive_offset + new_predictive_offset
         
         _LOGGER.debug(
-            "Coordinator data: calculated_offset=%.2f°C, last_applied_offset=%.2f°C, "
-            "room_temp=%s, mode_adjustments=%s",
-            new_offset,
-            self._last_offset,
+            "Coordinator data: reactive_offset=%.2f°C, predictive_offset=%.2f°C, total_offset=%.2f°C, "
+            "last_total_offset=%.2f°C, room_temp=%s, mode_adjustments=%s",
+            new_reactive_offset,
+            new_predictive_offset, 
+            new_total_offset,
+            self._last_total_offset,
             self._coordinator.data.room_temp if hasattr(self._coordinator.data, 'room_temp') else "N/A",
             self._coordinator.data.mode_adjustments if hasattr(self._coordinator.data, 'mode_adjustments') else "N/A"
         )
         
-        # Check for startup scenario OR significant offset change OR room temperature deviation
+        # Check for startup scenario OR significant total offset change OR room temperature deviation
         is_startup = getattr(self._coordinator.data, 'is_startup_calculation', False)
-        offset_change = abs(new_offset - self._last_offset)
+        offset_change = abs(new_total_offset - self._last_total_offset)
         
         # Calculate room temperature deviation from target
         room_temp = self._coordinator.data.room_temp if self._coordinator.data else None
@@ -1501,14 +1673,14 @@ class SmartClimateEntity(ClimateEntity):
         
         if is_startup or offset_change > OFFSET_UPDATE_THRESHOLD or room_deviation > TEMP_DEVIATION_THRESHOLD:
             _LOGGER.info(
-                "Triggering AC temperature update: startup=%s, offset_change=%.2f°C, room_deviation=%.2f°C "
-                "(last_offset=%.2f°C, new_offset=%.2f°C, offset_threshold=%.2f°C, "
+                "Triggering AC temperature update: startup=%s, total_offset_change=%.2f°C, room_deviation=%.2f°C "
+                "(last_total_offset=%.2f°C, new_total_offset=%.2f°C, offset_threshold=%.2f°C, "
                 "room_temp=%.1f°C, target_temp=%.1f°C, deviation_threshold=%.1f°C)",
                 is_startup,
                 offset_change,
                 room_deviation,
-                self._last_offset,
-                new_offset,
+                self._last_total_offset,
+                new_total_offset,
                 OFFSET_UPDATE_THRESHOLD,
                 room_temp if room_temp is not None else 0,
                 target_temp if target_temp is not None else 0,
@@ -1529,12 +1701,12 @@ class SmartClimateEntity(ClimateEntity):
                 _LOGGER.warning("Cannot apply automatic adjustment: target_temperature is None")
         else:
             _LOGGER.debug(
-                "No AC update needed: startup=%s, offset_change=%.2f°C (%.2f°C -> %.2f°C) within threshold %.2f°C, "
+                "No AC update needed: startup=%s, total_offset_change=%.2f°C (%.2f°C -> %.2f°C) within threshold %.2f°C, "
                 "room_deviation=%.2f°C (room=%.1f°C, target=%.1f°C) within threshold %.1f°C",
                 is_startup,
                 offset_change,
-                self._last_offset, 
-                new_offset, 
+                self._last_total_offset, 
+                new_total_offset, 
                 OFFSET_UPDATE_THRESHOLD,
                 room_deviation,
                 room_temp if room_temp is not None else 0,
@@ -1562,6 +1734,14 @@ class SmartClimateEntity(ClimateEntity):
         if task_count > 0:
             _LOGGER.debug("Cancelled %d pending feedback tasks", task_count)
         
+        # Stop DelayLearner if active
+        if self._delay_learner is not None:
+            try:
+                self._delay_learner.stop_learning_cycle()
+                _LOGGER.debug("Stopped DelayLearner for %s", self._wrapped_entity_id)
+            except Exception as exc:
+                _LOGGER.warning("Error stopping DelayLearner for %s: %s", self._wrapped_entity_id, exc)
+        
         # Stop listening to sensor updates
         await self._sensor_manager.stop_listening()
         
@@ -1579,6 +1759,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     from .coordinator import SmartClimateCoordinator
     from .integration import validate_configuration, get_unique_id, get_entity_name
     from .const import DOMAIN
+    from .forecast_engine import ForecastEngine
     
     _LOGGER.info("Setting up Smart Climate platform from config entry")
     
@@ -1631,6 +1812,20 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             gradual_adjustment_rate=config.get("gradual_adjustment_rate", 0.5)
         )
         
+        # Conditional ForecastEngine initialization
+        forecast_engine = None
+        if CONF_PREDICTIVE in config:
+            _LOGGER.info("Predictive configuration found. Initializing ForecastEngine.")
+            try:
+                forecast_engine = ForecastEngine(hass, config[CONF_PREDICTIVE])
+                _LOGGER.debug("ForecastEngine created successfully")
+            except Exception as exc:
+                _LOGGER.error("Failed to initialize ForecastEngine: %s", exc)
+                # Continue without predictive features
+                forecast_engine = None
+        else:
+            _LOGGER.debug("No predictive configuration found. Skipping ForecastEngine.")
+        
         _LOGGER.debug("Creating SmartClimateCoordinator with update interval: %s", 
                       config.get("update_interval", 180))
         
@@ -1639,7 +1834,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             config.get("update_interval", 180),
             sensor_manager,
             offset_engine,
-            mode_manager
+            mode_manager,
+            forecast_engine=forecast_engine
         )
         
         # Create entity with all dependencies
@@ -1654,7 +1850,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             sensor_manager,
             mode_manager,
             temperature_controller,
-            coordinator
+            coordinator,
+            forecast_engine=forecast_engine
         )
         
         # Set unique ID and name from integration utilities

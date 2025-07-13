@@ -84,6 +84,16 @@ The UI now includes ALL configuration options:
 | **Enable Learning** | Start with learning system active | False | True/False |
 | **Data Retention Days** | Days of historical data to keep | 60 | 30 - 365 |
 
+#### v1.3.0 Advanced Features
+
+| Setting | Description | Default | Range |
+|---------|-------------|---------|-------|
+| **Adaptive Delay** | Learn optimal feedback timing automatically | False | True/False |
+| **Weather Entity** | Weather integration for forecast predictions | None | Weather entities |
+| **Seasonal Learning** | Adapt to outdoor temperature patterns | Auto* | True/False |
+
+*Auto-enabled when outdoor sensor is configured
+
 #### Understanding Gradual Adjustment Rate
 
 The gradual adjustment rate controls how quickly Smart Climate adjusts the AC's target temperature to reach your desired room temperature. This setting balances comfort with AC efficiency.
@@ -495,8 +505,284 @@ Should:
 2. Turn on the switch to enable learning
 3. Monitor the switch attributes for learning progress
 
+## v1.3.0 Advanced Features Configuration
+
+### Adaptive Feedback Delays
+
+Adaptive delays learn the optimal timing for your specific AC unit's response characteristics.
+
+#### UI Configuration
+Enable "Adaptive Delay" in the UI configuration options.
+
+#### YAML Configuration
+```yaml
+smart_climate:
+  - name: "Living Room AC"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temp
+    adaptive_delay: true  # Enable adaptive delay learning
+```
+
+#### How It Works
+- Monitors temperature changes every 15 seconds after HVAC mode changes
+- Detects stabilization when temperature change < 0.1°C
+- Uses exponential moving average (alpha=0.3) to refine learned delays
+- Applies 5-second safety buffer to all learned delays
+- 10-minute timeout protection prevents endless learning cycles
+
+#### Recommended Usage
+- **Modern inverter ACs**: Usually learn delays of 20-40 seconds
+- **Standard ACs**: Typically learn delays of 45-90 seconds  
+- **Older systems**: May learn delays of 60-180 seconds
+- **Variable load systems**: Benefit most from adaptive timing
+
+### Weather Forecast Integration
+
+Predictive temperature adjustments based on upcoming weather conditions.
+
+#### UI Configuration
+1. Select a weather entity in "Weather Entity" dropdown
+2. Weather strategies are pre-configured but can be customized via YAML
+
+#### Basic YAML Configuration
+```yaml
+smart_climate:
+  - name: "Living Room AC"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temp
+    weather_entity: weather.home  # Your weather integration
+```
+
+#### Advanced Strategy Configuration
+```yaml
+smart_climate:
+  - name: "Living Room AC"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temp
+    weather_entity: weather.home
+    forecast_strategies:
+      - type: "heat_wave"
+        enabled: true
+        trigger_temp: 30.0      # °C threshold for heat wave
+        trigger_duration: 3     # Hours of high temp required
+        adjustment: -1.0        # Temperature adjustment (°C)
+        max_duration: 8         # Maximum strategy duration (hours)
+      - type: "clear_sky"
+        enabled: true
+        conditions: ["sunny", "clear", "clear-night"]
+        adjustment: -0.5        # Thermal optimization adjustment
+        max_duration: 6         # Maximum strategy duration
+      # Custom strategy example
+      - type: "custom_hot_afternoon"
+        enabled: true
+        trigger_temp: 28.0
+        trigger_duration: 2
+        adjustment: -0.8
+        max_duration: 4
+        time_range: [12, 18]    # Active only 12:00-18:00
+```
+
+#### Strategy Types
+
+**Heat Wave Strategy**
+- **Purpose**: Pre-cooling before extreme heat
+- **Trigger**: When forecast shows high temperatures for extended periods
+- **Effect**: Applies negative offset to increase cooling
+- **Best for**: Hot climates, poor insulation, east/west-facing rooms
+
+**Clear Sky Strategy**  
+- **Purpose**: Thermal optimization during clear weather
+- **Trigger**: Clear or sunny conditions in forecast
+- **Effect**: Moderate cooling adjustment for thermal efficiency
+- **Best for**: Buildings with significant solar heat gain
+
+#### Weather Entity Requirements
+- Must be a valid Home Assistant weather integration
+- Should provide hourly forecasts
+- Common integrations: OpenWeatherMap, WeatherFlow, AccuWeather
+- Example entities: `weather.home`, `weather.openweathermap`
+
+### Seasonal Adaptation
+
+Context-aware learning that adapts to outdoor temperature patterns.
+
+#### UI Configuration
+1. Configure an "Outdoor Temperature Sensor"
+2. "Seasonal Learning" will auto-enable (can be disabled if desired)
+
+#### YAML Configuration
+```yaml
+smart_climate:
+  - name: "Living Room AC"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temp
+    outdoor_sensor: sensor.outdoor_temperature  # Required for seasonal adaptation
+    seasonal_learning: true  # Optional: auto-enabled when outdoor sensor present
+```
+
+#### How It Works
+- Groups learned AC patterns by outdoor temperature ranges (5°C buckets)
+- Retains 45 days of seasonal data for pattern matching
+- Uses median calculations for robust predictions
+- Requires minimum 3 samples per temperature bucket
+- Gracefully falls back to general patterns when insufficient seasonal data
+
+#### Outdoor Sensor Options
+
+**Physical Outdoor Sensors**
+```yaml
+outdoor_sensor: sensor.outdoor_temperature_sensor
+```
+
+**Weather Integration Sensors**
+```yaml
+outdoor_sensor: sensor.openweathermap_temperature
+```
+
+**Recommended Placement**
+- Shaded location (north side of building)
+- Away from heat sources (AC units, driveways, etc.)
+- At least 3 feet from walls
+- Protected from direct precipitation
+
+#### Seasonal Benefits
+- **Spring/Fall**: Better accuracy during temperature transitions
+- **Summer**: Adapts to heat load patterns based on outdoor temperature
+- **Winter**: Heating mode optimization (if applicable)
+- **All seasons**: More relevant pattern matching for current conditions
+
+## Advanced Power Monitoring Configuration
+
+### Enhanced Power Thresholds (UI Available)
+
+```yaml
+power_idle_threshold: 50    # Below this = AC idle/off (10-500W)
+power_min_threshold: 150    # Minimum operation power (50-1000W)
+power_max_threshold: 800    # Maximum operation power (100-5000W)
+```
+
+### Threshold Determination
+
+**Finding Your AC's Power Levels:**
+1. Monitor power consumption during different AC states
+2. Note idle power (fans only, no compressor)
+3. Note minimum cooling power (compressor starts)
+4. Note maximum power (compressor at full load)
+
+**Example Power Patterns:**
+
+| AC Type | Idle | Min Operation | Max Operation |
+|---------|------|---------------|---------------|
+| **Mini-Split 12k BTU** | 15-30W | 400-600W | 800-1200W |
+| **Window Unit 8k BTU** | 5-15W | 300-500W | 600-900W |
+| **Central AC 3-ton** | 50-100W | 1500-2500W | 3000-4500W |
+| **Inverter AC Variable** | 20-50W | 200-400W | 1000-2000W |
+
+## Complete Configuration Examples
+
+### Basic Setup (Recommended)
+```yaml
+smart_climate:
+  - name: "Living Room Climate"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temperature
+```
+
+### Full Featured Setup (v1.3.0)
+```yaml
+smart_climate:
+  - name: "Master Bedroom Climate"
+    climate_entity: climate.master_bedroom_ac
+    room_sensor: sensor.master_bedroom_temperature
+    outdoor_sensor: sensor.outdoor_temperature
+    power_sensor: sensor.ac_power_consumption
+    weather_entity: weather.home
+    
+    # Core settings
+    max_offset: 4.0
+    min_temperature: 18
+    max_temperature: 28
+    update_interval: 120
+    
+    # Learning configuration
+    ml_enabled: true
+    enable_learning: true
+    adaptive_delay: true
+    seasonal_learning: true
+    learning_feedback_delay: 60
+    data_retention_days: 90
+    
+    # Mode settings  
+    away_temperature: 27
+    sleep_offset: 1.5
+    boost_offset: -2.5
+    gradual_adjustment_rate: 0.3
+    
+    # Power thresholds
+    power_idle_threshold: 30
+    power_min_threshold: 200  
+    power_max_threshold: 1200
+    
+    # Weather strategies
+    forecast_strategies:
+      - type: "heat_wave"
+        enabled: true
+        trigger_temp: 32.0
+        trigger_duration: 2
+        adjustment: -1.5
+        max_duration: 6
+```
+
+### Multi-Zone Setup
+```yaml
+smart_climate:
+  # Living room with full features
+  - name: "Living Room Climate"
+    climate_entity: climate.living_room_ac
+    room_sensor: sensor.living_room_temperature
+    outdoor_sensor: sensor.outdoor_temperature
+    power_sensor: sensor.living_room_ac_power
+    weather_entity: weather.home
+    adaptive_delay: true
+    seasonal_learning: true
+    
+  # Bedroom with basic setup
+  - name: "Master Bedroom Climate"  
+    climate_entity: climate.master_bedroom_ac
+    room_sensor: sensor.master_bedroom_temperature
+    # Uses same outdoor sensor automatically
+    gradual_adjustment_rate: 0.2  # Gentler for sleeping
+    sleep_offset: 2.0
+    
+  # Guest room minimal setup
+  - name: "Guest Room Climate"
+    climate_entity: climate.guest_room_ac
+    room_sensor: sensor.guest_room_temperature
+    away_temperature: 28  # Higher for unoccupied room
+```
+
+## Troubleshooting Configuration
+
+### Common Issues
+
+**Weather Integration Not Working**
+- Verify weather entity provides forecasts: Developer Tools → States → search for your weather entity
+- Check logs for forecast fetch errors
+- Ensure weather integration is properly configured
+
+**Seasonal Learning Not Active**
+- Verify outdoor sensor is providing numeric temperature values
+- Check that outdoor sensor updates regularly (at least hourly)
+- Confirm seasonal_learning is not explicitly disabled
+
+**Adaptive Delays Not Learning**
+- Enable debug logging to monitor learning cycles
+- Verify room sensor updates frequently enough (every 1-2 minutes)
+- Check that HVAC mode changes are triggering learning cycles
+
 ### Next Steps
 
 - [Learn how to use your Smart Climate device](usage.md)
-- [Understand the learning system](learning-system.md)
+- [Understand the learning system](learning-system.md) 
+- [Explore all features in detail](features.md)
 - [Troubleshoot any issues](troubleshooting.md)
