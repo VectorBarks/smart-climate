@@ -666,6 +666,52 @@ class LightweightOffsetLearner:
         
         return max(0.0, min(1.0, confidence))
     
+    def _calculate_weighted_confidence(self) -> float:
+        """Calculate confidence with accuracy-focused weighting.
+        
+        Implements Issue #41 fix: weight accuracy much more heavily than other factors.
+        Accuracy gets 70% weight, sample count 20%, diversity 10%.
+        
+        Returns:
+            Confidence factor from 0.0 to 1.0 with accuracy focus
+        """
+        # Weight accuracy much more heavily
+        accuracy_weight = 0.7
+        sample_weight = 0.2  
+        diversity_weight = 0.1
+        
+        # Get factors
+        accuracy_factor = self._calculate_prediction_accuracy()
+        sample_confidence = self._calculate_sample_count_confidence()
+        diversity_factor = self._calculate_condition_diversity_confidence()
+        
+        # Weighted calculation
+        confidence = (
+            accuracy_weight * accuracy_factor +
+            sample_weight * sample_confidence +
+            diversity_weight * diversity_factor
+        )
+        
+        # Penalty for poor accuracy - double penalty
+        if accuracy_factor < 0.5:
+            confidence *= accuracy_factor  # Double penalty
+            
+        # Never report >80% confidence with <70% accuracy
+        if accuracy_factor < 0.7 and confidence > 0.8:
+            confidence = 0.8
+            
+        # Ensure bounds
+        confidence = max(0.0, min(1.0, confidence))
+        
+        _LOGGER.debug(
+            "Weighted confidence: accuracy=%.3f(70%%), sample=%.3f(20%%), diversity=%.3f(10%%), raw=%.3f, final=%.3f",
+            accuracy_factor, sample_confidence, diversity_factor, 
+            accuracy_weight * accuracy_factor + sample_weight * sample_confidence + diversity_weight * diversity_factor,
+            confidence
+        )
+        
+        return confidence
+    
     def get_learning_stats(self) -> LearningStats:
         """Get statistics about the learning process.
         
@@ -675,57 +721,15 @@ class LightweightOffsetLearner:
         # Count patterns learned (hours with data)
         patterns_learned = sum(1 for count in self._time_pattern_counts if count > 0)
         
-        # Calculate average accuracy using multiple factors
+        # Calculate average accuracy using accuracy-focused weighted approach
         if self._sample_count == 0:
             avg_accuracy = 0.0
         else:
-            # Calculate confidence factors
-            sample_confidence = self._calculate_sample_count_confidence()
-            diversity_confidence = self._calculate_condition_diversity_confidence()
-            time_confidence = self._calculate_time_coverage_confidence()
-            prediction_confidence = self._calculate_prediction_accuracy()
-            
-            # Weighted combination of factors
-            # Sample count is most important early on, prediction accuracy matters more later
-            if self._sample_count < 20:
-                # Early phase: emphasize sample count and diversity
-                weights = {
-                    "sample": 0.4,
-                    "diversity": 0.3,
-                    "time": 0.2,
-                    "prediction": 0.1
-                }
-            elif self._sample_count < 50:
-                # Medium phase: balanced weights
-                weights = {
-                    "sample": 0.25,
-                    "diversity": 0.25,
-                    "time": 0.25,
-                    "prediction": 0.25
-                }
-            else:
-                # Mature phase: emphasize prediction accuracy
-                weights = {
-                    "sample": 0.15,
-                    "diversity": 0.2,
-                    "time": 0.25,
-                    "prediction": 0.4
-                }
-            
-            # Calculate weighted average
-            avg_accuracy = (
-                weights["sample"] * sample_confidence +
-                weights["diversity"] * diversity_confidence +
-                weights["time"] * time_confidence +
-                weights["prediction"] * prediction_confidence
-            )
-            
-            # Ensure bounds
-            avg_accuracy = max(0.0, min(1.0, avg_accuracy))
+            avg_accuracy = self._calculate_weighted_confidence()
             
             _LOGGER.debug(
-                "Confidence calculation: sample=%.3f, diversity=%.3f, time=%.3f, prediction=%.3f, overall=%.3f",
-                sample_confidence, diversity_confidence, time_confidence, prediction_confidence, avg_accuracy
+                "Weighted confidence calculation complete: overall=%.3f",
+                avg_accuracy
             )
         
         # Get last sample timestamp from enhanced samples
