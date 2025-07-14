@@ -24,6 +24,7 @@ class OffsetInput:
     power_consumption: Optional[float]
     time_of_day: time
     day_of_week: int
+    hvac_mode: Optional[str] = None
 
 
 @dataclass

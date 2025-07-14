@@ -1003,6 +1003,16 @@ class OffsetEngine:
             )
             return
         
+        # Skip recording if HVAC mode is not suitable for learning (only collect data when AC is actively heating/cooling)
+        if hasattr(input_data, 'hvac_mode') and input_data.hvac_mode is not None:
+            from .const import LEARNING_HVAC_MODES
+            if input_data.hvac_mode not in LEARNING_HVAC_MODES:
+                _LOGGER.debug(
+                    "Skipping learning sample in %s mode (predicted=%.2f°C, actual=%.2f°C)",
+                    input_data.hvac_mode, predicted_offset, actual_offset
+                )
+                return
+        
         # Validate feedback data before training to prevent data poisoning
         current_timestamp = time.time()
         if not self._validate_feedback(actual_offset, input_data.room_temp, current_timestamp):
