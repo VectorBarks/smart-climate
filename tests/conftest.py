@@ -47,6 +47,9 @@ class MockHVACMode:
     COOL = "cool"
     HEAT = "heat"
     AUTO = "auto"
+    FAN_ONLY = "fan_only"
+    DRY = "dry"
+    HEAT_COOL = "heat_cool"
 
 class MockHVACAction:
     OFF = "off"

@@ -81,6 +81,13 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             # Get mode adjustments
             mode_adjustments = self._mode_manager.get_adjustments()
             
+            # Get HVAC mode from wrapped entity
+            hvac_mode = None
+            if hasattr(self, '_wrapped_entity_id') and self._wrapped_entity_id:
+                wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+                if wrapped_state:
+                    hvac_mode = wrapped_state.state
+            
             # Calculate offset if we have room temperature
             calculated_offset = 0.0
             if room_temp is not None:
@@ -93,7 +100,8 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                     mode=self._mode_manager.current_mode,
                     power_consumption=power,
                     time_of_day=now.time(),
-                    day_of_week=now.weekday()
+                    day_of_week=now.weekday(),
+                    hvac_mode=hvac_mode
                 )
                 
                 offset_result = self._offset_engine.calculate_offset(offset_input)

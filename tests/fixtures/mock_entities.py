@@ -183,12 +183,22 @@ def create_mock_mode_manager():
     return mock_mode_manager
 
 
-def create_mock_temperature_controller():
+def create_mock_temperature_controller(hass=None):
     """Create a mock TemperatureController."""
     mock_controller = Mock()
     mock_controller.apply_offset_and_limits.return_value = 22.0
     mock_controller.apply_gradual_adjustment.return_value = 1.0
-    mock_controller.send_temperature_command = AsyncMock()
+    
+    # Make send_temperature_command actually call hass.services.async_call if hass is provided
+    async def mock_send_temperature_command(entity_id, temperature):
+        if hass and hasattr(hass, 'services') and hasattr(hass.services, 'async_call'):
+            await hass.services.async_call(
+                domain="climate",
+                service="set_temperature", 
+                service_data={"entity_id": entity_id, "temperature": temperature}
+            )
+    
+    mock_controller.send_temperature_command = mock_send_temperature_command
     return mock_controller
 
 

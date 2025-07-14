@@ -125,3 +125,9 @@ DEFAULT_VALIDATION_OFFSET_MAX = 10.0   # degrees C/F
 DEFAULT_VALIDATION_TEMP_MIN = 10.0     # degrees C/F (reasonable indoor range)
 DEFAULT_VALIDATION_TEMP_MAX = 40.0     # degrees C/F (reasonable indoor range)
 DEFAULT_VALIDATION_RATE_LIMIT_SECONDS = 60  # minimum seconds between samples
+
+# HVAC modes that allow temperature adjustments
+ACTIVE_HVAC_MODES = ["cool", "heat", "heat_cool", "dry", "auto"]
+
+# HVAC modes that allow learning data collection (subset of ACTIVE_HVAC_MODES)
+LEARNING_HVAC_MODES = ["cool", "heat", "heat_cool", "auto"]

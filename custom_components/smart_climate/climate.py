@@ -18,7 +18,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
 from .config_helpers import build_predictive_config
@@ -363,6 +363,11 @@ class SmartClimateEntity(ClimateEntity):
                 exc
             )
             return [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT, HVACMode.AUTO]
+    
+    def _is_hvac_mode_active(self) -> bool:
+        """Check if current HVAC mode allows temperature adjustments."""
+        current_mode = self.hvac_mode
+        return current_mode in ACTIVE_HVAC_MODES
     
     @property
     def supported_features(self) -> int:
@@ -1467,6 +1472,15 @@ class SmartClimateEntity(ClimateEntity):
             )
             return
         
+        # Check if current HVAC mode allows temperature adjustments
+        if not self._is_hvac_mode_active():
+            current_mode = self.hvac_mode
+            _LOGGER.debug(
+                "Skipping temperature adjustment in %s HVAC mode",
+                current_mode
+            )
+            return
+        
         try:
             # Get current sensor readings
             room_temp = self._sensor_manager.get_room_temperature()
@@ -1528,7 +1542,8 @@ class SmartClimateEntity(ClimateEntity):
                 mode=self._mode_manager.current_mode,
                 power_consumption=power_consumption,
                 time_of_day=now.time(),
-                day_of_week=now.weekday()
+                day_of_week=now.weekday(),
+                hvac_mode=self.hvac_mode
             )
             
             _LOGGER.debug(

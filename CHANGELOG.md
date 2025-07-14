@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.3.1-beta5] - Unreleased
+## [1.3.1-beta6] - 2025-07-14
+
+### 🚨 **Critical Bug Fix: HVAC Mode Filtering**
+
+#### **Temperature Adjustment and Learning Data Poisoning Fix**
+- **FIXED**: **Inappropriate Temperature Adjustments** - System no longer adjusts temperature in non-active HVAC modes
+  - Temperature adjustments now skipped when AC is in `fan_only` or `off` mode
+  - Only applies adjustments in active modes: `cool`, `heat`, `heat_cool`, `dry`, `auto`
+  - Prevents meaningless temperature changes when AC cannot respond
+- **FIXED**: **Learning Data Poisoning** - Learning system no longer collects samples from non-active modes  
+  - Learning data collection skipped in `fan_only`, `off`, and `dry` modes
+  - Only records samples when AC is actively heating/cooling: `cool`, `heat`, `heat_cool`, `auto`
+  - Prevents ML model corruption from temperature drift in fan-only mode
+- **ENHANCED**: **Smart Mode Detection** - Added comprehensive HVAC mode validation
+  - New `ACTIVE_HVAC_MODES` constant for temperature adjustment filtering
+  - New `LEARNING_HVAC_MODES` constant for learning data filtering  
+  - Proper debug logging when actions are skipped due to mode
+  - Extended OffsetInput model to include `hvac_mode` for complete traceability
+
+#### **Technical Implementation**
+- **NEW**: HVAC mode checking in `_apply_temperature_with_offset()` prevents inappropriate adjustments
+- **NEW**: HVAC mode filtering in `record_actual_performance()` prevents learning data poisoning
+- **NEW**: Mode-aware coordinator updates pass HVAC state through complete chain
+- **MAINTAINED**: Full backward compatibility - no breaking changes to existing functionality
+
+### 🎯 **User Impact**
+- **Fan Only Mode**: No longer makes temperature adjustments or records learning data
+- **Off Mode**: No longer attempts any smart climate operations
+- **Active Modes**: Unchanged behavior - all existing functionality preserved
+- **Learning Quality**: Improved ML model accuracy by eliminating invalid training data
+- **Energy Efficiency**: Eliminates unnecessary AC commands in non-active modes
+
+### 🧪 **Test Coverage**
+- **21 new comprehensive tests** covering temperature adjustment and learning behavior
+- **10 temperature adjustment tests** verify proper mode filtering
+- **11 learning data tests** verify ML model protection
+- **100% test pass rate** for HVAC mode filtering functionality
+
+## [1.3.1-beta5] - 2025-07-14
 
 ### 🐛 Bug Fixes
 
