@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1-beta5] - Unreleased
+
+### 🐛 Bug Fixes
+
+#### **Weather Configuration Structure Fix**
+- **FIXED**: **Weather Integration Shows Disabled** - Resolved configuration structure mismatch
+  - Configuration flow saves weather settings as flat keys but code expects nested `predictive` dictionary
+  - Added automatic translation layer to build expected structure at runtime
+  - Weather forecast features now work properly for all users who configured via UI
+  - No user action required - weather integration activates automatically after update
+- **TECHNICAL**: **Configuration Translation** - Seamless backward compatibility
+  - Translates flat keys (`forecast_enabled`, `weather_entity`) to nested structure
+  - Builds complete `predictive` dictionary with weather entity and strategies
+  - Preserves all user-configured settings without data loss
+  - Maintains compatibility with both old flat and new nested structures
+
+### 🎯 **User Impact**
+- **Immediate Fix**: Weather forecast features start working without reconfiguration
+- **Zero User Action**: Automatic structure translation handles everything
+- **Dashboard Ready**: "Weather Integration: Disabled" message disappears
+- **Full Functionality**: All weather strategies (heat wave, clear sky) activate properly
+
 ## [1.3.1-beta4] - 2025-07-13
 
 ### 🚨 **Critical Bug Fix Release**
