@@ -735,6 +735,30 @@ automation:
 
 ### Weather Forecast Integration Issues
 
+#### Weather Integration Shows Disabled Despite Configuration
+
+**Symptoms**: Dashboard shows "Weather Integration: Disabled" even though weather entity is properly configured
+
+**Root Cause**: Configuration structure mismatch - the configuration flow saves weather settings as flat keys (e.g., `forecast_enabled: true`, `weather_entity: weather.home`) but the code expects them to be nested under a `predictive` dictionary structure.
+
+**This Issue Affects**: Users who configured weather integration through the UI in versions v1.3.0 through v1.3.1-beta4
+
+**Temporary Workaround** (Until v1.3.1-beta5):
+Currently, there is no user-accessible workaround. The system will automatically build the correct structure in the upcoming v1.3.1-beta5 release.
+
+**Fix Coming in v1.3.1-beta5**:
+The fix will automatically translate the flat configuration structure into the nested format expected by the code at runtime. No user action will be required - the weather integration will start working immediately after updating to v1.3.1-beta5.
+
+**How to Verify the Issue**:
+1. Check your entity attributes in Developer Tools → States
+2. Look for your Smart Climate entity
+3. If you see `forecast_active_strategy: null` despite having configured weather, you're affected
+
+**Technical Details**:
+- Config saves: `forecast_enabled: true`, `weather_entity: weather.home`, etc.
+- Code expects: `predictive: {enabled: true, weather_entity: weather.home, strategies: [...]}`
+- The ForecastEngine never initializes because it can't find the expected nested structure
+
 #### Weather Predictions Not Working
 
 **Symptoms**: No predictive offsets applied, weather strategies inactive

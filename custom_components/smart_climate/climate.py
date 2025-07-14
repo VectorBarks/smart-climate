@@ -18,9 +18,10 @@ from homeassistant.helpers.storage import Store
 from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
+from .config_helpers import build_predictive_config
 
 if TYPE_CHECKING:
     from .offset_engine import OffsetEngine
@@ -2885,17 +2886,34 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
         
         # Conditional ForecastEngine initialization
         forecast_engine = None
+        
+        # First check for legacy CONF_PREDICTIVE format
         if CONF_PREDICTIVE in config:
-            _LOGGER.info("Predictive configuration found. Initializing ForecastEngine.")
+            _LOGGER.info("Legacy predictive configuration found. Initializing ForecastEngine.")
             try:
                 forecast_engine = ForecastEngine(hass, config[CONF_PREDICTIVE])
-                _LOGGER.debug("ForecastEngine created successfully")
+                _LOGGER.debug("ForecastEngine created successfully from legacy config")
             except Exception as exc:
                 _LOGGER.error("Failed to initialize ForecastEngine: %s", exc)
                 # Continue without predictive features
                 forecast_engine = None
+        # Then check for flat config format
+        elif config.get(CONF_FORECAST_ENABLED, False):
+            _LOGGER.info("Weather forecast enabled. Building predictive configuration.")
+            predictive_config = build_predictive_config(config)
+            
+            if predictive_config:
+                try:
+                    forecast_engine = ForecastEngine(hass, predictive_config)
+                    _LOGGER.debug("ForecastEngine created successfully from flat config")
+                except Exception as exc:
+                    _LOGGER.error("Failed to initialize ForecastEngine: %s", exc)
+                    # Continue without predictive features
+                    forecast_engine = None
+            else:
+                _LOGGER.warning("Could not build predictive configuration despite forecast being enabled")
         else:
-            _LOGGER.debug("No predictive configuration found. Skipping ForecastEngine.")
+            _LOGGER.debug("Weather forecast disabled. Skipping ForecastEngine.")
         
         _LOGGER.debug("Creating SmartClimateCoordinator with update interval: %s", 
                       config.get("update_interval", 180))
