@@ -298,6 +298,47 @@ class DelayLearner:
                 return None
         return None
     
+    def is_temperature_stable(self) -> bool:
+        """Check if temperature is currently stable.
+        
+        Used by dashboard to show temperature stability status.
+        
+        Returns:
+            True if temperature has stabilized, False otherwise
+        """
+        # Not in learning cycle means we don't know stability
+        if not self._cancel_listener:
+            return False
+        
+        # Need at least 2 readings to determine stability
+        if not self._temp_history or len(self._temp_history) < 2:
+            return False
+        
+        # Check if recent temperature changes are below threshold
+        if len(self._temp_history) >= 2:
+            # Get the last few temperature readings
+            recent_temps = [temp for _, temp in self._temp_history[-4:]]
+            if len(recent_temps) >= 2:
+                # Calculate max temperature variation in recent readings
+                max_temp = max(recent_temps)
+                min_temp = min(recent_temps)
+                temp_variation = max_temp - min_temp
+                
+                # Consider stable if variation is below threshold
+                return temp_variation < STABILITY_THRESHOLD
+        
+        return False
+    
+    def get_learned_delay(self) -> int:
+        """Get the learned delay in seconds.
+        
+        Used by dashboard to display learned delay value.
+        
+        Returns:
+            Learned delay in seconds, or 0 if not yet learned
+        """
+        return self._learned_delay_secs if self._learned_delay_secs is not None else 0
+    
     def _async_check_stability(self, now: datetime) -> None:
         """Check if temperature has stabilized.
         

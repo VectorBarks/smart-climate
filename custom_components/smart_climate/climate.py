@@ -2942,6 +2942,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             forecast_engine=forecast_engine
         )
         
+        # Wire the forecast engine to the offset engine for dashboard data
+        offset_engine.set_forecast_engine(forecast_engine)
+        
         # Create entity with all dependencies
         _LOGGER.debug("Creating SmartClimateEntity with wrapped entity: %s", config["climate_entity"])
         

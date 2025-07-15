@@ -9,10 +9,12 @@ from homeassistant.components.sensor import (
     SensorStateClass,
     SensorDeviceClass,
 )
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     UnitOfTemperature,
+    UnitOfTime,
     EntityCategory,
 )
 from homeassistant.core import HomeAssistant
@@ -20,6 +22,39 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
+from .sensor_algorithm import (
+    CorrelationCoefficientSensor,
+    PredictionVarianceSensor,
+    ModelEntropySensor,
+    LearningRateSensor,
+    MomentumFactorSensor,
+    RegularizationStrengthSensor,
+    MeanSquaredErrorSensor,
+    MeanAbsoluteErrorSensor,
+    RSquaredSensor,
+)
+from .sensor_performance import (
+    EMACoeffficientSensor,
+    PredictionLatencySensor,
+    EnergyEfficiencySensor,
+    SensorAvailabilitySensor,
+    TemperatureStabilitySensor as PerformanceTemperatureStabilitySensor,
+    LearnedDelaySensor as PerformanceLearnedDelaySensor,
+)
+from .sensor_ac_learning import (
+    TemperatureWindowSensor,
+    PowerCorrelationSensor,
+    HysteresisCyclesSensor,
+    ReactiveOffsetSensor,
+    PredictiveOffsetSensor,
+)
+from .sensor_system_health import (
+    MemoryUsageSensor,
+    PersistenceLatencySensor,
+    SamplesPerDaySensor,
+    ConvergenceTrendSensor,
+    OutlierDetectionSensor,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,13 +79,53 @@ async def async_setup_entry(
     # Create sensors for each climate entity
     sensors = []
     for entity_id, coordinator in coordinators.items():
-        # Create all 5 sensor types for each climate entity
+        # Create all sensor types for each climate entity
         sensors.extend([
+            # === LEGACY SENSORS (5) ===
             OffsetCurrentSensor(coordinator, entity_id, config_entry),
             LearningProgressSensor(coordinator, entity_id, config_entry),
             AccuracyCurrentSensor(coordinator, entity_id, config_entry),
             CalibrationStatusSensor(coordinator, entity_id, config_entry),
             HysteresisStateSensor(coordinator, entity_id, config_entry),
+            
+            # === EXISTING SENSORS (4) ===
+            AdaptiveDelaySensor(coordinator, entity_id, config_entry),
+            WeatherForecastSensor(coordinator, entity_id, config_entry),
+            SeasonalAdaptationSensor(coordinator, entity_id, config_entry),
+            SeasonalContributionSensor(coordinator, entity_id, config_entry),
+            
+            # === ALGORITHM METRICS (9) ===
+            CorrelationCoefficientSensor(coordinator, entity_id, config_entry),
+            PredictionVarianceSensor(coordinator, entity_id, config_entry),
+            ModelEntropySensor(coordinator, entity_id, config_entry),
+            LearningRateSensor(coordinator, entity_id, config_entry),
+            MomentumFactorSensor(coordinator, entity_id, config_entry),
+            RegularizationStrengthSensor(coordinator, entity_id, config_entry),
+            MeanSquaredErrorSensor(coordinator, entity_id, config_entry),
+            MeanAbsoluteErrorSensor(coordinator, entity_id, config_entry),
+            RSquaredSensor(coordinator, entity_id, config_entry),
+            
+            # === PERFORMANCE SENSORS (6) ===
+            EMACoeffficientSensor(coordinator, entity_id, config_entry),
+            PredictionLatencySensor(coordinator, entity_id, config_entry),
+            EnergyEfficiencySensor(coordinator, entity_id, config_entry),
+            SensorAvailabilitySensor(coordinator, entity_id, config_entry),
+            PerformanceTemperatureStabilitySensor(coordinator, entity_id, config_entry),
+            PerformanceLearnedDelaySensor(coordinator, entity_id, config_entry),
+            
+            # === AC LEARNING SENSORS (5) ===
+            TemperatureWindowSensor(coordinator, entity_id, config_entry),
+            PowerCorrelationSensor(coordinator, entity_id, config_entry),
+            HysteresisCyclesSensor(coordinator, entity_id, config_entry),
+            ReactiveOffsetSensor(coordinator, entity_id, config_entry),
+            PredictiveOffsetSensor(coordinator, entity_id, config_entry),
+            
+            # === SYSTEM HEALTH SENSORS (5) ===
+            MemoryUsageSensor(coordinator, entity_id, config_entry),
+            PersistenceLatencySensor(coordinator, entity_id, config_entry),
+            SamplesPerDaySensor(coordinator, entity_id, config_entry),
+            ConvergenceTrendSensor(coordinator, entity_id, config_entry),
+            OutlierDetectionSensor(coordinator, entity_id, config_entry),
         ])
     
     async_add_entities(sensors)
@@ -369,3 +444,131 @@ class HysteresisStateSensor(SmartClimateDashboardSensor):
                 "stop_samples": 0,
                 "ready": False,
             }
+
+class AdaptiveDelaySensor(SmartClimateDashboardSensor):
+    """Sensor for adaptive delay value."""
+    
+    def __init__(
+        self,
+        coordinator,
+        base_entity_id: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize adaptive delay sensor."""
+        super().__init__(coordinator, base_entity_id, "adaptive_delay", config_entry)
+        self._attr_name = "Adaptive Delay"
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 1
+        self._attr_icon = "mdi:camera-timer"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the adaptive delay value."""
+        if not self.coordinator.data:
+            return None
+        
+        try:
+            delay_data = self.coordinator.data.get("delay_data", {})
+            return delay_data.get("adaptive_delay")
+        except (AttributeError, TypeError):
+            return None
+
+
+class WeatherForecastSensor(SmartClimateDashboardSensor, BinarySensorEntity):
+    """Binary sensor for weather forecast status."""
+    
+    def __init__(
+        self,
+        coordinator,
+        base_entity_id: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize weather forecast sensor."""
+        super().__init__(coordinator, base_entity_id, "weather_forecast", config_entry)
+        self._attr_name = "Weather Forecast"
+        self._attr_icon = "mdi:weather-partly-cloudy"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def is_on(self) -> Optional[bool]:
+        """Return true if weather forecast is enabled."""
+        if not self.coordinator.data:
+            return None
+        
+        try:
+            return self.coordinator.data.get("weather_forecast")
+        except (AttributeError, TypeError):
+            return None
+    
+    @property
+    def native_value(self) -> None:
+        """Binary sensors don't have native_value."""
+        return None
+
+
+class SeasonalAdaptationSensor(SmartClimateDashboardSensor, BinarySensorEntity):
+    """Binary sensor for seasonal adaptation status."""
+    
+    def __init__(
+        self,
+        coordinator,
+        base_entity_id: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize seasonal adaptation sensor."""
+        super().__init__(coordinator, base_entity_id, "seasonal_adaptation", config_entry)
+        self._attr_name = "Seasonal Adaptation"
+        self._attr_icon = "mdi:sun-snowflake"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def is_on(self) -> Optional[bool]:
+        """Return true if seasonal adaptation is enabled."""
+        if not self.coordinator.data:
+            return None
+        
+        try:
+            seasonal_data = self.coordinator.data.get("seasonal_data", {})
+            return seasonal_data.get("enabled")
+        except (AttributeError, TypeError):
+            return None
+    
+    @property
+    def native_value(self) -> None:
+        """Binary sensors don't have native_value."""
+        return None
+
+
+class SeasonalContributionSensor(SmartClimateDashboardSensor):
+    """Sensor for seasonal contribution percentage."""
+    
+    def __init__(
+        self,
+        coordinator,
+        base_entity_id: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize seasonal contribution sensor."""
+        super().__init__(coordinator, base_entity_id, "seasonal_contribution", config_entry)
+        self._attr_name = "Seasonal Contribution"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 1
+        self._attr_icon = "mdi:sun-snowflake"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the seasonal contribution percentage."""
+        if not self.coordinator.data:
+            return None
+        
+        try:
+            seasonal_data = self.coordinator.data.get("seasonal_data", {})
+            return seasonal_data.get("contribution")
+        except (AttributeError, TypeError):
+            return None
+

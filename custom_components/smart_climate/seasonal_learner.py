@@ -291,3 +291,119 @@ class SeasonalHysteresisLearner:
                 "Error saving seasonal patterns to storage: %s",
                 exc
             )
+    
+    def get_pattern_count(self) -> int:
+        """Get the number of learned patterns.
+        
+        Returns:
+            Number of learned patterns (>= 0)
+        """
+        if not hasattr(self, '_patterns') or self._patterns is None:
+            return 0
+        return len(self._patterns)
+    
+    def get_outdoor_temp_bucket(self) -> Optional[str]:
+        """Get the current outdoor temperature bucket.
+        
+        Returns:
+            Bucket string in format "X-Y°C" or None if unavailable
+        """
+        try:
+            current_temp = self._get_current_outdoor_temp()
+            if current_temp is None:
+                return None
+            
+            # Calculate bucket boundaries (5°C buckets)
+            bucket_size = 5.0
+            lower_bound = int(current_temp // bucket_size) * int(bucket_size)
+            upper_bound = lower_bound + int(bucket_size)
+            
+            return f"{lower_bound}-{upper_bound}°C"
+            
+        except Exception as exc:
+            _LOGGER.warning(
+                "Error calculating outdoor temperature bucket: %s",
+                exc
+            )
+            return None
+    
+    def get_seasonal_accuracy(self) -> float:
+        """Calculate the accuracy of seasonal predictions.
+        
+        Returns:
+            Accuracy percentage (0-100)
+        """
+        try:
+            if not hasattr(self, '_patterns') or not self._patterns:
+                return 0.0
+            
+            # Need at least minimum samples
+            if len(self._patterns) < self._min_samples_for_bucket:
+                return 0.0
+            
+            current_temp = self._get_current_outdoor_temp()
+            if current_temp is None:
+                return 0.0
+            
+            # Find relevant patterns
+            relevant_patterns = self._find_patterns_by_outdoor_temp(current_temp, 2.5)
+            if len(relevant_patterns) < self._min_samples_for_bucket:
+                relevant_patterns = self._find_patterns_by_outdoor_temp(current_temp, 5.0)
+            
+            if len(relevant_patterns) < self._min_samples_for_bucket:
+                # Not enough patterns for meaningful accuracy
+                return 0.0
+            
+            # Calculate median and deviations
+            deltas = [pattern.hysteresis_delta for pattern in relevant_patterns]
+            if not deltas:
+                return 0.0
+            
+            median_delta = statistics.median(deltas)
+            
+            # Calculate average deviation from median
+            deviations = [abs(delta - median_delta) for delta in deltas]
+            avg_deviation = sum(deviations) / len(deviations)
+            
+            # Convert to accuracy percentage (lower deviation = higher accuracy)
+            # Assume 1°C deviation = 100% error
+            accuracy = max(0.0, 100.0 - (avg_deviation * 100.0))
+            
+            return round(accuracy, 1)
+            
+        except Exception as exc:
+            _LOGGER.warning(
+                "Error calculating seasonal accuracy: %s",
+                exc
+            )
+            return 0.0
+    
+    def get_seasonal_contribution(self) -> float:
+        """Get the contribution percentage of seasonal learning.
+        
+        Returns:
+            Contribution percentage (0-100)
+        """
+        try:
+            # Base contribution on pattern count and accuracy
+            pattern_count = self.get_pattern_count()
+            if pattern_count == 0:
+                return 0.0
+            
+            accuracy = self.get_seasonal_accuracy()
+            
+            # Scale contribution based on pattern count
+            # Full contribution at 20+ patterns
+            pattern_factor = min(1.0, pattern_count / 20.0)
+            
+            # Contribution is accuracy scaled by pattern factor
+            contribution = accuracy * pattern_factor
+            
+            return round(contribution, 1)
+            
+        except Exception as exc:
+            _LOGGER.warning(
+                "Error calculating seasonal contribution: %s",
+                exc
+            )
+            return 0.0

@@ -2,13 +2,24 @@
 
 import logging
 import time
-from typing import Optional, Dict, List, Tuple, Callable, TYPE_CHECKING, Literal
+from typing import Optional, Dict, List, Tuple, Callable, TYPE_CHECKING, Literal, Any
 import statistics
 from datetime import datetime
 from collections import deque
+import sys
 
 from .models import OffsetInput, OffsetResult
 from .lightweight_learner import LightweightOffsetLearner as EnhancedLightweightOffsetLearner
+from .dto import (
+    DashboardData,
+    SeasonalData,
+    DelayData,
+    ACBehaviorData,
+    PerformanceData,
+    SystemHealthData,
+    DiagnosticsData,
+    AlgorithmMetrics,
+)
 from .const import (
     DEFAULT_POWER_IDLE_THRESHOLD,
     DEFAULT_POWER_MIN_THRESHOLD,
@@ -31,11 +42,19 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from .data_store import SmartClimateDataStore
     from .seasonal_learner import SeasonalHysteresisLearner
+    from .delay_learner import DelayLearner
+    from .forecast_engine import ForecastEngine
 
 _LOGGER = logging.getLogger(__name__)
 
 # Calibration phase threshold - configurable in the future
 MIN_SAMPLES_FOR_ACTIVE_CONTROL = 10  # Exit calibration after this many samples
+
+# Cache duration constants for dashboard data
+CACHE_DUR_MEMORY = 300      # 5 minutes for memory usage
+CACHE_DUR_TRENDS = 1800     # 30 minutes for long-term trends  
+CACHE_DUR_PERF = 60         # 1 minute for general performance
+CACHE_DUR_PERSISTENCE = 3600 # 1 hour (relies on event invalidation)
 
 # HysteresisState defines the possible states of the AC cycle.
 HysteresisState = Literal[
@@ -186,16 +205,25 @@ class HysteresisLearner:
 class OffsetEngine:
     """Calculates temperature offset for accurate climate control."""
     
-    def __init__(self, config: dict, seasonal_learner: Optional["SeasonalHysteresisLearner"] = None):
+    def __init__(
+        self, 
+        config: dict, 
+        seasonal_learner: Optional["SeasonalHysteresisLearner"] = None,
+        delay_learner: Optional["DelayLearner"] = None
+    ):
         """Initialize the offset engine with configuration.
         
         Args:
             config: Configuration dictionary
             seasonal_learner: Optional seasonal learner for enhanced predictions
+            delay_learner: Optional delay learner for adaptive timing
         """
         self._max_offset = config.get("max_offset", 5.0)
         self._ml_enabled = config.get("ml_enabled", True)
         self._ml_model = None  # Loaded when available
+        
+        # ForecastEngine reference (set later via set_forecast_engine)
+        self._forecast_engine = None
         
         # Power thresholds configuration
         self._power_idle_threshold = config.get("power_idle_threshold", DEFAULT_POWER_IDLE_THRESHOLD)
@@ -227,6 +255,14 @@ class OffsetEngine:
         self._seasonal_learner: Optional["SeasonalHysteresisLearner"] = seasonal_learner
         self._seasonal_features_enabled: bool = seasonal_learner is not None
         
+        # Delay learning integration
+        self._delay_learner: Optional["DelayLearner"] = delay_learner
+        
+        # Dashboard cache for performance
+        self._dashboard_cache: Dict[str, Any] = {}
+        self._cache_hits = 0
+        self._cache_misses = 0
+        
         # Save configuration and statistics
         self._save_interval = config.get(CONF_SAVE_INTERVAL, DEFAULT_SAVE_INTERVAL)
         self._save_count = 0
@@ -247,13 +283,15 @@ class OffsetEngine:
         
         _LOGGER.debug(
             "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s, "
-            "hysteresis_enabled=%s, seasonal_enabled=%s, power_thresholds(idle=%s, min=%s, max=%s), save_interval=%s, "
+            "hysteresis_enabled=%s, seasonal_enabled=%s, delay_learning=%s, "
+            "power_thresholds(idle=%s, min=%s, max=%s), save_interval=%s, "
             "validation_bounds(offset=%s to %s, temp=%s to %s, rate_limit=%ss)",
             self._max_offset,
             self._ml_enabled,
             self._enable_learning,
             self._hysteresis_enabled,
             self._seasonal_features_enabled,
+            delay_learner is not None,
             self._power_idle_threshold,
             self._power_min_threshold,
             self._power_max_threshold,
@@ -1363,6 +1401,16 @@ class OffsetEngine:
         self._data_store = data_store
         _LOGGER.debug("Data store configured for OffsetEngine")
     
+    def set_forecast_engine(self, forecast_engine: Optional["ForecastEngine"]) -> None:
+        """Set the forecast engine for weather-based predictions.
+        
+        Args:
+            forecast_engine: ForecastEngine instance or None
+        """
+        self._forecast_engine = forecast_engine
+        _LOGGER.debug("ForecastEngine configured for OffsetEngine: %s", 
+                     "enabled" if forecast_engine else "disabled")
+    
     async def async_save_learning_data(self) -> None:
         """Save learning data and engine state to persistent storage.
 
@@ -1422,6 +1470,9 @@ class OffsetEngine:
             # Update save statistics on success
             self._save_count += 1
             self._last_save_time = datetime.now()
+            
+            # Invalidate persistence latency cache after successful save
+            self.invalidate_cache_key('persistence_latency')
             
             # Log successful save with sample count information
             total_samples = sample_count + hysteresis_sample_count
@@ -1569,71 +1620,396 @@ class OffsetEngine:
         """Trigger a save operation (used for testing and state changes)."""
         await self.async_save_learning_data()
     
-    async def async_get_dashboard_data(self) -> dict:
-        """Return all data needed by dashboard sensors.
-        
-        Returns a dictionary containing:
-        - calculated_offset: Current offset value
-        - learning_info: Full learning statistics
-        - save_diagnostics: Save operation statistics
-        - calibration_info: Calibration phase information
+    def invalidate_cache_key(self, key: str) -> None:
+        """Public method to invalidate a specific cache key."""
+        if key in self._dashboard_cache:
+            del self._dashboard_cache[key]
+            _LOGGER.debug("Dashboard cache key '%s' invalidated.", key)
+    
+    def _get_cached_or_recompute(self, key: str, func: Callable, duration: int, default_value: Any = None) -> Any:
         """
+        Cache helper with configurable duration and error handling.
+        Duration of 0 means no caching.
+        """
+        now = time.monotonic()
+        cached_item = self._dashboard_cache.get(key)
+        
+        if cached_item and (now - cached_item['timestamp']) < duration:
+            self._cache_hits += 1
+            return cached_item['data']
+        
+        self._cache_misses += 1
+        
         try:
-            # Get the last calculated offset (default to 0.0 if not available)
-            calculated_offset = getattr(self, '_last_offset', 0.0)
+            new_data = func()
+            if duration > 0:
+                self._dashboard_cache[key] = {'data': new_data, 'timestamp': now}
+            return new_data
+        except Exception as e:
+            _LOGGER.warning(
+                "Failed to compute dashboard data for key '%s': %s. "
+                "Returning stale or default data.", key, e
+            )
+            # Return last known good value if exists
+            if cached_item:
+                return cached_item['data']
+            # Otherwise return safe default
+            return default_value
+    
+    def _get_seasonal_data(self) -> SeasonalData:
+        """Get seasonal learning data with graceful handling."""
+        if not hasattr(self, '_seasonal_learner') or not self._seasonal_learner:
+            return SeasonalData(enabled=False)
+        
+        try:
+            return SeasonalData(
+                enabled=True,
+                contribution=self._seasonal_learner.get_seasonal_contribution(),
+                pattern_count=self._seasonal_learner.get_pattern_count(),
+                outdoor_temp_bucket=self._seasonal_learner.get_outdoor_temp_bucket(),
+                accuracy=self._seasonal_learner.get_accuracy()
+            )
+        except Exception as e:
+            _LOGGER.warning("Failed to get seasonal data: %s", e)
+            return SeasonalData(enabled=False)
+    
+    def _get_delay_data(self) -> DelayData:
+        """Get delay learning data with graceful handling."""
+        if not self._delay_learner:
+            return DelayData()
+        
+        try:
+            return DelayData(
+                adaptive_delay=self._delay_learner.get_adaptive_delay(),
+                temperature_stability_detected=self._delay_learner.is_temperature_stable(),
+                learned_delay_seconds=self._delay_learner.get_learned_delay()
+            )
+        except Exception as e:
+            _LOGGER.warning("Failed to get delay data: %s", e)
+            return DelayData()
+    
+    def _get_ac_behavior_data(self) -> ACBehaviorData:
+        """Get AC behavior metrics."""
+        try:
+            return ACBehaviorData(
+                temperature_window=self._get_temperature_window(),
+                power_correlation_accuracy=self._calculate_power_correlation(),
+                hysteresis_cycle_count=self._get_hysteresis_cycle_count()
+            )
+        except Exception as e:
+            _LOGGER.warning("Failed to get AC behavior data: %s", e)
+            return ACBehaviorData()
+    
+    def _compute_performance_data(self) -> PerformanceData:
+        """Compute expensive performance metrics."""
+        return PerformanceData(
+            ema_coefficient=self._get_ema_coefficient(),
+            prediction_latency_ms=self._measure_prediction_latency(),
+            energy_efficiency_score=self._calculate_energy_efficiency_score(),
+            sensor_availability_score=self._calculate_sensor_availability()
+        )
+    
+    def _compute_system_health_data(self) -> SystemHealthData:
+        """Compute expensive system health metrics."""
+        # Memory usage (cached for 5 minutes)
+        mem_usage = self._get_cached_or_recompute(
+            'memory_usage', self._calculate_memory_usage_kb, CACHE_DUR_MEMORY, default_value=0.0
+        )
+        
+        # Persistence latency (cached until invalidated by save operation)
+        persistence_latency = self._get_cached_or_recompute(
+            'persistence_latency', 
+            lambda: self._data_store.get_last_write_latency() if hasattr(self, '_data_store') else 0.0,
+            CACHE_DUR_PERSISTENCE, 
+            default_value=0.0
+        )
+        
+        # Trends (cached for 30 minutes)
+        accuracy_rate = self._get_cached_or_recompute(
+            'accuracy_rate', self._calculate_accuracy_improvement_rate, CACHE_DUR_TRENDS, default_value=0.0
+        )
+        
+        convergence = self._get_cached_or_recompute(
+            'convergence', self._analyze_convergence_trend, CACHE_DUR_TRENDS, default_value="unknown"
+        )
+        
+        return SystemHealthData(
+            memory_usage_kb=mem_usage,
+            persistence_latency_ms=persistence_latency,
+            outlier_detection_active=self._is_outlier_detection_active(),
+            samples_per_day=self._calculate_samples_per_day(),
+            accuracy_improvement_rate=accuracy_rate,
+            convergence_trend=convergence
+        )
+    
+    def _compute_diagnostics(self, start_time: float) -> DiagnosticsData:
+        """Compute diagnostic metrics."""
+        end_time = time.monotonic()
+        update_duration_ms = (end_time - start_time) * 1000
+        
+        total_calls = self._cache_hits + self._cache_misses
+        hit_rate = (self._cache_hits / total_calls) if total_calls > 0 else 0.0
+        
+        return DiagnosticsData(
+            last_update_duration_ms=round(update_duration_ms, 2),
+            cache_hit_rate=round(hit_rate, 3),
+            cached_keys=len(self._dashboard_cache)
+        )
+    
+    # Helper methods for computing metrics
+    def _get_temperature_window(self) -> Optional[str]:
+        """Get the temperature window string."""
+        if self._hysteresis_enabled and self._hysteresis_learner.has_sufficient_data:
+            start = self._hysteresis_learner.learned_start_threshold
+            stop = self._hysteresis_learner.learned_stop_threshold
+            if start is not None and stop is not None:
+                delta = abs(start - stop)
+                return f"±{delta/2:.1f}°C"
+        return None
+    
+    def _calculate_power_correlation(self) -> float:
+        """Calculate power correlation accuracy."""
+        # TODO: Implement actual power correlation calculation
+        # For now, return a placeholder based on hysteresis readiness
+        if self._hysteresis_enabled and self._hysteresis_learner.has_sufficient_data:
+            return 85.0  # Placeholder value
+        return 0.0
+    
+    def _get_hysteresis_cycle_count(self) -> int:
+        """Get the number of completed hysteresis cycles."""
+        if self._hysteresis_enabled:
+            # Use the minimum of start and stop samples as completed cycles
+            start_count = len(self._hysteresis_learner._start_temps)
+            stop_count = len(self._hysteresis_learner._stop_temps)
+            return min(start_count, stop_count)
+        return 0
+    
+    def _get_ema_coefficient(self) -> float:
+        """Get the exponential moving average coefficient."""
+        # TODO: Get from learner if available
+        return 0.2  # Default EMA coefficient
+    
+    def _measure_prediction_latency(self) -> float:
+        """Measure the latency of ML predictions."""
+        if not self._enable_learning or not self._learner:
+            return 0.0
+        
+        # TODO: Implement actual latency measurement
+        # For now, return a placeholder value
+        return 1.0  # ms
+    
+    def _calculate_energy_efficiency_score(self) -> int:
+        """Calculate energy efficiency score (0-100)."""
+        # TODO: Implement actual energy efficiency calculation
+        # For now, return a placeholder based on learning progress
+        if self._enable_learning and self._learner:
+            try:
+                stats = self._learner.get_statistics()
+                # Base score on accuracy and sample count
+                base_score = int(stats.avg_accuracy * 50)
+                sample_bonus = min(30, stats.samples_collected // 10)
+                return base_score + sample_bonus + 20  # +20 base
+            except:
+                pass
+        return 50  # Default middle score
+    
+    def _calculate_sensor_availability(self) -> float:
+        """Calculate sensor availability score."""
+        available_sensors = 2  # AC temp + room temp (always available)
+        
+        if hasattr(self, '_last_input_data') and self._last_input_data:
+            if self._last_input_data.outdoor_temp is not None:
+                available_sensors += 1
+            if self._last_input_data.power_consumption is not None:
+                available_sensors += 1
+        
+        # Maximum 4 sensors total
+        return (available_sensors / 4.0) * 100.0
+    
+    def _calculate_memory_usage_kb(self) -> float:
+        """Calculate memory usage of the offset engine."""
+        try:
+            # Calculate size of major data structures
+            size = 0
             
-            # Get full learning info using existing method
-            learning_info = self.get_learning_info()
+            # Learner samples
+            if self._learner and hasattr(self._learner, '_enhanced_samples'):
+                size += len(self._learner._enhanced_samples) * 100  # Estimate bytes per sample
             
-            # Build save diagnostics
-            save_diagnostics = {
-                "save_count": self._save_count,
-                "failed_save_count": self._failed_save_count,
-                "last_save_time": self._last_save_time.isoformat() if self._last_save_time else None,
-            }
+            # Hysteresis data
+            if self._hysteresis_enabled:
+                size += len(self._hysteresis_learner._start_temps) * 8
+                size += len(self._hysteresis_learner._stop_temps) * 8
             
-            # Build calibration info
-            calibration_info = {
-                "in_calibration": self.is_in_calibration_phase,
-                "cached_offset": self._stable_calibration_offset,
-            }
+            # Dashboard cache
+            size += sys.getsizeof(self._dashboard_cache)
             
-            # Return the complete dashboard data
-            return {
-                "calculated_offset": calculated_offset,
-                "learning_info": learning_info,
-                "save_diagnostics": save_diagnostics,
-                "calibration_info": calibration_info,
-            }
+            return size / 1024.0  # Convert to KB
+        except:
+            return 0.0
+    
+    def _is_outlier_detection_active(self) -> bool:
+        """Check if outlier detection is active."""
+        # TODO: Implement actual outlier detection
+        return False
+    
+    def _calculate_samples_per_day(self) -> float:
+        """Calculate average samples collected per day."""
+        if not self._enable_learning or not self._learner:
+            return 0.0
+        
+        try:
+            stats = self._learner.get_statistics()
+            if stats.last_sample_time and stats.samples_collected > 0:
+                # Estimate based on time since first sample
+                # TODO: Track actual first sample time
+                # For now, assume steady collection rate
+                return 288.0  # Typical: every 5 minutes
+        except:
+            pass
+        return 0.0
+    
+    def _calculate_accuracy_improvement_rate(self) -> float:
+        """Calculate accuracy improvement rate per day."""
+        # TODO: Track accuracy history over time
+        # For now, return a placeholder
+        if self._enable_learning and self._learner:
+            try:
+                stats = self._learner.get_statistics()
+                if stats.samples_collected > 50:
+                    return 2.0  # % per day placeholder
+            except:
+                pass
+        return 0.0
+    
+    def _analyze_convergence_trend(self) -> str:
+        """Analyze convergence trend of the learning system."""
+        if not self._enable_learning or not self._learner:
+            return "not_learning"
+        
+        try:
+            stats = self._learner.get_statistics()
+            if stats.samples_collected < 20:
+                return "learning"
+            elif stats.avg_accuracy > 0.8:
+                return "stable"
+            elif stats.avg_accuracy > 0.6:
+                return "improving"
+            else:
+                return "unstable"
+        except:
+            return "unknown"
+    
+    def _compute_algorithm_metrics(self) -> AlgorithmMetrics:
+        """Compute algorithm performance metrics."""
+        metrics = AlgorithmMetrics()
+        
+        if not self._enable_learning or not self._learner:
+            return metrics
+        
+        try:
+            # Get basic statistics from learner
+            stats = self._learner.get_statistics()
             
-        except Exception as exc:
-            _LOGGER.error("Error getting dashboard data: %s", exc)
-            # Return safe fallback data on error
-            return {
-                "calculated_offset": 0.0,
-                "learning_info": {
-                    "enabled": False,
-                    "samples": 0,
-                    "accuracy": 0.0,
-                    "confidence": 0.0,
-                    "has_sufficient_data": False,
-                    "last_sample_time": None,
-                    "hysteresis_enabled": False,
-                    "hysteresis_state": "disabled",
-                    "learned_start_threshold": None,
-                    "learned_stop_threshold": None,
-                    "temperature_window": None,
-                    "start_samples_collected": 0,
-                    "stop_samples_collected": 0,
-                    "hysteresis_ready": False,
-                },
-                "save_diagnostics": {
-                    "save_count": 0,
-                    "failed_save_count": 0,
-                    "last_save_time": None,
-                },
-                "calibration_info": {
-                    "in_calibration": False,
-                    "cached_offset": None,
-                },
-            }
+            # Correlation coefficient (placeholder based on accuracy)
+            # In a real implementation, this would calculate actual correlation
+            metrics.correlation_coefficient = (stats.avg_accuracy * 2.0) - 1.0  # Map 0-1 to -1 to 1
+            
+            # Prediction variance (placeholder)
+            # In reality, would calculate variance of predictions
+            if stats.samples_collected > 10:
+                metrics.prediction_variance = 0.05 * (1.0 - stats.avg_accuracy)
+            
+            # Model entropy (placeholder)
+            # Would represent uncertainty in the model
+            metrics.model_entropy = -stats.avg_accuracy * 0.693 if stats.avg_accuracy > 0 else 0
+            
+            # Learning rate (placeholder)
+            # Could be extracted from actual ML model
+            metrics.learning_rate = 0.001
+            
+            # Momentum factor (placeholder)
+            # Could be from optimizer settings
+            metrics.momentum_factor = 0.9
+            
+            # Regularization strength (placeholder)
+            metrics.regularization_strength = 0.001
+            
+            # Mean squared error (placeholder based on accuracy)
+            # Would be actual MSE from predictions
+            metrics.mean_squared_error = (1.0 - stats.avg_accuracy) * 0.1
+            
+            # Mean absolute error (placeholder)
+            # Would be actual MAE from predictions
+            metrics.mean_absolute_error = (1.0 - stats.avg_accuracy) * 0.2
+            
+            # R-squared (placeholder based on accuracy)
+            # Would represent model fit quality
+            metrics.r_squared = stats.avg_accuracy * 0.9
+            
+        except Exception as e:
+            _LOGGER.warning("Failed to compute algorithm metrics: %s", e)
+        
+        return metrics
+    
+    async def async_get_dashboard_data(self) -> Dict[str, Any]:
+        """Aggregates all data for the dashboard with performance tracking."""
+        start_time = time.monotonic()
+        
+        # Existing fields (always computed fresh - assumed lightweight)
+        calculated_offset = self._last_offset
+        learning_info = self.get_learning_info()
+        save_diagnostics = {
+            "save_count": self._save_count,
+            "failed_save_count": self._failed_save_count,
+            "last_save_time": self._last_save_time.isoformat() if self._last_save_time else None,
+        }
+        calibration_info = {
+            "in_calibration": self.is_in_calibration_phase,
+            "cached_offset": self._stable_calibration_offset,
+        }
+        
+        # Get weather forecast data
+        weather_forecast = self._forecast_engine is not None
+        predictive_offset = 0.0
+        if self._forecast_engine:
+            try:
+                predictive_offset = self._forecast_engine.predictive_offset
+            except Exception as exc:
+                _LOGGER.warning("Failed to get predictive offset from ForecastEngine: %s", exc)
+                predictive_offset = 0.0
+        
+        # Create the data object
+        data_dto = DashboardData(
+            # Backward compatibility fields
+            calculated_offset=calculated_offset,
+            learning_info=learning_info,
+            save_diagnostics=save_diagnostics,
+            calibration_info=calibration_info,
+            
+            # New structured fields
+            seasonal_data=self._get_seasonal_data(),
+            delay_data=self._get_delay_data(),
+            ac_behavior=self._get_ac_behavior_data(),
+            
+            # Cached expensive calculations
+            performance=self._get_cached_or_recompute(
+                'performance', self._compute_performance_data, CACHE_DUR_PERF, PerformanceData()
+            ),
+            system_health=self._get_cached_or_recompute(
+                'system_health', self._compute_system_health_data, CACHE_DUR_MEMORY, SystemHealthData()
+            ),
+            diagnostics=self._compute_diagnostics(start_time),
+            
+            # Algorithm metrics
+            algorithm_metrics=self._get_cached_or_recompute(
+                'algorithm_metrics', self._compute_algorithm_metrics, CACHE_DUR_PERF, AlgorithmMetrics()
+            )
+        )
+        
+        # Convert to dict and add the new root-level fields
+        result = data_dto.to_dict()
+        result["weather_forecast"] = weather_forecast
+        result["predictive_offset"] = predictive_offset
+        
+        return result
