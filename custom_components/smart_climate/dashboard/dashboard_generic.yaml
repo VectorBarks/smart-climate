@@ -318,10 +318,7 @@ views:
                 color: blue
                 stroke_width: 2
                 yaxis_id: temperature
-                show:
-                  func: states
-                  name: REPLACE_ME_OUTDOOR_SENSOR
-                  state_not: ['unavailable', 'unknown']
+                show: true
               - entity: REPLACE_ME_CLIMATE
                 attribute: reactive_offset
                 name: Reactive Offset
@@ -391,10 +388,7 @@ views:
                 color: blue
                 stroke_width: 1
                 yaxis_id: temperature
-                show:
-                  func: states
-                  name: REPLACE_ME_OUTDOOR_SENSOR
-                  state_not: ['unavailable', 'unknown']
+                show: true
             yaxis:
               - id: offset
                 decimals: 1
@@ -436,10 +430,7 @@ views:
                 stroke_width: 2
                 unit: W
                 yaxis_id: power
-                show:
-                  func: states
-                  name: REPLACE_ME_POWER_SENSOR
-                  state_not: ['unavailable', 'unknown']
+                show: true
             yaxis:
               - id: temperature
                 decimals: 1
@@ -924,10 +915,7 @@ views:
                 color: red
                 stroke_width: 2
                 yaxis_id: power
-                show:
-                  func: states
-                  name: REPLACE_ME_POWER_SENSOR
-                  state_not: ['unavailable', 'unknown']
+                show: true
               - entity: REPLACE_ME_ROOM_SENSOR
                 name: Room Temperature
                 color: blue
