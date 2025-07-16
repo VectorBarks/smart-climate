@@ -126,7 +126,6 @@ views:
                 attribute: confidence_level
                 name: Confidence Level
                 icon: mdi:shield-check
-                format: precision1
       - type: vertical-stack
         cards:
           - type: markdown
@@ -201,7 +200,7 @@ views:
             conditions:
               - entity: REPLACE_ME_CLIMATE
                 attribute: predictive_strategy
-                state_not: null
+                state_not: 'None'
             card:
               type: vertical-stack
               cards:
@@ -223,19 +222,16 @@ views:
                 attribute: reactive_offset
                 name: Reactive Offset (Traditional Learning)
                 icon: mdi:brain
-                format: precision1
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: predictive_offset
                 name: Predictive Offset (Weather-Based)
                 icon: mdi:weather-cloudy
-                format: precision1
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: total_offset
                 name: Total Combined Offset
                 icon: mdi:plus-circle
-                format: precision1
       - type: vertical-stack
         cards:
           - type: markdown
@@ -322,8 +318,10 @@ views:
                 color: blue
                 stroke_width: 2
                 yaxis_id: temperature
-                show: >-
-                  ${ states('REPLACE_ME_OUTDOOR_SENSOR') not in ['unavailable', 'unknown'] }
+                show:
+                  func: states
+                  name: REPLACE_ME_OUTDOOR_SENSOR
+                  state_not: ['unavailable', 'unknown']
               - entity: REPLACE_ME_CLIMATE
                 attribute: reactive_offset
                 name: Reactive Offset
@@ -393,8 +391,10 @@ views:
                 color: blue
                 stroke_width: 1
                 yaxis_id: temperature
-                show: >-
-                  ${ states('REPLACE_ME_OUTDOOR_SENSOR') not in ['unavailable', 'unknown'] }
+                show:
+                  func: states
+                  name: REPLACE_ME_OUTDOOR_SENSOR
+                  state_not: ['unavailable', 'unknown']
             yaxis:
               - id: offset
                 decimals: 1
@@ -436,8 +436,10 @@ views:
                 stroke_width: 2
                 unit: W
                 yaxis_id: power
-                show: >-
-                  ${ states('REPLACE_ME_POWER_SENSOR') not in ['unavailable', 'unknown'] }
+                show:
+                  func: states
+                  name: REPLACE_ME_POWER_SENSOR
+                  state_not: ['unavailable', 'unknown']
             yaxis:
               - id: temperature
                 decimals: 1
@@ -770,7 +772,6 @@ views:
                 attribute: ema_coefficient
                 name: EMA Coefficient
                 icon: mdi:sine-wave
-                format: precision3
       - type: vertical-stack
         cards:
           - type: markdown
@@ -923,8 +924,10 @@ views:
                 color: red
                 stroke_width: 2
                 yaxis_id: power
-                show: >-
-                  ${ states('REPLACE_ME_POWER_SENSOR') not in ['unavailable', 'unknown'] }
+                show:
+                  func: states
+                  name: REPLACE_ME_POWER_SENSOR
+                  state_not: ['unavailable', 'unknown']
               - entity: REPLACE_ME_ROOM_SENSOR
                 name: Room Temperature
                 color: blue
@@ -1099,7 +1102,6 @@ views:
                 attribute: persistence_latency_ms
                 name: Persistence Latency (ms)
                 icon: mdi:database-clock
-                format: precision1
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: outlier_detection_active
@@ -1231,7 +1233,7 @@ views:
       - type: conditional
         conditions:
           - entity: REPLACE_ME_SENSOR_HYSTERESIS
-            state_not: No power sensor
+            state_not: 'No power sensor'
         card:
           type: vertical-stack
           cards:
@@ -1289,25 +1291,21 @@ views:
                 attribute: correlation_coefficient
                 name: Temperature-Power Correlation
                 icon: mdi:chart-scatter-plot
-                format: precision3
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: prediction_variance
                 name: Prediction Variance (°C²)
                 icon: mdi:sigma-lower
-                format: precision4
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: model_entropy
                 name: Model Information Entropy (bits)
                 icon: mdi:chart-histogram
-                format: precision2
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: temporal_stability_index
                 name: Temporal Stability Index
                 icon: mdi:chart-timeline-variant
-                format: precision3
       - type: vertical-stack
         cards:
           - type: markdown
@@ -1428,22 +1426,18 @@ views:
                 attribute: mean_squared_error
                 name: Mean Squared Error
                 icon: mdi:calculator-variant
-                format: precision4
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: mean_absolute_error
                 name: Mean Absolute Error
                 icon: mdi:calculator
-                format: precision4
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: r_squared
                 name: R² Coefficient of Determination
                 icon: mdi:chart-line-stacked
-                format: precision3
               - type: attribute
                 entity: REPLACE_ME_CLIMATE
                 attribute: cross_validation_score
                 name: Cross-Validation Score
                 icon: mdi:check-circle-outline
-                format: precision3
