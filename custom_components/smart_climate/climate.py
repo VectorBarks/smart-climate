@@ -2855,7 +2855,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     _LOGGER.info("Setting up Smart Climate platform from config entry")
     
     # Get configuration and shared offset engine
-    config = config_entry.data
+    # Merge data and options to include user's option flow settings
+    config = {**config_entry.data, **config_entry.options}
     # Access the correct offset engine using the climate entity ID as the key
     climate_entity_id = config["climate_entity"]
     try:
