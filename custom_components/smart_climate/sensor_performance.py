@@ -46,16 +46,15 @@ class SmartClimateDashboardSensor(SmartClimateSensorEntity):
         """Handle updated data from the coordinator."""
         self.async_write_ha_state()
     
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
+    def get_coordinator_value(self, key_path: tuple, value_processor=None):
+        """Helper method to get value from coordinator data with key path and optional processing."""
         if self.coordinator.data is None:
             return None
         
         # Safely traverse the nested dictionary
         value = self.coordinator.data
         try:
-            for key in self._key_path:
+            for key in key_path:
                 value = value[key]
         except (TypeError, KeyError):
             return None
@@ -64,9 +63,9 @@ class SmartClimateDashboardSensor(SmartClimateSensorEntity):
             return None
         
         # Apply optional value processing
-        if self._value_processor:
+        if value_processor:
             try:
-                return self._value_processor(value)
+                return value_processor(value)
             except (TypeError, ValueError):
                 return None
         
@@ -76,73 +75,59 @@ class SmartClimateDashboardSensor(SmartClimateSensorEntity):
 class PredictionLatencySensor(SmartClimateDashboardSensor):
     """Sensor for prediction latency in milliseconds."""
     
-    def __init__(self, coordinator, device_info: DeviceInfo, climate_entity_name: str):
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry):
         """Initialize the sensor."""
-        description = SensorEntityDescription(
-            key="prediction_latency",
-            name="Prediction Latency",
-            native_unit_of_measurement="ms",
-            device_class=SensorDeviceClass.DURATION,
-            state_class=SensorStateClass.MEASUREMENT,
-            icon="mdi:timer-sand",
-            entity_category=EntityCategory.DIAGNOSTIC,
-        )
-        super().__init__(
-            coordinator,
-            device_info,
-            climate_entity_name,
-            description,
+        super().__init__(coordinator, base_entity_id, "prediction_latency", config_entry)
+        self._attr_name = "Prediction Latency"
+        self._attr_native_unit_of_measurement = "ms"
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:timer-sand"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the prediction latency value."""
+        value = self.get_coordinator_value(
             ("performance", "prediction_latency_ms"),
-            value_processor=lambda x: round(float(x), 1) if x is not None else None,
+            lambda x: round(float(x), 1) if x is not None else None
         )
+        return value
 
 
 class EnergyEfficiencySensor(SmartClimateDashboardSensor):
     """Sensor for energy efficiency score."""
     
-    def __init__(self, coordinator, device_info: DeviceInfo, climate_entity_name: str):
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry):
         """Initialize the sensor."""
-        description = SensorEntityDescription(
-            key="energy_efficiency_score",
-            name="Energy Efficiency Score",
-            native_unit_of_measurement="/100",
-            state_class=SensorStateClass.MEASUREMENT,
-            icon="mdi:leaf-circle",
-            entity_category=None,  # Visible by default - key metric
-        )
-        super().__init__(
-            coordinator,
-            device_info,
-            climate_entity_name,
-            description,
-            ("performance", "energy_efficiency_score"),
-        )
+        super().__init__(coordinator, base_entity_id, "energy_efficiency_score", config_entry)
+        self._attr_name = "Energy Efficiency Score"
+        self._attr_native_unit_of_measurement = "/100"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:leaf-circle"
+        self._attr_entity_category = None  # Visible by default - key metric
+    
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the energy efficiency score value."""
+        return self.get_coordinator_value(("performance", "energy_efficiency_score"))
 
 
 class TemperatureStabilitySensor(SmartClimateDashboardSensor):
     """Sensor for temperature stability detection (displayed as on/off text)."""
     
-    def __init__(self, coordinator, device_info: DeviceInfo, climate_entity_name: str):
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry):
         """Initialize the sensor."""
-        description = SensorEntityDescription(
-            key="temperature_stability_detected",
-            name="Temperature Stability Detected",
-            icon="mdi:waves-arrow-up",
-            entity_category=EntityCategory.DIAGNOSTIC,
-        )
-        super().__init__(
-            coordinator,
-            device_info,
-            climate_entity_name,
-            description,
-            ("delay_data", "temperature_stability_detected"),
-        )
+        super().__init__(coordinator, base_entity_id, "temperature_stability_detected", config_entry)
+        self._attr_name = "Temperature Stability Detected"
+        self._attr_icon = "mdi:waves-arrow-up"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
     
     @property
-    def native_value(self):
+    def native_value(self) -> Optional[str]:
         """Return 'on' or 'off' string based on boolean value."""
-        # Get the boolean value from parent
-        boolean_value = super().native_value
+        # Get the boolean value from coordinator
+        boolean_value = self.get_coordinator_value(("delay_data", "temperature_stability_detected"))
         
         if boolean_value is None:
             return None
@@ -154,70 +139,67 @@ class TemperatureStabilitySensor(SmartClimateDashboardSensor):
 class LearnedDelaySensor(SmartClimateDashboardSensor):
     """Sensor for learned delay in seconds."""
     
-    def __init__(self, coordinator, device_info: DeviceInfo, climate_entity_name: str):
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry):
         """Initialize the sensor."""
-        description = SensorEntityDescription(
-            key="learned_delay",
-            name="Learned Delay",
-            native_unit_of_measurement=UnitOfTime.SECONDS,
-            device_class=SensorDeviceClass.DURATION,
-            state_class=SensorStateClass.MEASUREMENT,
-            icon="mdi:timer-sync-outline",
-            entity_category=EntityCategory.DIAGNOSTIC,
-        )
-        super().__init__(
-            coordinator,
-            device_info,
-            climate_entity_name,
-            description,
+        super().__init__(coordinator, base_entity_id, "learned_delay", config_entry)
+        self._attr_name = "Learned Delay"
+        self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:timer-sync-outline"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the learned delay value."""
+        value = self.get_coordinator_value(
             ("delay_data", "learned_delay_seconds"),
-            value_processor=lambda x: round(float(x), 1) if x is not None else None,
+            lambda x: round(float(x), 1) if x is not None else None
         )
+        return value
 
 
 class EMACoeffficientSensor(SmartClimateDashboardSensor):
     """Sensor for EMA coefficient value."""
     
-    def __init__(self, coordinator, device_info: DeviceInfo, climate_entity_name: str):
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry):
         """Initialize the sensor."""
-        description = SensorEntityDescription(
-            key="ema_coefficient",
-            name="EMA Coefficient",
-            state_class=SensorStateClass.MEASUREMENT,
-            icon="mdi:chart-bell-curve",
-            entity_category=EntityCategory.DIAGNOSTIC,
-        )
-        super().__init__(
-            coordinator,
-            device_info,
-            climate_entity_name,
-            description,
+        super().__init__(coordinator, base_entity_id, "ema_coefficient", config_entry)
+        self._attr_name = "EMA Coefficient"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:chart-bell-curve"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the EMA coefficient value."""
+        value = self.get_coordinator_value(
             ("performance", "ema_coefficient"),
-            value_processor=lambda x: round(float(x), 3) if x is not None else None,
+            lambda x: round(float(x), 3) if x is not None else None
         )
+        return value
 
 
 class SensorAvailabilitySensor(SmartClimateDashboardSensor):
     """Sensor for sensor availability score."""
     
-    def __init__(self, coordinator, device_info: DeviceInfo, climate_entity_name: str):
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry):
         """Initialize the sensor."""
-        description = SensorEntityDescription(
-            key="sensor_availability",
-            name="Sensor Availability",
-            native_unit_of_measurement=PERCENTAGE,
-            state_class=SensorStateClass.MEASUREMENT,
-            icon="mdi:access-point-check",
-            entity_category=EntityCategory.DIAGNOSTIC,
-        )
-        super().__init__(
-            coordinator,
-            device_info,
-            climate_entity_name,
-            description,
+        super().__init__(coordinator, base_entity_id, "sensor_availability", config_entry)
+        self._attr_name = "Sensor Availability"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:access-point-check"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def native_value(self) -> Optional[float]:
+        """Return the sensor availability score value."""
+        value = self.get_coordinator_value(
             ("performance", "sensor_availability_score"),
-            value_processor=lambda x: round(float(x), 1) if x is not None else None,
+            lambda x: round(float(x), 1) if x is not None else None
         )
+        return value
 
 
 # Export all sensor classes for import
