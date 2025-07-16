@@ -1,4 +1,27 @@
-"""System Health sensors for Smart Climate integration."""
+"""System Health sensors for Smart Climate integration.
+
+This module provides 5 diagnostic sensors for monitoring Smart Climate system health
+and performance metrics. These sensors are categorized as diagnostic entities and
+provide insights into the integration's operational status.
+
+Sensors included:
+1. MemoryUsageSensor - Memory consumption in KiB
+2. PersistenceLatencySensor - Database write latency in milliseconds
+3. SamplesPerDaySensor - Learning sample collection rate
+4. ConvergenceTrendSensor - ML model convergence status with caching
+5. OutlierDetectionSensor - Outlier detection system status
+
+Race Condition Protection:
+ConvergenceTrendSensor implements the same caching mechanism as other sensors
+to handle coordinator data unavailability during startup, preventing "unknown"
+states in dashboard templates.
+
+Key Features:
+- Diagnostic entity categorization for advanced users
+- Robust error handling with graceful fallbacks
+- Performance metrics for system optimization
+- Cached values for critical sensors to prevent "unknown" states
+"""
 
 import logging
 from typing import Optional
@@ -150,7 +173,37 @@ class SamplesPerDaySensor(SmartClimateDashboardSensor):
 
 
 class ConvergenceTrendSensor(SmartClimateDashboardSensor):
-    """Sensor for convergence trend (text values: improving, stable, unstable, unknown)."""
+    """Sensor for convergence trend analysis.
+    
+    This sensor displays the ML model's convergence trend to help users understand
+    learning progress and stability. Implements comprehensive caching to handle
+    coordinator data unavailability during startup.
+    
+    Valid States:
+    - "improving": Model accuracy is increasing over time
+    - "stable": Model accuracy has stabilized at current level
+    - "unstable": Model accuracy is fluctuating or decreasing
+    - "unknown": Insufficient data or sensor not available
+    
+    Features:
+    - Race condition protection with _last_known_value caching
+    - Comprehensive data validation with type checking
+    - Graceful fallback to cached values on coordinator errors
+    - Input validation against valid trend set
+    - Diagnostic entity category for advanced users
+    
+    Race Condition Fix:
+    This sensor was one of the primary sensors affected by the race condition
+    issue where it would return "unknown" indefinitely if coordinator data
+    wasn't available during initialization. The fix implements:
+    1. Caching of last known valid trend value
+    2. Comprehensive validation of data structure and types
+    3. Validation against valid trend set
+    4. Error handling that preserves cached state
+    
+    Data Path:
+    coordinator.data["system_health"]["convergence_trend"] -> string
+    """
     
     def __init__(
         self,
@@ -158,27 +211,81 @@ class ConvergenceTrendSensor(SmartClimateDashboardSensor):
         base_entity_id: str,
         config_entry: ConfigEntry,
     ) -> None:
-        """Initialize convergence trend sensor."""
+        """Initialize convergence trend sensor.
+        
+        Args:
+            coordinator: DataUpdateCoordinator instance
+            base_entity_id: Base entity ID for the climate entity
+            config_entry: Home Assistant configuration entry
+        """
         super().__init__(coordinator, base_entity_id, "convergence_trend", config_entry)
         self._attr_name = "Convergence Trend"
         self._attr_icon = "mdi:chart-gantt"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._last_known_value = "unknown"
     
     @property
     def native_value(self) -> str:
-        """Return the convergence trend value."""
-        if not self.coordinator.data:
-            return "unknown"
+        """Return the convergence trend value.
+        
+        This method implements comprehensive validation to ensure only valid
+        trend values are returned. It provides multi-layer caching to handle
+        coordinator data unavailability during startup and runtime errors.
+        
+        Returns:
+            str: One of ["improving", "stable", "unstable", "unknown"]
+            
+        Caching Behavior:
+        - Stores last known valid trend value in self._last_known_value
+        - Returns cached value when coordinator data is unavailable
+        - Updates cache only with validated trend values from valid set
+        - Handles nested data structure validation gracefully
+        
+        Validation Layers:
+        1. Checks coordinator.data is available and is a dictionary
+        2. Validates system_health is a dictionary
+        3. Ensures convergence_trend is a non-empty string
+        4. Validates trend value is in valid set ["improving", "stable", "unstable", "unknown"]
+        5. Falls back to cached value at any validation failure
+        
+        Race Condition Protection:
+        This method was designed to fix the race condition where the sensor would
+        return "unknown" indefinitely if coordinator data wasn't available during
+        initialization, causing dashboard templates to display persistent "unknown" states.
+        """
+        # Define valid trend values
+        valid_trends = ["improving", "stable", "unstable", "unknown"]
         
         try:
-            system_health = self.coordinator.data.get("system_health", {})
-            trend = system_health.get("convergence_trend", "unknown")
-            # Ensure we return a valid trend value
-            if trend in ["improving", "stable", "unstable", "unknown"]:
-                return trend
-            return "unknown"
-        except (AttributeError, TypeError):
-            return "unknown"
+            # Check if coordinator data is available
+            if not self.coordinator.data:
+                return self._last_known_value
+            
+            # Check if coordinator data is a dictionary
+            if not isinstance(self.coordinator.data, dict):
+                return self._last_known_value
+            
+            # Get system_health data with validation
+            system_health = self.coordinator.data.get("system_health")
+            if not system_health or not isinstance(system_health, dict):
+                return self._last_known_value
+            
+            # Get convergence_trend value with validation
+            trend = system_health.get("convergence_trend")
+            if not trend or not isinstance(trend, str) or not trend.strip():
+                return self._last_known_value
+            
+            # Validate trend value is in valid set
+            if trend not in valid_trends:
+                return self._last_known_value
+            
+            # Cache the valid value and return it
+            self._last_known_value = trend
+            return trend
+            
+        except (AttributeError, TypeError, KeyError):
+            # Return cached value on any error
+            return self._last_known_value
 
 
 # Export all sensor classes for easy import

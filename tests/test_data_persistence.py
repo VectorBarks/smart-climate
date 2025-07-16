@@ -8,7 +8,8 @@ from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from datetime import datetime, time
 
 from custom_components.smart_climate.data_store import SmartClimateDataStore
-from custom_components.smart_climate.offset_engine import OffsetEngine, LightweightOffsetLearner
+from custom_components.smart_climate.offset_engine import OffsetEngine
+from custom_components.smart_climate.lightweight_learner import LightweightOffsetLearner
 from custom_components.smart_climate.models import OffsetInput
 
 

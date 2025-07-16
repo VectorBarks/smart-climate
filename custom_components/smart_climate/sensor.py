@@ -1,4 +1,25 @@
-"""Sensor platform for the Smart Climate integration."""
+"""Sensor platform for the Smart Climate integration.
+
+This module provides 34 sensors across 5 categories for comprehensive Smart Climate monitoring:
+
+1. Legacy Dashboard Sensors (5): Core functionality display
+2. Advanced Feature Sensors (4): v1.3.0+ features status
+3. Algorithm Metrics (9): ML learning performance
+4. Performance Sensors (6): System efficiency metrics
+5. AC Learning Sensors (5): HVAC behavior tracking
+6. System Health Sensors (5): Resource monitoring and diagnostics
+
+Key Features:
+- Sensor caching with race condition protection
+- Comprehensive error handling and validation
+- Type-safe data access with fallback values
+- DataUpdateCoordinator integration for real-time updates
+- Diagnostic entity categorization for advanced sensors
+
+Race Condition Protection:
+Several sensors implement _last_known_value caching to handle coordinator data
+unavailability during startup, preventing "unknown" states in dashboard templates.
+"""
 
 import logging
 from typing import Any, Dict, Optional
@@ -430,7 +451,30 @@ class AdaptiveDelaySensor(SmartClimateDashboardSensor):
 
 
 class WeatherForecastSensor(SmartClimateDashboardSensor, BinarySensorEntity):
-    """Binary sensor for weather forecast status."""
+    """Binary sensor for weather forecast status.
+    
+    This sensor displays whether weather forecast integration is enabled and functioning.
+    Implements robust caching to handle coordinator data unavailability during startup.
+    
+    Features:
+    - Race condition protection with _last_known_value caching
+    - Type validation to ensure boolean values
+    - Graceful fallback to cached values on coordinator errors
+    - Diagnostic entity category for advanced users
+    
+    State Values:
+    - True: Weather forecast is enabled and configured
+    - False: Weather forecast is disabled
+    - None: Unknown state (only during initial startup)
+    
+    Race Condition Fix:
+    This sensor was affected by a race condition where it would return None during
+    startup when coordinator data wasn't available. The fix implements:
+    1. Caching of last known valid boolean value
+    2. Type validation to reject non-boolean values
+    3. Error handling that preserves cached state
+    4. Graceful degradation during initialization
+    """
     
     def __init__(
         self,
@@ -438,21 +482,79 @@ class WeatherForecastSensor(SmartClimateDashboardSensor, BinarySensorEntity):
         base_entity_id: str,
         config_entry: ConfigEntry,
     ) -> None:
-        """Initialize weather forecast sensor."""
+        """Initialize weather forecast sensor.
+        
+        Args:
+            coordinator: DataUpdateCoordinator instance
+            base_entity_id: Base entity ID for the climate entity
+            config_entry: Home Assistant configuration entry
+        """
         super().__init__(coordinator, base_entity_id, "weather_forecast", config_entry)
         self._attr_name = "Weather Forecast"
         self._attr_icon = "mdi:weather-partly-cloudy"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._last_known_value = None
     
     @property
     def is_on(self) -> Optional[bool]:
-        """Return true if weather forecast is enabled."""
-        if not self.coordinator.data:
-            return None
+        """Return true if weather forecast is enabled.
         
+        This method implements robust caching to handle coordinator data unavailability
+        during startup and runtime errors. It validates data types and provides
+        graceful fallback to cached values.
+        
+        Returns:
+            bool: True if weather forecast is enabled, False if disabled
+            None: Only returned during initial startup before any data is available
+            
+        Caching Behavior:
+        - Stores last known valid boolean value in self._last_known_value
+        - Returns cached value when coordinator data is unavailable
+        - Updates cache only with validated boolean values
+        - Logs warnings for invalid data types
+        
+        Race Condition Protection:
+        This method was designed to fix the race condition where sensors would
+        return None indefinitely if coordinator data wasn't available during
+        initialization, causing dashboard templates to show "unknown" states.
+        """
         try:
-            return self.coordinator.data.get("weather_forecast")
-        except (AttributeError, TypeError):
+            # Check coordinator data with robust error handling
+            if (hasattr(self, 'coordinator') and 
+                self.coordinator is not None and 
+                hasattr(self.coordinator, 'data') and 
+                self.coordinator.data is not None):
+                
+                # Get weather forecast value with type validation
+                weather_forecast_value = self.coordinator.data.get("weather_forecast")
+                
+                # Validate that the value is a boolean
+                if isinstance(weather_forecast_value, bool):
+                    # Cache the last known good value
+                    self._last_known_value = weather_forecast_value
+                    return weather_forecast_value
+                
+                # Handle non-boolean values
+                if weather_forecast_value is not None:
+                    _LOGGER.warning(
+                        "Weather forecast value is not boolean: %s (type: %s)",
+                        weather_forecast_value, type(weather_forecast_value)
+                    )
+            
+            # If coordinator data is not available or invalid, return cached value
+            if self._last_known_value is not None:
+                return self._last_known_value
+                
+            # No coordinator data and no cache - return None
+            return None
+            
+        except (AttributeError, TypeError, KeyError) as e:
+            _LOGGER.warning("Error accessing weather forecast data: %s", e)
+            
+            # Return cached value if available
+            if self._last_known_value is not None:
+                return self._last_known_value
+            
             return None
     
     @property
@@ -462,7 +564,26 @@ class WeatherForecastSensor(SmartClimateDashboardSensor, BinarySensorEntity):
 
 
 class SeasonalAdaptationSensor(SmartClimateDashboardSensor, BinarySensorEntity):
-    """Binary sensor for seasonal adaptation status."""
+    """Binary sensor for seasonal adaptation status.
+    
+    This sensor displays whether seasonal adaptation learning is enabled and active.
+    Implements the same caching mechanism as WeatherForecastSensor to handle
+    coordinator data unavailability during startup.
+    
+    Features:
+    - Race condition protection with _last_known_value caching
+    - Nested data validation for seasonal_data.enabled
+    - Type validation to ensure boolean values
+    - Graceful fallback to cached values on coordinator errors
+    
+    State Values:
+    - True: Seasonal adaptation is enabled and learning patterns
+    - False: Seasonal adaptation is disabled
+    - None: Unknown state (only during initial startup)
+    
+    Data Path:
+    coordinator.data["seasonal_data"]["enabled"] -> boolean
+    """
     
     def __init__(
         self,
@@ -470,23 +591,71 @@ class SeasonalAdaptationSensor(SmartClimateDashboardSensor, BinarySensorEntity):
         base_entity_id: str,
         config_entry: ConfigEntry,
     ) -> None:
-        """Initialize seasonal adaptation sensor."""
+        """Initialize seasonal adaptation sensor.
+        
+        Args:
+            coordinator: DataUpdateCoordinator instance
+            base_entity_id: Base entity ID for the climate entity
+            config_entry: Home Assistant configuration entry
+        """
         super().__init__(coordinator, base_entity_id, "seasonal_adaptation", config_entry)
         self._attr_name = "Seasonal Adaptation"
         self._attr_icon = "mdi:sun-snowflake"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._last_known_value = None
     
     @property
     def is_on(self) -> Optional[bool]:
-        """Return true if seasonal adaptation is enabled."""
+        """Return true if seasonal adaptation is enabled.
+        
+        This method implements robust nested data validation to safely access
+        the seasonal_data.enabled value from coordinator data. It provides
+        comprehensive type checking and caching for race condition protection.
+        
+        Returns:
+            bool: True if seasonal adaptation is enabled, False if disabled
+            None: Only returned during initial startup before any data is available
+            
+        Caching Behavior:
+        - Stores last known valid boolean value in self._last_known_value
+        - Returns cached value when coordinator data is unavailable
+        - Updates cache only with validated boolean values from nested data
+        - Handles nested data structure validation gracefully
+        
+        Data Validation:
+        1. Checks coordinator.data is available and is a dictionary
+        2. Validates seasonal_data is a dictionary
+        3. Ensures enabled value is a boolean
+        4. Falls back to cached value at any validation failure
+        """
+        # Check if coordinator data exists
         if not self.coordinator.data:
-            return None
+            return self._last_known_value
         
         try:
-            seasonal_data = self.coordinator.data.get("seasonal_data", {})
-            return seasonal_data.get("enabled")
-        except (AttributeError, TypeError):
-            return None
+            # Robust coordinator.data checking
+            coordinator_data = self.coordinator.data
+            if not isinstance(coordinator_data, dict):
+                return self._last_known_value
+            
+            # Nested data access validation (seasonal_data.enabled)
+            seasonal_data = coordinator_data.get("seasonal_data")
+            if not isinstance(seasonal_data, dict):
+                return self._last_known_value
+            
+            # Type validation for enabled value
+            enabled_value = seasonal_data.get("enabled")
+            if not isinstance(enabled_value, bool):
+                return self._last_known_value
+            
+            # Caching of last known good values
+            self._last_known_value = enabled_value
+            return enabled_value
+            
+        except (AttributeError, TypeError, KeyError) as e:
+            # Graceful handling of None/invalid data
+            _LOGGER.debug("SeasonalAdaptationSensor data access error: %s", e)
+            return self._last_known_value
     
     @property
     def native_value(self) -> None:

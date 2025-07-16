@@ -24,7 +24,8 @@ from custom_components.smart_climate.const import (
     DEFAULT_POWER_MIN_THRESHOLD,
     DEFAULT_POWER_MAX_THRESHOLD,
 )
-from custom_components.smart_climate.offset_engine import OffsetEngine, LightweightOffsetLearner
+from custom_components.smart_climate.offset_engine import OffsetEngine
+from custom_components.smart_climate.lightweight_learner import LightweightOffsetLearner
 from custom_components.smart_climate.models import OffsetInput
 
 

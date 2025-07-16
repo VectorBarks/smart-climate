@@ -42,7 +42,7 @@ from custom_components.smart_climate.const import (
 )
 from custom_components.smart_climate.forecast_engine import ForecastEngine
 
-from .fixtures.weather_config_fixtures import *
+from tests.fixtures.weather_config_fixtures import *
 
 
 class TestWeatherConfigConversion:

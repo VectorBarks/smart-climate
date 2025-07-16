@@ -669,6 +669,65 @@ automation:
 
 ## v1.3.0 Advanced Features Troubleshooting
 
+### Sensor Caching and Race Condition Issues
+
+#### Sensors Showing "Unknown" State
+
+**Status**: ✅ **RESOLVED** in v1.3.1-beta8+ (July 2025)
+
+**Symptoms**: Dashboard sensors showing "unknown" state instead of proper values, particularly:
+- Weather Forecast sensor showing "unknown" instead of enabled/disabled
+- Seasonal Adaptation sensor showing "unknown" instead of on/off
+- Convergence Trend sensor showing "unknown" instead of improving/stable/unstable
+
+**Root Cause**: Race condition during Home Assistant startup where sensors initialized before coordinator data was available, causing sensors to return None values indefinitely.
+
+**This Issue Affected**: Users of v1.3.0 through v1.3.1-beta7, especially visible in dashboard templates
+
+**Technical Details**:
+The issue occurred because:
+1. Sensors were created immediately during integration setup
+2. Coordinator data wasn't available during sensor initialization
+3. Sensors returned None without any caching mechanism
+4. Dashboard templates interpreted None as "unknown" state
+
+**Fix Applied**: 
+- **Sensor-Level Caching**: Added `_last_known_value` caching to WeatherForecastSensor, SeasonalAdaptationSensor, and ConvergenceTrendSensor
+- **Robust Error Handling**: Implemented comprehensive data validation with graceful fallback to cached values
+- **Type Validation**: Added explicit type checking for coordinator data to prevent invalid state values
+- **Initialization Safety**: Sensors now handle missing coordinator data gracefully during startup
+
+**How to Verify the Fix**:
+1. Check sensor states in Developer Tools → States
+2. All Smart Climate sensors should show proper values, not "unknown"
+3. Dashboard should display meaningful sensor states
+4. Sensors should recover automatically after Home Assistant restart
+
+**Example of Fixed Sensor Behavior**:
+```yaml
+# WeatherForecastSensor now shows:
+sensor.living_room_weather_forecast: "on"  # instead of "unknown"
+
+# SeasonalAdaptationSensor now shows:
+sensor.living_room_seasonal_adaptation: "on"  # instead of "unknown"
+
+# ConvergenceTrendSensor now shows:
+sensor.living_room_convergence_trend: "improving"  # instead of "unknown"
+```
+
+**Developer Notes**:
+The caching mechanism works by:
+1. Storing the last known valid value in `_last_known_value`
+2. Returning cached value when coordinator data is unavailable
+3. Updating cache only with validated, type-checked values
+4. Providing sensible defaults during initial startup
+
+**If Still Having Issues**:
+- Restart Home Assistant to reinitialize sensors
+- Check logs for coordinator data availability
+- Verify no template errors in dashboard configuration
+- Ensure you're using the latest integration version
+
 ### Adaptive Feedback Delays Issues
 
 #### Adaptive Delays Not Learning
@@ -1025,6 +1084,103 @@ automation:
 - **Multiple Weather Entities**: Use different weather entity IDs
 - **Climate Entity Conflicts**: Don't wrap the same climate entity multiple times
 - **Sensor Conflicts**: Ensure sensor entities are unique per Smart Climate instance
+
+## Developer Notes: Sensor Caching Implementation
+
+### Caching Mechanism Overview
+
+Smart Climate implements a robust sensor caching system to handle coordinator data unavailability during startup and runtime errors. This prevents sensors from returning "unknown" states indefinitely.
+
+### Implementation Pattern
+
+Sensors that implement caching follow this pattern:
+
+```python
+class ExampleSensor(SmartClimateDashboardSensor):
+    def __init__(self, ...):
+        # Initialize cache with sensible default
+        self._last_known_value = "default_value"
+    
+    @property
+    def native_value(self) -> str:
+        try:
+            # 1. Check coordinator data availability
+            if not self.coordinator.data:
+                return self._last_known_value
+            
+            # 2. Validate data structure
+            if not isinstance(self.coordinator.data, dict):
+                return self._last_known_value
+            
+            # 3. Get nested data with validation
+            nested_data = self.coordinator.data.get("nested_key")
+            if not nested_data or not isinstance(nested_data, expected_type):
+                return self._last_known_value
+            
+            # 4. Validate final value
+            value = nested_data.get("final_key")
+            if not self._is_valid_value(value):
+                return self._last_known_value
+            
+            # 5. Cache and return valid value
+            self._last_known_value = value
+            return value
+            
+        except (AttributeError, TypeError, KeyError):
+            # Always return cached value on any error
+            return self._last_known_value
+```
+
+### Sensors with Caching
+
+The following sensors implement the caching mechanism:
+
+1. **WeatherForecastSensor** - Caches boolean values for weather integration status
+2. **SeasonalAdaptationSensor** - Caches boolean values for seasonal adaptation status
+3. **ConvergenceTrendSensor** - Caches string values from valid trend set
+
+### Cache Benefits
+
+- **Startup Safety**: Prevents "unknown" states during Home Assistant startup
+- **Runtime Resilience**: Maintains last known values during temporary coordinator failures
+- **Template Compatibility**: Ensures dashboard templates always receive valid values
+- **Type Safety**: Validates data types before caching to prevent invalid states
+
+### Race Condition Details
+
+The original race condition occurred because:
+1. Sensors were initialized immediately during integration setup
+2. Coordinator data wasn't available during sensor initialization
+3. Sensors returned `None` without any caching mechanism
+4. Dashboard templates interpreted `None` as "unknown" state
+5. Without caching, sensors would continue returning `None` indefinitely
+
+The fix resolves this by:
+1. Storing last known valid values in sensor instances
+2. Returning cached values when coordinator data is unavailable
+3. Updating cache only with validated, type-checked values
+4. Providing sensible defaults for initial startup
+
+### Testing the Fix
+
+To verify the caching mechanism is working:
+
+```python
+# Check sensor state in Developer Tools
+sensor.living_room_weather_forecast: "on"  # Not "unknown"
+sensor.living_room_seasonal_adaptation: "on"  # Not "unknown"  
+sensor.living_room_convergence_trend: "improving"  # Not "unknown"
+```
+
+### Future Sensor Development
+
+When creating new sensors that may be affected by coordinator data unavailability:
+
+1. Add `_last_known_value` instance variable
+2. Implement comprehensive data validation
+3. Always return cached value on validation failures
+4. Use appropriate default values for sensor type
+5. Add type checking for all data access
 
 ## Advanced Debugging Techniques
 

@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch, mock_open
 from datetime import datetime, timedelta
 import yaml
 
-from custom_components.smart_climate.services import DashboardGenerationService
+from custom_components.smart_climate import handle_generate_dashboard
 
 
 class TestAdvancedIntelligenceMetrics:
@@ -70,7 +70,7 @@ class TestAdvancedIntelligenceMetrics:
     @pytest.fixture
     def dashboard_service(self, mock_hass):
         """Create a dashboard generation service instance."""
-        return DashboardGenerationService(mock_hass)
+        return handle_generate_dashboard
     
     @pytest.fixture
     def sample_dashboard_template(self):
@@ -509,7 +509,7 @@ class TestDashboardServiceEnhancements:
     def test_generate_advanced_intelligence_section_method_exists(self):
         """Test that the new service method exists and is callable."""
         # This test ensures the method will be implemented
-        service = DashboardGenerationService(Mock())
+        service = handle_generate_dashboard
         
         # Should not raise AttributeError when method is implemented
         assert hasattr(service, '_generate_advanced_intelligence_section')
@@ -517,7 +517,7 @@ class TestDashboardServiceEnhancements:
     
     def test_technical_metrics_calculation_methods(self):
         """Test that technical calculation methods are available."""
-        service = DashboardGenerationService(Mock())
+        service = handle_generate_dashboard
         
         # Check for required calculation methods
         required_methods = [
@@ -534,7 +534,7 @@ class TestDashboardServiceEnhancements:
     
     def test_chart_generation_methods(self):
         """Test that chart generation methods are available."""
-        service = DashboardGenerationService(Mock())
+        service = handle_generate_dashboard
         
         # Check for chart generation methods
         chart_methods = [
