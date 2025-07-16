@@ -12,33 +12,16 @@ from homeassistant.const import (
     UnitOfTime,
     EntityCategory,
 )
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.device_registry import DeviceInfo
+
+from .const import DOMAIN
+from .entity import SmartClimateSensorEntity
 
 
-class SmartClimateDashboardSensor(SensorEntity):
+class SmartClimateDashboardSensor(SmartClimateSensorEntity):
     """Base class for Smart Climate dashboard sensors."""
-    
-    _attr_has_entity_name = True
-    
-    def __init__(
-        self,
-        coordinator,
-        device_info: DeviceInfo,
-        climate_entity_name: str,
-        description: SensorEntityDescription,
-        key_path: tuple[str, ...],
-        value_processor=None,
-    ):
-        """Initialize the sensor."""
-        super().__init__()
-        self.coordinator = coordinator
-        self.entity_description = description
-        self._key_path = key_path
-        self._value_processor = value_processor
-        self._attr_device_info = device_info
-        
-        # Set unique ID
-        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{description.key}"
+    pass
     
     @property
     def should_poll(self) -> bool:

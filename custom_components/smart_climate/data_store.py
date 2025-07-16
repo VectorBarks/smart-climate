@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -71,6 +72,7 @@ class SmartClimateDataStore:
         self._hass = hass
         self._entity_id = entity_id
         self._lock = asyncio.Lock()  # Prevents concurrent writes to the same file
+        self._last_write_latency_ms = 0.0  # Track write latency for dashboard
         
         # Calculate data file path
         self._data_file_path = self.get_data_file_path()
@@ -173,6 +175,9 @@ class SmartClimateDataStore:
                 # Ensure directory exists
                 await self._hass.async_add_executor_job(self._ensure_data_directory)
                 
+                # Start timing for write latency measurement (after directory creation)
+                start_time = time.perf_counter()
+                
                 # SAFE ATOMIC WRITE PATTERN:
                 # Step 1: Write to temporary file first (do NOT touch backup yet)
                 temp_file = self._data_file_path.with_suffix(".json.tmp")
@@ -202,9 +207,13 @@ class SmartClimateDataStore:
                     lambda: temp_file.rename(self._data_file_path)
                 )
                 
+                # Calculate and store write latency only on successful completion
+                end_time = time.perf_counter()
+                self._last_write_latency_ms = (end_time - start_time) * 1000.0
+                
                 _LOGGER.debug(
-                    "Saved learning data for %s (%d bytes)",
-                    self._entity_id, self._data_file_path.stat().st_size
+                    "Saved learning data for %s (%d bytes) in %.2f ms",
+                    self._entity_id, self._data_file_path.stat().st_size, self._last_write_latency_ms
                 )
                 
             except Exception as e:
@@ -328,3 +337,14 @@ class SmartClimateDataStore:
         # Use lock to prevent deletion during other operations
         async with self._lock:
             await self._hass.async_add_executor_job(_delete_sync)
+    
+    def get_last_write_latency(self) -> float:
+        """Get the latency of the last write operation.
+        
+        This method provides the duration of the last successful write operation
+        for dashboard monitoring purposes.
+        
+        Returns:
+            Last write latency in milliseconds (>= 0.0)
+        """
+        return self._last_write_latency_ms

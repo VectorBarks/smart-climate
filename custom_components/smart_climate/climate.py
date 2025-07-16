@@ -745,7 +745,8 @@ class SmartClimateEntity(ClimateEntity):
         
         if self._forecast_engine:
             try:
-                predictive_offset = self._forecast_engine.predictive_offset
+                offset = self._forecast_engine.predictive_offset
+                predictive_offset = offset if offset is not None else 0.0
                 active_strategy = self._forecast_engine.active_strategy_info
             except Exception as exc:
                 _LOGGER.warning("Could not get attributes from ForecastEngine: %s", exc)
@@ -761,14 +762,15 @@ class SmartClimateEntity(ClimateEntity):
         # Phase 1: Core Intelligence Attributes (v1.3.0+)
         
         # 1. Adaptive Delay - Current adaptive feedback delay in seconds
-        adaptive_delay = None
+        adaptive_delay = self._feedback_delay  # Default to fixed delay
         if self._delay_learner is not None:
             try:
-                adaptive_delay = self._delay_learner.get_adaptive_delay()
+                delay = self._delay_learner.get_adaptive_delay()
+                adaptive_delay = delay if delay is not None else self._feedback_delay
                 _LOGGER.debug("Got adaptive delay from DelayLearner: %s seconds", adaptive_delay)
             except Exception as exc:
-                _LOGGER.debug("Error getting adaptive delay, using None: %s", exc)
-                adaptive_delay = None
+                _LOGGER.debug("Error getting adaptive delay, using default: %s", exc)
+                adaptive_delay = self._feedback_delay
         
         # 2. Weather Forecast - Weather forecast integration status
         weather_forecast = self._forecast_engine is not None
@@ -784,7 +786,8 @@ class SmartClimateEntity(ClimateEntity):
             try:
                 seasonal_learner = getattr(self._offset_engine, '_seasonal_learner', None)
                 if seasonal_learner and hasattr(seasonal_learner, 'get_seasonal_contribution'):
-                    seasonal_contribution = seasonal_learner.get_seasonal_contribution()
+                    contribution = seasonal_learner.get_seasonal_contribution()
+                    seasonal_contribution = contribution if contribution is not None else 0
                     _LOGGER.debug("Got seasonal contribution: %s%%", seasonal_contribution)
                 else:
                     _LOGGER.debug("Seasonal learner missing get_seasonal_contribution method")
@@ -1976,8 +1979,9 @@ class SmartClimateEntity(ClimateEntity):
         try:
             if self._delay_learner is not None and hasattr(self._delay_learner, 'get_ema_coefficient'):
                 coefficient = self._delay_learner.get_ema_coefficient()
-                # Ensure it's within valid bounds
-                return max(0.0, min(1.0, float(coefficient)))
+                # Ensure it's within valid bounds and not None
+                if coefficient is not None:
+                    return max(0.0, min(1.0, float(coefficient)))
             return 0.2  # Default EMA coefficient
         except Exception as exc:
             _LOGGER.debug("Error getting EMA coefficient: %s", exc)
@@ -2851,7 +2855,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     _LOGGER.info("Setting up Smart Climate platform from config entry")
     
     # Get configuration and shared offset engine
-    config = hass.data[DOMAIN][config_entry.entry_id]["config"]
+    config = config_entry.data
     # Access the correct offset engine using the climate entity ID as the key
     climate_entity_id = config["climate_entity"]
     try:

@@ -407,3 +407,21 @@ class SeasonalHysteresisLearner:
                 exc
             )
             return 0.0
+    
+    def get_accuracy(self) -> float:
+        """Get the accuracy of seasonal predictions.
+        
+        This method provides compatibility with the dashboard system
+        by wrapping the get_seasonal_accuracy method.
+        
+        Returns:
+            Accuracy percentage (0-100)
+        """
+        try:
+            return self.get_seasonal_accuracy()
+        except Exception as exc:
+            _LOGGER.warning(
+                "Error getting seasonal accuracy: %s",
+                exc
+            )
+            return 0.0

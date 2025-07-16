@@ -14,41 +14,16 @@ from homeassistant.const import (
     UnitOfTemperature,
     EntityCategory,
 )
-from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
+from .entity import SmartClimateSensorEntity
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class SmartClimateDashboardSensor(SensorEntity):
+class SmartClimateDashboardSensor(SmartClimateSensorEntity):
     """Base class for Smart Climate dashboard sensors."""
-    
-    _attr_has_entity_name = True
-    
-    def __init__(
-        self,
-        coordinator,
-        base_entity_id: str,
-        sensor_type: str,
-        config_entry: ConfigEntry,
-    ) -> None:
-        """Initialize dashboard sensor."""
-        super().__init__()
-        self.coordinator = coordinator
-        self._base_entity_id = base_entity_id
-        self._sensor_type = sensor_type
-        
-        # Generate unique ID
-        safe_entity_id = base_entity_id.replace(".", "_")
-        self._attr_unique_id = f"{config_entry.unique_id}_{safe_entity_id}_{sensor_type}"
-        
-        # Link to the same device as the climate entity
-        climate_name = f"{config_entry.title} ({base_entity_id})"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{config_entry.unique_id}_{safe_entity_id}")},
-            name=climate_name,
-        )
+    pass
     
     @property
     def should_poll(self) -> bool:

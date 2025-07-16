@@ -9,64 +9,16 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
+from .entity import SmartClimateSensorEntity
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class SmartClimateDashboardSensor(SensorEntity):
+class SmartClimateDashboardSensor(SmartClimateSensorEntity):
     """Base class for Smart Climate dashboard sensors."""
-    
-    _attr_has_entity_name = True
-    
-    def __init__(
-        self,
-        coordinator,
-        base_entity_id: str,
-        sensor_type: str,
-        config_entry: ConfigEntry,
-    ) -> None:
-        """Initialize dashboard sensor."""
-        super().__init__()
-        self.coordinator = coordinator
-        self._base_entity_id = base_entity_id
-        self._sensor_type = sensor_type
-        
-        # Generate unique ID
-        safe_entity_id = base_entity_id.replace(".", "_")
-        self._attr_unique_id = f"{config_entry.unique_id}_{safe_entity_id}_{sensor_type}"
-        
-        # Link to the same device as the climate entity
-        climate_name = f"{config_entry.title} ({base_entity_id})"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{config_entry.unique_id}_{safe_entity_id}")},
-            name=climate_name,
-        )
-    
-    @property
-    def should_poll(self) -> bool:
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
-    
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return self.coordinator.last_update_success
-    
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(
-                self._handle_coordinator_update, self.entity_id
-            )
-        )
-    
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self.async_write_ha_state()
+    pass
 
 
 class CorrelationCoefficientSensor(SmartClimateDashboardSensor):
