@@ -733,31 +733,82 @@ automation:
 - **Too Long**: May indicate slow sensor or external influences
   - Verify sensor isn't affected by drafts, sunlight, etc.
 
+### Dashboard and Template Issues
+
+#### Template Errors in Dashboard
+
+**Status**: ✅ **RESOLVED** in v1.3.1-beta8+ (July 2025)
+
+**Symptoms**: Dashboard shows template errors like:
+- `Template error: round got invalid input 'None'`
+- `TypeError: unsupported operand type(s) for +: 'NoneType' and 'NoneType'`
+- `TypeError: '>' not supported between instances of 'NoneType' and 'int'`
+
+**Root Cause**: Entity attributes were returning None instead of proper values, causing template failures
+
+**This Issue Affected**: Users using the dashboard template in versions v1.3.0 through v1.3.1-beta7
+
+**Fix Applied**: 
+- Added None checks and proper defaults for all entity attributes
+- All attributes now return meaningful values or sensible defaults
+- Template errors eliminated throughout the dashboard
+
+**How to Verify the Fix**:
+1. Check entity attributes in Developer Tools → States
+2. All Smart Climate attributes should show values, not None
+3. Dashboard should display without template errors
+4. Gauges and charts should work properly
+
+**If Still Having Issues**:
+- Restart Home Assistant to clear cached template values
+- Refresh your browser cache
+- Verify you're using the latest dashboard template
+
+#### Sensors Not Creating
+
+**Status**: ✅ **RESOLVED** in v1.3.1-beta8+ (July 2025)
+
+**Symptoms**: Errors like `argument after ** must be a mapping, not str` during sensor creation
+
+**Root Cause**: Duplicate sensor classes and incorrect device_info setup
+
+**Fix Applied**: 
+- Centralized device_info creation using factory function
+- Removed duplicate SmartClimateDashboardSensor classes
+- Fixed device registry integration
+
+**How to Verify the Fix**:
+1. Check that all Smart Climate sensors are available
+2. No sensor creation errors in logs
+3. All dashboard sensors show proper values
+
 ### Weather Forecast Integration Issues
 
 #### Weather Integration Shows Disabled Despite Configuration
 
+**Status**: ✅ **RESOLVED** in v1.3.1-beta8+ (July 2025)
+
 **Symptoms**: Dashboard shows "Weather Integration: Disabled" even though weather entity is properly configured
 
-**Root Cause**: Configuration structure mismatch - the configuration flow saves weather settings as flat keys (e.g., `forecast_enabled: true`, `weather_entity: weather.home`) but the code expects them to be nested under a `predictive` dictionary structure.
+**Root Cause**: Climate entity was using stale configuration data from hass.data instead of current configuration from config_entry.data
 
-**This Issue Affects**: Users who configured weather integration through the UI in versions v1.3.0 through v1.3.1-beta4
+**This Issue Affected**: Users who configured weather integration through the UI in versions v1.3.0 through v1.3.1-beta7
 
-**Temporary Workaround** (Until v1.3.1-beta5):
-Currently, there is no user-accessible workaround. The system will automatically build the correct structure in the upcoming v1.3.1-beta5 release.
+**Fix Applied**: 
+- Updated climate.py to use `config_entry.data` instead of cached hass.data config
+- Weather integration now immediately reflects configuration changes
+- No user action required after updating to v1.3.1-beta8+
 
-**Fix Coming in v1.3.1-beta5**:
-The fix will automatically translate the flat configuration structure into the nested format expected by the code at runtime. No user action will be required - the weather integration will start working immediately after updating to v1.3.1-beta5.
-
-**How to Verify the Issue**:
+**How to Verify the Fix**:
 1. Check your entity attributes in Developer Tools → States
 2. Look for your Smart Climate entity
-3. If you see `forecast_active_strategy: null` despite having configured weather, you're affected
+3. Weather integration should show as enabled when configured
+4. Entity attributes should show proper weather values instead of None
 
-**Technical Details**:
-- Config saves: `forecast_enabled: true`, `weather_entity: weather.home`, etc.
-- Code expects: `predictive: {enabled: true, weather_entity: weather.home, strategies: [...]}`
-- The ForecastEngine never initializes because it can't find the expected nested structure
+**If Still Having Issues**:
+- Restart Home Assistant after updating
+- Verify weather entity is valid and providing data
+- Check logs for any weather-related errors
 
 #### Weather Predictions Not Working
 
