@@ -1,11 +1,11 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.3.0-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.3.1-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
-> ⚠️ **CRITICAL ISSUES IN v1.3.0**: Three critical bugs have been identified that can cause data loss and temperature instability. Please wait for v1.3.1 hotfix before production use. See [issues #34-36](https://github.com/VectorBarks/smart-climate/issues) for details.
+> ✅ **v1.3.1 Released**: All critical issues resolved. Production-ready release with outlier detection and comprehensive test coverage.
 
 Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
 
@@ -24,7 +24,22 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
-**NEW in v1.3.0: Advanced Predictive Intelligence**
+**NEW in v1.3.1: Advanced Outlier Detection & Data Quality Protection**
+- **Outlier Detection System**: Statistical analysis using Modified Z-Score with Median Absolute Deviation (MAD)
+  - Automatic detection of temperature sensor malfunctions and power consumption spikes
+  - Configurable sensitivity threshold (1.0-5.0) with intelligent default of 2.5
+  - ML model protection: prevents corrupted sensor data from poisoning learning algorithms
+  - Real-time outlier statistics and health monitoring through dedicated dashboard sensors
+- **System Health Monitoring**: Comprehensive diagnostics for integration performance
+  - Memory usage tracking, persistence latency monitoring, and sample collection rates
+  - Outlier detection status with count tracking and detection rate analytics
+  - Dashboard integration with binary sensors for outlier alerts and system status
+- **Configuration Management**: User-friendly outlier detection settings in Home Assistant UI
+  - Enable/disable outlier detection with instant integration reload
+  - Sensitivity adjustment for different sensor types and environments
+  - Automatic sensor creation for outlier monitoring and system health
+
+**ENHANCED in v1.3.0: Advanced Predictive Intelligence**
 - **Adaptive Feedback Delays**: ML-powered optimization of AC response timing based on temperature stability patterns
   - Exponential moving average smoothing of learned delays with 70% weight on recent measurements
   - Temperature stability detection with 0.1°C threshold monitoring

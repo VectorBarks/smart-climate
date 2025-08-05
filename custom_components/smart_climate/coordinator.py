@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .models import SmartClimateData, OffsetInput, ModeAdjustments
 from .errors import SmartClimateError
 from .outlier_detector import OutlierDetector
+from .dto import SystemHealthData
 
 if TYPE_CHECKING:
     from .sensor_manager import SensorManager
@@ -225,3 +226,61 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         except Exception as err:
             _LOGGER.error("Error updating coordinator data: %s", err)
             raise SmartClimateError(f"Failed to update coordinator data: {err}") from err
+    
+    def _get_system_health_data(self) -> SystemHealthData:
+        """Get system health data including outlier detection information.
+        
+        This method integrates outlier detection statistics with system health reporting
+        as specified in c_architecture.md Section 9.6.
+        """
+        # Get base system health data from offset engine if available
+        if hasattr(self._offset_engine, 'get_dashboard_data'):
+            try:
+                dashboard_data = self._offset_engine.get_dashboard_data()
+                if hasattr(dashboard_data, 'system_health'):
+                    base_health = dashboard_data.system_health
+                else:
+                    base_health = SystemHealthData()
+            except Exception as exc:
+                _LOGGER.warning("Could not get base system health data: %s", exc)
+                base_health = SystemHealthData()
+        else:
+            base_health = SystemHealthData()
+        
+        # Update with outlier-specific information
+        outlier_detection_active = self.outlier_detection_enabled
+        outliers_detected_today = 0
+        outlier_detection_threshold = 2.5
+        last_outlier_detection_time = None
+        
+        if self.data and hasattr(self.data, 'outlier_statistics'):
+            stats = self.data.outlier_statistics
+            if stats and stats.get('enabled', False):
+                # Get outlier count from current data
+                outliers_detected_today = self.data.outlier_count or 0
+                # Get threshold from outlier detector if available
+                if self._outlier_detector:
+                    outlier_detection_threshold = self._outlier_detector.zscore_threshold
+                # Set last detection time if outliers were detected
+                if outliers_detected_today > 0:
+                    last_outlier_detection_time = datetime.now()
+        
+        # Return updated health data with outlier information
+        return SystemHealthData(
+            memory_usage_kb=base_health.memory_usage_kb,
+            persistence_latency_ms=base_health.persistence_latency_ms,
+            outlier_detection_active=outlier_detection_active,
+            samples_per_day=base_health.samples_per_day,
+            accuracy_improvement_rate=base_health.accuracy_improvement_rate,
+            convergence_trend=base_health.convergence_trend,
+            outliers_detected_today=outliers_detected_today,
+            outlier_detection_threshold=outlier_detection_threshold,
+            last_outlier_detection_time=last_outlier_detection_time
+        )
+    
+    def _get_system_health_with_outliers(self) -> SystemHealthData:
+        """Get system health data with outlier integration.
+        
+        Alias method for _get_system_health_data to match test expectations.
+        """
+        return self._get_system_health_data()

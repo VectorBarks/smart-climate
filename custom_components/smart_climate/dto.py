@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, asdict, field
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 API_VERSION = "1.3.0"
 
@@ -50,6 +51,10 @@ class SystemHealthData:
     samples_per_day: float = 0.0
     accuracy_improvement_rate: float = 0.0  # Percentage per day
     convergence_trend: Optional[str] = None  # "improving", "stable", "unstable"
+    # Outlier detection specific fields (Section 9.6 of c_architecture.md)
+    outliers_detected_today: int = 0
+    outlier_detection_threshold: float = 2.5
+    last_outlier_detection_time: Optional[datetime] = None
 
 
 @dataclass
