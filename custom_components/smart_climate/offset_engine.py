@@ -10,6 +10,7 @@ import sys
 
 from .models import OffsetInput, OffsetResult
 from .lightweight_learner import LightweightOffsetLearner as EnhancedLightweightOffsetLearner
+from .outlier_detector import OutlierDetector
 from .dto import (
     DashboardData,
     SeasonalData,
@@ -209,7 +210,8 @@ class OffsetEngine:
         self, 
         config: dict, 
         seasonal_learner: Optional["SeasonalHysteresisLearner"] = None,
-        delay_learner: Optional["DelayLearner"] = None
+        delay_learner: Optional["DelayLearner"] = None,
+        outlier_detection_config: Optional[dict] = None
     ):
         """Initialize the offset engine with configuration.
         
@@ -217,6 +219,7 @@ class OffsetEngine:
             config: Configuration dictionary
             seasonal_learner: Optional seasonal learner for enhanced predictions
             delay_learner: Optional delay learner for adaptive timing
+            outlier_detection_config: Optional configuration for outlier detection
         """
         self._max_offset = config.get("max_offset", 5.0)
         self._ml_enabled = config.get("ml_enabled", True)
@@ -258,6 +261,14 @@ class OffsetEngine:
         # Delay learning integration
         self._delay_learner: Optional["DelayLearner"] = delay_learner
         
+        # Outlier detection integration
+        self._outlier_detector: Optional[OutlierDetector] = None
+        if outlier_detection_config:
+            self._outlier_detector = OutlierDetector(config=outlier_detection_config)
+            _LOGGER.debug("OutlierDetector initialized with config: %s", outlier_detection_config)
+        else:
+            _LOGGER.debug("No outlier detection configured")
+        
         # Dashboard cache for performance
         self._dashboard_cache: Dict[str, Any] = {}
         self._cache_hits = 0
@@ -283,7 +294,7 @@ class OffsetEngine:
         
         _LOGGER.debug(
             "OffsetEngine initialized with max_offset=%s, ml_enabled=%s, learning_enabled=%s, "
-            "hysteresis_enabled=%s, seasonal_enabled=%s, delay_learning=%s, "
+            "hysteresis_enabled=%s, seasonal_enabled=%s, delay_learning=%s, outlier_detection=%s, "
             "power_thresholds(idle=%s, min=%s, max=%s), save_interval=%s, "
             "validation_bounds(offset=%s to %s, temp=%s to %s, rate_limit=%ss)",
             self._max_offset,
@@ -292,6 +303,7 @@ class OffsetEngine:
             self._hysteresis_enabled,
             self._seasonal_features_enabled,
             delay_learner is not None,
+            self._outlier_detector is not None,
             self._power_idle_threshold,
             self._power_min_threshold,
             self._power_max_threshold,
@@ -416,6 +428,73 @@ class OffsetEngine:
         except Exception as exc:
             _LOGGER.warning("Error during feedback validation: %s", exc)
             return False
+    
+    def _validate_learning_data(self, input_data: OffsetInput) -> bool:
+        """Validate learning data using outlier detection to prevent ML model corruption.
+        
+        Args:
+            input_data: The input data to validate
+            
+        Returns:
+            True if data is valid for learning, False if outliers are detected
+        """
+        if not self._outlier_detector:
+            # No outlier detection configured - all data is valid
+            return True
+        
+        try:
+            # Check room temperature for outliers
+            if input_data.room_temp is not None:
+                if self._outlier_detector.is_temperature_outlier(input_data.room_temp):
+                    _LOGGER.debug(
+                        "Outlier detected in room temperature: %.2f°C. Skipping learning.",
+                        input_data.room_temp
+                    )
+                    return False
+                # Add valid sample to history for future detection
+                self._outlier_detector.add_temperature_sample(input_data.room_temp)
+            
+            # Check AC internal temperature for outliers
+            if input_data.ac_internal_temp is not None:
+                if self._outlier_detector.is_temperature_outlier(input_data.ac_internal_temp):
+                    _LOGGER.debug(
+                        "Outlier detected in AC internal temperature: %.2f°C. Skipping learning.",
+                        input_data.ac_internal_temp
+                    )
+                    return False
+                # Add valid sample to history for future detection
+                self._outlier_detector.add_temperature_sample(input_data.ac_internal_temp)
+            
+            # Check power consumption for outliers
+            if input_data.power_consumption is not None:
+                if self._outlier_detector.is_power_outlier(input_data.power_consumption):
+                    _LOGGER.debug(
+                        "Outlier detected in power consumption: %.2fW. Skipping learning.",
+                        input_data.power_consumption
+                    )
+                    return False
+                # Add valid sample to history for future detection
+                self._outlier_detector.add_power_sample(input_data.power_consumption)
+            
+            # Check outdoor temperature for outliers (if available)
+            if input_data.outdoor_temp is not None:
+                if self._outlier_detector.is_temperature_outlier(input_data.outdoor_temp):
+                    _LOGGER.debug(
+                        "Outlier detected in outdoor temperature: %.2f°C. Skipping learning.",
+                        input_data.outdoor_temp
+                    )
+                    return False
+                # Add valid sample to history for future detection
+                self._outlier_detector.add_temperature_sample(input_data.outdoor_temp)
+            
+            # All data passed outlier detection
+            _LOGGER.debug("All sensor data passed outlier detection - learning data is valid")
+            return True
+            
+        except Exception as exc:
+            _LOGGER.warning("Error during outlier detection validation: %s", exc)
+            # On error, allow learning to continue (fail-safe behavior)
+            return True
     
     async def apply_prediction(self, offset: float) -> float:
         """Apply prediction and mark as prediction-sourced adjustment.
@@ -1056,6 +1135,16 @@ class OffsetEngine:
         if not self._validate_feedback(actual_offset, input_data.room_temp, current_timestamp):
             _LOGGER.warning("Rejecting invalid feedback data for security: offset=%s, room_temp=%s", 
                           actual_offset, input_data.room_temp)
+            return
+        
+        # Validate learning data for outliers to protect ML model
+        if not self._validate_learning_data(input_data):
+            _LOGGER.info(
+                "Outlier detected in learning data - skipping ML model update to prevent corruption "
+                "(predicted=%.2f°C, actual=%.2f°C, room_temp=%.2f°C, ac_temp=%.2f°C)",
+                predicted_offset, actual_offset, 
+                input_data.room_temp or 0.0, input_data.ac_internal_temp or 0.0
+            )
             return
         
         try:
@@ -1850,8 +1939,57 @@ class OffsetEngine:
     
     def _is_outlier_detection_active(self) -> bool:
         """Check if outlier detection is active."""
-        # TODO: Implement actual outlier detection
-        return False
+        return self._outlier_detector is not None
+    
+    def has_outlier_detection(self) -> bool:
+        """Check if outlier detection is available."""
+        return self._outlier_detector is not None
+    
+    def get_outlier_statistics(self) -> Dict[str, Any]:
+        """Get outlier detection statistics."""
+        if not self._outlier_detector:
+            return {
+                "enabled": False,
+                "detected_outliers": 0,
+                "filtered_samples": 0,
+                "outlier_rate": 0.0,
+                "temperature_history_size": 0,
+                "power_history_size": 0,
+                "has_sufficient_data": False
+            }
+        
+        try:
+            temp_history_size = self._outlier_detector.get_history_size()
+            power_history_size = len(self._outlier_detector._power_history)
+            
+            # TODO: Track actual outlier counts - for now use placeholder
+            # In a real implementation, we'd track these stats as outliers are detected
+            total_samples = temp_history_size + power_history_size
+            detected_outliers = 0  # Placeholder
+            filtered_samples = total_samples - detected_outliers
+            outlier_rate = detected_outliers / total_samples if total_samples > 0 else 0.0
+            
+            return {
+                "enabled": True,
+                "detected_outliers": detected_outliers,
+                "filtered_samples": filtered_samples,
+                "outlier_rate": outlier_rate,
+                "temperature_history_size": temp_history_size,
+                "power_history_size": power_history_size,
+                "has_sufficient_data": self._outlier_detector.has_sufficient_data()
+            }
+        except Exception as exc:
+            _LOGGER.warning("Error getting outlier statistics: %s", exc)
+            return {
+                "enabled": True,
+                "error": str(exc),
+                "detected_outliers": 0,
+                "filtered_samples": 0,
+                "outlier_rate": 0.0,
+                "temperature_history_size": 0,
+                "power_history_size": 0,
+                "has_sufficient_data": False
+            }
     
     def _calculate_samples_per_day(self) -> float:
         """Calculate average samples collected per day."""

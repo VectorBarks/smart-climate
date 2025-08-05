@@ -102,7 +102,8 @@ class SmartClimateEntity(ClimateEntity):
         self._cached_swing_modes = None
         
         # Pass wrapped entity ID to coordinator for AC internal temp access
-        self._coordinator._wrapped_entity_id = wrapped_entity_id
+        if self._coordinator is not None:
+            self._coordinator._wrapped_entity_id = wrapped_entity_id
         
         # Add async_write_ha_state if not available (for testing)
         if not hasattr(self, 'async_write_ha_state'):
@@ -735,6 +736,30 @@ class SmartClimateEntity(ClimateEntity):
             return None
     
     @property
+    def outlier_detection_active(self) -> bool:
+        """Return whether outlier detection is currently active."""
+        try:
+            if self._coordinator is None:
+                return False
+            return getattr(self._coordinator, 'outlier_detection_enabled', False)
+        except Exception as exc:
+            _LOGGER.debug("Error getting outlier detection status: %s", exc)
+            return False
+    
+    @property
+    def outlier_detected(self) -> bool:
+        """Return whether this entity currently has outliers detected."""
+        try:
+            if self._coordinator is None or not hasattr(self._coordinator, 'data'):
+                return False
+            
+            outliers = getattr(self._coordinator.data, 'outliers', {})
+            return outliers.get(self.entity_id, False)
+        except Exception as exc:
+            _LOGGER.debug("Error getting outlier detected status: %s", exc)
+            return False
+    
+    @property
     def extra_state_attributes(self):
         """Return the state attributes."""
         attributes = {}
@@ -920,6 +945,55 @@ class SmartClimateEntity(ClimateEntity):
                 "mean_squared_error": 0.0,
                 "mean_absolute_error": 0.0,
                 "r_squared": 0.0,
+            })
+        
+        # Add outlier detection data (Phase 2)
+        try:
+            # Add is_outlier status
+            attributes["is_outlier"] = self.outlier_detected
+            
+            # Add comprehensive outlier_statistics from coordinator data as per c_architecture.md Section 9.3
+            if self._coordinator is not None and hasattr(self._coordinator, 'data'):
+                coordinator_stats = getattr(self._coordinator.data, 'outlier_statistics', {})
+                
+                # Build comprehensive outlier statistics with all required keys
+                outlier_statistics = {
+                    "detected_outliers": coordinator_stats.get("detected_outliers", 0),
+                    "filtered_samples": coordinator_stats.get("filtered_samples", 0),
+                    "outlier_rate": coordinator_stats.get("outlier_rate", 0.0),
+                    "temperature_history_size": coordinator_stats.get("temperature_history_size", 0),
+                    "power_history_size": coordinator_stats.get("power_history_size", 0),
+                }
+                
+                # Ensure data types are correct
+                outlier_statistics["detected_outliers"] = int(outlier_statistics["detected_outliers"])
+                outlier_statistics["filtered_samples"] = int(outlier_statistics["filtered_samples"])
+                outlier_statistics["outlier_rate"] = float(outlier_statistics["outlier_rate"])
+                outlier_statistics["temperature_history_size"] = int(outlier_statistics["temperature_history_size"])
+                outlier_statistics["power_history_size"] = int(outlier_statistics["power_history_size"])
+                
+                attributes["outlier_statistics"] = outlier_statistics
+            else:
+                # Provide safe defaults when coordinator data not available
+                attributes["outlier_statistics"] = {
+                    "detected_outliers": 0,
+                    "filtered_samples": 0,
+                    "outlier_rate": 0.0,
+                    "temperature_history_size": 0,
+                    "power_history_size": 0,
+                }
+        except Exception as exc:
+            _LOGGER.warning("Error getting outlier detection attributes: %s", exc)
+            # Provide safe fallbacks on error with all required keys
+            attributes.update({
+                "is_outlier": False,
+                "outlier_statistics": {
+                    "detected_outliers": 0,
+                    "filtered_samples": 0,
+                    "outlier_rate": 0.0,
+                    "temperature_history_size": 0,
+                    "power_history_size": 0,
+                },
             })
         
         return attributes

@@ -41,7 +41,7 @@ class SmartClimateData:
     """Data structure for coordinator updates.
     
     Contains all data needed for Smart Climate coordination including sensor readings,
-    calculated offsets, mode adjustments, and startup state tracking.
+    calculated offsets, mode adjustments, startup state tracking, and outlier detection results.
     
     Args:
         room_temp: Current room temperature from sensor
@@ -54,6 +54,9 @@ class SmartClimateData:
             even if the offset change is below the normal update threshold. This ensures
             that learned temperature adjustments are applied immediately when the
             integration starts up, rather than waiting for the next significant change.
+        outliers: Dictionary mapping sensor types to outlier status
+        outlier_count: Total number of outliers detected in current update
+        outlier_statistics: Dictionary containing outlier detection statistics
     """
     room_temp: Optional[float]
     outdoor_temp: Optional[float]
@@ -61,6 +64,22 @@ class SmartClimateData:
     calculated_offset: float
     mode_adjustments: ModeAdjustments
     is_startup_calculation: bool = False
+    outliers: dict = None
+    outlier_count: int = 0
+    outlier_statistics: dict = None
+    
+    def __post_init__(self):
+        """Initialize default values for outlier fields."""
+        if self.outliers is None:
+            self.outliers = {}
+        if self.outlier_statistics is None:
+            self.outlier_statistics = {
+                "enabled": False,
+                "temperature_outliers": 0,
+                "power_outliers": 0,
+                "total_samples": 0,
+                "outlier_rate": 0.0
+            }
 
 
 @dataclass
