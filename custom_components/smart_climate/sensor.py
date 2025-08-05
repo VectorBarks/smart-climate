@@ -1,6 +1,6 @@
 """Sensor platform for the Smart Climate integration.
 
-This module provides 34 sensors across 5 categories for comprehensive Smart Climate monitoring:
+This module provides 35 sensors across 6 categories for comprehensive Smart Climate monitoring:
 
 1. Legacy Dashboard Sensors (5): Core functionality display
 2. Advanced Feature Sensors (4): v1.3.0+ features status
@@ -8,6 +8,7 @@ This module provides 34 sensors across 5 categories for comprehensive Smart Clim
 4. Performance Sensors (6): System efficiency metrics
 5. AC Learning Sensors (5): HVAC behavior tracking
 6. System Health Sensors (5): Resource monitoring and diagnostics
+7. Outlier Detection Sensors (1): Outlier monitoring and statistics
 
 Key Features:
 - Sensor caching with race condition protection
@@ -40,6 +41,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .entity import SmartClimateSensorEntity
@@ -148,6 +150,12 @@ async def async_setup_entry(
             ConvergenceTrendSensor(coordinator, entity_id, config_entry),
             OutlierDetectionSensor(coordinator, entity_id, config_entry),
         ])
+        
+        # === OUTLIER DETECTION SENSORS (1) ===
+        # Only add OutlierCountSensor when outlier detection is enabled
+        outlier_detection_enabled = config_entry.options.get("outlier_detection_enabled", True)
+        if outlier_detection_enabled:
+            sensors.append(OutlierCountSensor(coordinator, entity_id, config_entry))
     
     async_add_entities(sensors)
 
@@ -692,4 +700,63 @@ class SeasonalContributionSensor(SmartClimateDashboardSensor):
             return seasonal_data.get("contribution")
         except (AttributeError, TypeError):
             return None
+
+
+class OutlierCountSensor(SmartClimateDashboardSensor):
+    """Sensor for total count of outliers detected."""
+    
+    def __init__(
+        self,
+        coordinator,
+        base_entity_id: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize outlier count sensor."""
+        super().__init__(coordinator, base_entity_id, "outlier_count", config_entry)
+        self._attr_name = "Outlier Count"
+        self._attr_icon = "mdi:alert-circle-check-outline"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def native_value(self) -> int:
+        """Return the outlier count from coordinator."""
+        if not self.coordinator.data:
+            return 0
+        
+        try:
+            return getattr(self.coordinator.data, "outlier_count", 0)
+        except (AttributeError, TypeError):
+            return 0
+    
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return additional state attributes."""
+        if not self.coordinator.data:
+            return {
+                "total_sensors": 0,
+                "outlier_rate": 0.0,
+                "last_detection_time": None,
+            }
+        
+        try:
+            outlier_stats = getattr(self.coordinator.data, "outlier_statistics", {})
+            if not outlier_stats:
+                return {
+                    "total_sensors": 0,
+                    "outlier_rate": 0.0,
+                    "last_detection_time": None,
+                }
+            
+            return {
+                "total_sensors": outlier_stats.get("total_samples", 0),
+                "outlier_rate": outlier_stats.get("outlier_rate", 0.0),
+                "last_detection_time": outlier_stats.get("last_detection_time"),
+            }
+        except (AttributeError, TypeError):
+            return {
+                "total_sensors": 0,
+                "outlier_rate": 0.0,
+                "last_detection_time": None,
+            }
 
