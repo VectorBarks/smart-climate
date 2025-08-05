@@ -59,6 +59,10 @@ CONF_CLEAR_SKY_LOOKAHEAD_HOURS = "clear_sky_lookahead_hours"
 CONF_CLEAR_SKY_PRE_ACTION_HOURS = "clear_sky_pre_action_hours"
 CONF_CLEAR_SKY_ADJUSTMENT = "clear_sky_adjustment"
 
+# Outlier detection configuration keys
+CONF_OUTLIER_DETECTION_ENABLED = "outlier_detection_enabled"
+CONF_OUTLIER_SENSITIVITY = "outlier_sensitivity"
+
 # Default values
 DEFAULT_MAX_OFFSET = 5.0
 DEFAULT_MIN_TEMPERATURE = 16.0
@@ -102,6 +106,10 @@ DEFAULT_CLEAR_SKY_MIN_DURATION_HOURS = 6
 DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS = 12
 DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS = 1
 DEFAULT_CLEAR_SKY_ADJUSTMENT = -1.0
+
+# Outlier detection default values
+DEFAULT_OUTLIER_DETECTION_ENABLED = True
+DEFAULT_OUTLIER_SENSITIVITY = 2.5
 
 # Service names
 SERVICE_SET_OFFSET = "set_offset"

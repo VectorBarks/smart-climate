@@ -87,6 +87,10 @@ from .const import (
     DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS,
     DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS,
     DEFAULT_CLEAR_SKY_ADJUSTMENT,
+    CONF_OUTLIER_DETECTION_ENABLED,
+    CONF_OUTLIER_SENSITIVITY,
+    DEFAULT_OUTLIER_DETECTION_ENABLED,
+    DEFAULT_OUTLIER_SENSITIVITY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1010,6 +1014,23 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                     max=0.0,
                     step=0.1,
                     unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            
+            # Outlier detection configuration
+            vol.Optional(
+                CONF_OUTLIER_DETECTION_ENABLED,
+                default=current_options.get(CONF_OUTLIER_DETECTION_ENABLED, current_config.get(CONF_OUTLIER_DETECTION_ENABLED, DEFAULT_OUTLIER_DETECTION_ENABLED))
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_OUTLIER_SENSITIVITY,
+                default=current_options.get(CONF_OUTLIER_SENSITIVITY, current_config.get(CONF_OUTLIER_SENSITIVITY, DEFAULT_OUTLIER_SENSITIVITY))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=1.0,
+                    max=5.0,
+                    step=0.1,
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),
