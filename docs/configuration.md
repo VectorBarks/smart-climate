@@ -84,6 +84,13 @@ The UI now includes ALL configuration options:
 | **Enable Learning** | Start with learning system active | False | True/False |
 | **Data Retention Days** | Days of historical data to keep | 60 | 30 - 365 |
 
+#### v1.3.1 Data Quality Features
+
+| Setting | Description | Default | Range |
+|---------|-------------|---------|-------|
+| **Outlier Detection** | Detect and filter sensor malfunctions | True | True/False |
+| **Outlier Sensitivity** | Z-score threshold for detection | 2.5 | 1.0 - 5.0 |
+
 #### v1.3.0 Advanced Features
 
 | Setting | Description | Default | Range |

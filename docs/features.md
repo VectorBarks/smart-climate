@@ -27,6 +27,34 @@ Advanced machine learning capabilities that improve accuracy over time:
 - **Hysteresis Learning**: Automatically detects AC on/off temperature thresholds
 - **Confidence Tracking**: Multi-factor confidence calculation shows learning quality (0-100%)
 
+## Advanced Features (v1.3.1)
+
+### Outlier Detection System
+*Statistical analysis to protect ML models from corrupted sensor data*
+
+**How It Works:**
+- Uses Modified Z-Score with Median Absolute Deviation (MAD) for robust outlier detection
+- Monitors temperature sensors (-10°C to 50°C bounds) and power consumption (0-5000W bounds)
+- Maintains 50-sample sliding window for statistical analysis
+- Automatically filters outliers from ML model training data
+
+**Benefits:**
+- Prevents sensor malfunctions from corrupting learning algorithms
+- Protects against data poisoning from temporary sensor issues
+- Maintains learning accuracy during sensor failures
+- Real-time monitoring through dashboard sensors
+
+**Configuration:**
+```yaml
+outlier_detection_enabled: true  # Default: true
+outlier_sensitivity: 2.5        # Range: 1.0-5.0 (lower = more sensitive)
+```
+
+**Dashboard Integration:**
+- Binary sensor shows outlier detection status for each climate entity
+- System health sensors track outlier statistics
+- Real-time outlier count and detection rate monitoring
+
 ## Advanced Features (v1.3.0)
 
 ### Adaptive Feedback Delays
