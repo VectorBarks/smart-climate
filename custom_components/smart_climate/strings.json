@@ -13,7 +13,14 @@
           "min_temperature": "Minimum Temperature (°C)",
           "max_temperature": "Maximum Temperature (°C)",
           "update_interval": "Update Interval (seconds)",
-          "ml_enabled": "Enable ML Learning"
+          "ml_enabled": "Enable ML Learning",
+          "thermal_efficiency_enabled": "Enable Thermal Efficiency",
+          "preference_level": "Comfort vs Savings Preference",
+          "shadow_mode": "Shadow Mode (observe only)",
+          "priming_duration_hours": "Priming Duration (hours)",
+          "recovery_duration_minutes": "Recovery Duration (minutes)",
+          "probe_drift_limit": "Probe Drift Limit (°C)",
+          "calibration_hour": "Daily Calibration Hour"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -24,7 +31,14 @@
           "min_temperature": "Minimum temperature the system can set",
           "max_temperature": "Maximum temperature the system can set",
           "update_interval": "How often to update the offset calculation",
-          "ml_enabled": "Enable machine learning for better offset predictions"
+          "ml_enabled": "Enable machine learning for better offset predictions",
+          "thermal_efficiency_enabled": "Enable advanced thermal efficiency optimization (experimental feature)",
+          "preference_level": "Balance between comfort and energy savings",
+          "shadow_mode": "Enable to observe thermal patterns without controlling the AC",
+          "priming_duration_hours": "Initial learning period duration (24-48 hours)",
+          "recovery_duration_minutes": "Recovery time after mode changes (30-60 minutes)",
+          "probe_drift_limit": "Maximum temperature drift during probing (1.0-3.0°C)",
+          "calibration_hour": "Hour of day for daily calibration cycle (0-23)"
         }
       }
     },
@@ -37,6 +51,43 @@
     },
     "abort": {
       "already_configured": "This climate entity is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Smart Climate Control Options",
+        "description": "Configure advanced settings for your Smart Climate Control",
+        "data": {
+          "thermal_efficiency_enabled": "Enable Thermal Efficiency",
+          "preference_level": "Comfort vs Savings Preference",
+          "shadow_mode": "Shadow Mode (observe only)",
+          "priming_duration_hours": "Priming Duration (hours)",
+          "recovery_duration_minutes": "Recovery Duration (minutes)",
+          "probe_drift_limit": "Probe Drift Limit (°C)",
+          "calibration_hour": "Daily Calibration Hour"
+        },
+        "data_description": {
+          "thermal_efficiency_enabled": "Enable advanced thermal efficiency optimization for energy savings",
+          "preference_level": "Choose your balance between comfort and energy savings",
+          "shadow_mode": "Enable to monitor thermal patterns without controlling the AC",
+          "priming_duration_hours": "Duration for initial thermal learning (24-48 hours recommended)",
+          "recovery_duration_minutes": "Time to recover after mode changes (30-60 minutes)",
+          "probe_drift_limit": "Maximum temperature drift during active learning (1.0-3.0°C)",
+          "calibration_hour": "Hour when daily calibration cycle runs (0-23, typically during low usage)"
+        }
+      }
+    }
+  },
+  "selector": {
+    "preference_level": {
+      "options": {
+        "max_comfort": "Maximum Comfort - Tightest temperature control",
+        "comfort_priority": "Comfort Priority - Balanced toward comfort",
+        "balanced": "Balanced - Equal comfort and savings", 
+        "savings_priority": "Savings Priority - Balanced toward savings",
+        "max_savings": "Maximum Savings - Most energy efficient"
+      }
     }
   }
 }
