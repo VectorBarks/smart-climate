@@ -15,6 +15,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er, config_validation as cv
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from .coordinator import SmartClimateCoordinator
+from .sensor_manager import SensorManager
+from .mode_manager import ModeManager
 from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
 )
@@ -274,23 +277,71 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
     # Store the engine instance for the platform to use, keyed by entity_id
     hass.data[DOMAIN][entry.entry_id]["offset_engines"][entity_id] = offset_engine
     
-    # Create DataUpdateCoordinator for this entity
-    async def async_update_data():
-        """Fetch data from offset engine."""
-        try:
-            data = await offset_engine.async_get_dashboard_data()
-            return data
-        except Exception as exc:
-            _LOGGER.error("Error fetching dashboard data for %s: %s", entity_id, exc)
-            raise UpdateFailed(f"Error fetching dashboard data: {exc}") from exc
+    # Get outlier detection configuration from options
+    outlier_config = None
+    if hasattr(entry, 'options') and entry.options and entry.options.get("outlier_detection_enabled", False):
+        outlier_config = {
+            "enabled": True,
+            "sensitivity": entry.options.get("outlier_sensitivity", 2.5)
+        }
+        _LOGGER.debug("Outlier detection enabled with config: %s", outlier_config)
+    else:
+        _LOGGER.debug("Outlier detection disabled")
     
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=f"smart_climate_{entry.entry_id}_{entity_id}",
-        update_method=async_update_data,
-        update_interval=timedelta(seconds=30),
-    )
+    # Create SensorManager and ModeManager instances
+    try:
+        # Get sensor entity IDs from config
+        room_sensor = entry.data.get("room_sensor")
+        outdoor_sensor = entry.data.get("outdoor_sensor")
+        power_sensor = entry.data.get("power_sensor")
+        
+        # Create SensorManager
+        sensor_manager = SensorManager(
+            hass=hass,
+            room_sensor_id=room_sensor,
+            outdoor_sensor_id=outdoor_sensor,
+            power_sensor_id=power_sensor
+        )
+        
+        # Create ModeManager with entry config
+        mode_manager = ModeManager(entry.data)
+        
+        # Create SmartClimateCoordinator with outlier detection support
+        coordinator = SmartClimateCoordinator(
+            hass=hass,
+            update_interval=30,  # 30 seconds
+            sensor_manager=sensor_manager,
+            offset_engine=offset_engine,
+            mode_manager=mode_manager,
+            forecast_engine=None,  # Not available in this context
+            outlier_detection_config=outlier_config
+        )
+        
+        _LOGGER.debug("SmartClimateCoordinator created successfully for entity: %s", entity_id)
+        
+    except Exception as exc:
+        _LOGGER.warning(
+            "Failed to create SmartClimateCoordinator for %s: %s - falling back to DataUpdateCoordinator", 
+            entity_id, exc
+        )
+        
+        # Fallback to original DataUpdateCoordinator
+        async def async_update_data():
+            """Fetch data from offset engine."""
+            try:
+                data = await offset_engine.async_get_dashboard_data()
+                return data
+            except Exception as exc:
+                _LOGGER.error("Error fetching dashboard data for %s: %s", entity_id, exc)
+                raise UpdateFailed(f"Error fetching dashboard data: {exc}") from exc
+        
+        coordinator = DataUpdateCoordinator(
+            hass,
+            _LOGGER,
+            name=f"smart_climate_{entry.entry_id}_{entity_id}",
+            update_method=async_update_data,
+            update_interval=timedelta(seconds=30),
+        )
     
     # Store the coordinator instance for the sensor platform to use
     hass.data[DOMAIN][entry.entry_id]["coordinators"][entity_id] = coordinator
