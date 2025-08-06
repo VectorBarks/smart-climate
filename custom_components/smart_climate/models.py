@@ -41,7 +41,8 @@ class SmartClimateData:
     """Data structure for coordinator updates.
     
     Contains all data needed for Smart Climate coordination including sensor readings,
-    calculated offsets, mode adjustments, startup state tracking, and outlier detection results.
+    calculated offsets, mode adjustments, startup state tracking, outlier detection results,
+    and thermal efficiency data.
     
     Args:
         room_temp: Current room temperature from sensor
@@ -57,6 +58,10 @@ class SmartClimateData:
         outliers: Dictionary mapping sensor types to outlier status
         outlier_count: Total number of outliers detected in current update
         outlier_statistics: Dictionary containing outlier detection statistics
+        thermal_window: Operating temperature window (min_temp, max_temp) for Phase 1
+        should_ac_run: Whether AC should run based on thermal efficiency logic
+        cycle_health: Dictionary containing cycle monitoring health data
+        thermal_efficiency_enabled: Whether thermal efficiency features are active
     """
     room_temp: Optional[float]
     outdoor_temp: Optional[float]
@@ -67,6 +72,11 @@ class SmartClimateData:
     outliers: dict = None
     outlier_count: int = 0
     outlier_statistics: dict = None
+    # Thermal efficiency fields (Phase 1)
+    thermal_window: Optional[tuple] = None
+    should_ac_run: Optional[bool] = None
+    cycle_health: Optional[dict] = None
+    thermal_efficiency_enabled: bool = False
     
     def __post_init__(self):
         """Initialize default values for outlier fields."""
