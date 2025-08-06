@@ -91,6 +91,22 @@ from .const import (
     CONF_OUTLIER_SENSITIVITY,
     DEFAULT_OUTLIER_DETECTION_ENABLED,
     DEFAULT_OUTLIER_SENSITIVITY,
+    # Thermal efficiency imports
+    CONF_THERMAL_EFFICIENCY_ENABLED,
+    CONF_PREFERENCE_LEVEL,
+    CONF_SHADOW_MODE,
+    CONF_PRIMING_DURATION_HOURS,
+    CONF_RECOVERY_DURATION_MINUTES,
+    CONF_PROBE_DRIFT_LIMIT,
+    CONF_CALIBRATION_HOUR,
+    DEFAULT_THERMAL_EFFICIENCY_ENABLED,
+    DEFAULT_PREFERENCE_LEVEL,
+    DEFAULT_SHADOW_MODE,
+    DEFAULT_PRIMING_DURATION_HOURS,
+    DEFAULT_RECOVERY_DURATION_MINUTES,
+    DEFAULT_PROBE_DRIFT_LIMIT,
+    DEFAULT_CALIBRATION_HOUR,
+    PREFERENCE_LEVELS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1034,8 +1050,89 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),
+            
+            # Thermal efficiency configuration
+            vol.Optional(
+                CONF_THERMAL_EFFICIENCY_ENABLED,
+                default=current_options.get(CONF_THERMAL_EFFICIENCY_ENABLED, current_config.get(CONF_THERMAL_EFFICIENCY_ENABLED, DEFAULT_THERMAL_EFFICIENCY_ENABLED))
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_PREFERENCE_LEVEL,
+                default=current_options.get(CONF_PREFERENCE_LEVEL, current_config.get(CONF_PREFERENCE_LEVEL, DEFAULT_PREFERENCE_LEVEL))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="max_comfort", label="Maximum Comfort"),
+                        selector.SelectOptionDict(value="comfort_priority", label="Comfort Priority"),
+                        selector.SelectOptionDict(value="balanced", label="Balanced"),
+                        selector.SelectOptionDict(value="savings_priority", label="Savings Priority"),
+                        selector.SelectOptionDict(value="max_savings", label="Maximum Savings"),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_SHADOW_MODE,
+                default=current_options.get(CONF_SHADOW_MODE, current_config.get(CONF_SHADOW_MODE, DEFAULT_SHADOW_MODE))
+            ): selector.BooleanSelector(),
         })
         
+        # Add thermal efficiency advanced options if thermal efficiency is enabled
+        thermal_enabled = current_options.get(CONF_THERMAL_EFFICIENCY_ENABLED, current_config.get(CONF_THERMAL_EFFICIENCY_ENABLED, DEFAULT_THERMAL_EFFICIENCY_ENABLED))
+        if thermal_enabled:
+            schema_dict = dict(data_schema.schema)
+            schema_dict.update({
+                vol.Optional(
+                    CONF_PRIMING_DURATION_HOURS,
+                    default=current_options.get(CONF_PRIMING_DURATION_HOURS, current_config.get(CONF_PRIMING_DURATION_HOURS, DEFAULT_PRIMING_DURATION_HOURS))
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=24,
+                        max=48,
+                        step=1,
+                        unit_of_measurement="hours",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_RECOVERY_DURATION_MINUTES,
+                    default=current_options.get(CONF_RECOVERY_DURATION_MINUTES, current_config.get(CONF_RECOVERY_DURATION_MINUTES, DEFAULT_RECOVERY_DURATION_MINUTES))
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=30,
+                        max=60,
+                        step=1,
+                        unit_of_measurement="minutes",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_PROBE_DRIFT_LIMIT,
+                    default=current_options.get(CONF_PROBE_DRIFT_LIMIT, current_config.get(CONF_PROBE_DRIFT_LIMIT, DEFAULT_PROBE_DRIFT_LIMIT))
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=1.0,
+                        max=3.0,
+                        step=0.1,
+                        unit_of_measurement="°C",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_CALIBRATION_HOUR,
+                    default=current_options.get(CONF_CALIBRATION_HOUR, current_config.get(CONF_CALIBRATION_HOUR, DEFAULT_CALIBRATION_HOUR))
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=23,
+                        step=1,
+                        unit_of_measurement="hour",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+            })
+            data_schema = vol.Schema(schema_dict)
+
         # Add power threshold fields if power sensor is configured
         if current_config.get(CONF_POWER_SENSOR):
             data_schema = self._add_power_threshold_fields_options(data_schema, current_config, current_options)

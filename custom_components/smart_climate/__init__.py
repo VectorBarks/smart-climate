@@ -35,6 +35,14 @@ from .entity_waiter import EntityWaiter, EntityNotAvailableError
 from .offset_engine import OffsetEngine
 from .seasonal_learner import SeasonalHysteresisLearner
 
+# Thermal efficiency imports
+from .thermal_models import ThermalState, ThermalConstants
+from .thermal_preferences import UserPreferences, PreferenceLevel
+from .thermal_model import PassiveThermalModel
+from .thermal_manager import ThermalManager
+from .thermal_sensor import SmartClimateStatusSensor
+from .probe_manager import ProbeManager
+
 # Version and basic metadata
 __version__ = "0.1.0"
 __author__ = "Smart Climate Team"
@@ -319,15 +327,93 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
     options = entry.options if hasattr(entry, 'options') else {}
     outlier_config = _build_outlier_config(options)
     
-    # Create OffsetEngine with outlier config
+    # 3. Set up thermal efficiency components if enabled
+    thermal_components = {}
+    thermal_efficiency_enabled = entry.data.get("thermal_efficiency_enabled", False)
+    shadow_mode = entry.data.get("shadow_mode", DEFAULT_SHADOW_MODE)
+    
+    if thermal_efficiency_enabled:
+        _LOGGER.info("Setting up thermal efficiency components for entity: %s", entity_id)
+        
+        try:
+            # Phase 1: Foundation components
+            thermal_model = PassiveThermalModel(
+                tau_cooling=entry.data.get("tau_cooling", 90.0),
+                tau_warming=entry.data.get("tau_warming", 150.0)
+            )
+            
+            # Parse preference level from config
+            pref_level_str = entry.data.get("preference_level", DEFAULT_PREFERENCE_LEVEL)
+            pref_level = PreferenceLevel[pref_level_str.upper()]
+            
+            user_preferences = UserPreferences(
+                level=pref_level,
+                comfort_band=entry.data.get("comfort_band", 1.5),
+                confidence_threshold=entry.data.get("confidence_threshold", 0.7),
+                probe_drift=entry.data.get("probe_drift", 2.0)
+            )
+            
+            # Phase 2: State machine and manager
+            thermal_manager = ThermalManager(
+                hass=hass,
+                thermal_model=thermal_model,
+                preferences=user_preferences
+            )
+            
+            # Phase 3: Advanced features
+            probe_manager = ProbeManager(
+                hass=hass,
+                thermal_model=thermal_model,
+                preferences=user_preferences,
+                max_concurrent_probes=1,
+                passive_detection_enabled=True
+            )
+            
+            status_sensor = SmartClimateStatusSensor(
+                hass=hass,
+                thermal_manager=thermal_manager,
+                offset_engine=None,  # Will be set after OffsetEngine creation
+                cycle_monitor=None   # Will be set after creation
+            )
+            
+            thermal_components = {
+                "thermal_model": thermal_model,
+                "user_preferences": user_preferences,
+                "thermal_manager": thermal_manager,
+                "probe_manager": probe_manager,
+                "status_sensor": status_sensor,
+                "shadow_mode": shadow_mode
+            }
+            
+            _LOGGER.info("Thermal efficiency components initialized for entity: %s (shadow_mode: %s)", entity_id, shadow_mode)
+            
+        except Exception as exc:
+            _LOGGER.warning("Failed to initialize thermal efficiency components for %s: %s - continuing without thermal features", entity_id, exc)
+            thermal_efficiency_enabled = False
+            thermal_components = {}
+    
+    # Create OffsetEngine with outlier config and thermal components
     offset_engine = OffsetEngine(
         config=entry.data,
         seasonal_learner=seasonal_learner,
-        outlier_detection_config=outlier_config
+        outlier_detection_config=outlier_config,
+        thermal_components=thermal_components.get("thermal_model") if thermal_efficiency_enabled else None
     )
     
     # Store the engine instance for the platform to use, keyed by entity_id
     hass.data[DOMAIN][entry.entry_id]["offset_engines"][entity_id] = offset_engine
+    
+    # Store thermal components if enabled
+    if thermal_efficiency_enabled and thermal_components:
+        # Update status sensor with OffsetEngine reference
+        thermal_components["status_sensor"]._offset_engine = offset_engine
+        
+        # Store thermal components for platform access
+        if "thermal_components" not in hass.data[DOMAIN][entry.entry_id]:
+            hass.data[DOMAIN][entry.entry_id]["thermal_components"] = {}
+        hass.data[DOMAIN][entry.entry_id]["thermal_components"][entity_id] = thermal_components
+        
+        _LOGGER.info("Thermal components stored for entity: %s", entity_id)
     
     # Create DataUpdateCoordinator for this entity
     async def async_update_data():

@@ -63,6 +63,15 @@ CONF_CLEAR_SKY_ADJUSTMENT = "clear_sky_adjustment"
 CONF_OUTLIER_DETECTION_ENABLED = "outlier_detection_enabled"
 CONF_OUTLIER_SENSITIVITY = "outlier_sensitivity"
 
+# Thermal efficiency configuration keys (v1.4.0)
+CONF_THERMAL_EFFICIENCY_ENABLED = "thermal_efficiency_enabled"
+CONF_PREFERENCE_LEVEL = "preference_level"
+CONF_SHADOW_MODE = "shadow_mode"
+CONF_PRIMING_DURATION_HOURS = "priming_duration_hours"
+CONF_RECOVERY_DURATION_MINUTES = "recovery_duration_minutes"
+CONF_PROBE_DRIFT_LIMIT = "probe_drift_limit"
+CONF_CALIBRATION_HOUR = "calibration_hour"
+
 # Default values
 DEFAULT_MAX_OFFSET = 5.0
 DEFAULT_MIN_TEMPERATURE = 16.0
@@ -147,5 +156,31 @@ LEARNING_HVAC_MODES = ["cool", "heat", "heat_cool", "auto"]
 # Thermal efficiency constants (v1.4.0)
 MIN_OFF_TIME_SECONDS = 600   # 10 minutes minimum AC off time
 MIN_ON_TIME_SECONDS = 300    # 5 minutes minimum AC on time
+
+# Thermal efficiency default values
+DEFAULT_THERMAL_EFFICIENCY_ENABLED = False  # Disabled by default for existing installations
+DEFAULT_PREFERENCE_LEVEL = "balanced"
+DEFAULT_SHADOW_MODE = False
+DEFAULT_PRIMING_DURATION_HOURS = 36
+DEFAULT_RECOVERY_DURATION_MINUTES = 45
+DEFAULT_PROBE_DRIFT_LIMIT = 2.0
+DEFAULT_CALIBRATION_HOUR = 2
+
+# Preference level options
+PREFERENCE_LEVELS = [
+    "max_comfort",
+    "comfort_priority", 
+    "balanced",
+    "savings_priority",
+    "max_savings"
+]
 PRIMING_DURATION_HOURS = 24  # 24 hours initial learning phase
 RECOVERY_DURATION_MINUTES = 30  # 30 minutes recovery after mode changes
+
+# Version constant for thermal efficiency features
+THERMAL_EFFICIENCY_VERSION = "1.4.0"
+
+# Final integration constants (Step 3.6)
+DEFAULT_SHADOW_MODE = True  # Override - safe default for observation only 
+INSIGHTS_UPDATE_INTERVAL = 3600  # 1 hour insights generation interval
+MAX_PROBE_DURATION = 7200  # 2 hours maximum probe duration
