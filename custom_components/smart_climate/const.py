@@ -143,3 +143,9 @@ ACTIVE_HVAC_MODES = ["cool", "heat", "heat_cool", "dry", "auto"]
 
 # HVAC modes that allow learning data collection (subset of ACTIVE_HVAC_MODES)
 LEARNING_HVAC_MODES = ["cool", "heat", "heat_cool", "auto"]
+
+# Thermal efficiency constants (v1.4.0)
+MIN_OFF_TIME_SECONDS = 600   # 10 minutes minimum AC off time
+MIN_ON_TIME_SECONDS = 300    # 5 minutes minimum AC on time
+PRIMING_DURATION_HOURS = 24  # 24 hours initial learning phase
+RECOVERY_DURATION_MINUTES = 30  # 30 minutes recovery after mode changes
