@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from datetime import timedelta
 
 import voluptuous as vol
@@ -19,7 +19,17 @@ from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
 )
 
-from .const import DOMAIN, PLATFORMS
+from .const import (
+    DOMAIN,
+    PLATFORMS,
+    CONF_OUTLIER_DETECTION_ENABLED,
+    CONF_OUTLIER_SENSITIVITY,
+    DEFAULT_OUTLIER_SENSITIVITY,
+    DEFAULT_OUTLIER_HISTORY_SIZE,
+    DEFAULT_OUTLIER_MIN_SAMPLES,
+    DEFAULT_OUTLIER_TEMP_BOUNDS,
+    DEFAULT_OUTLIER_POWER_BOUNDS,
+)
 from .data_store import SmartClimateDataStore
 from .entity_waiter import EntityWaiter, EntityNotAvailableError
 from .offset_engine import OffsetEngine
@@ -28,6 +38,42 @@ from .seasonal_learner import SeasonalHysteresisLearner
 # Version and basic metadata
 __version__ = "0.1.0"
 __author__ = "Smart Climate Team"
+
+
+def _build_outlier_config(options: Optional[dict]) -> Optional[dict]:
+    """Build outlier detection configuration from entry options.
+    
+    Args:
+        options: Configuration options dictionary from config entry
+        
+    Returns:
+        Dict with outlier detection configuration if enabled, None otherwise
+        
+    Configuration format when enabled:
+        {
+            "zscore_threshold": float,
+            "history_size": int, 
+            "min_samples_for_stats": int,
+            "temperature_bounds": tuple,
+            "power_bounds": tuple
+        }
+    """
+    # Safety check for None options
+    if options is None:
+        return None
+    
+    # Check if outlier detection is enabled
+    if not options.get(CONF_OUTLIER_DETECTION_ENABLED, False):
+        return None
+    
+    # Build configuration with defaults
+    return {
+        "zscore_threshold": options.get(CONF_OUTLIER_SENSITIVITY, DEFAULT_OUTLIER_SENSITIVITY),
+        "history_size": DEFAULT_OUTLIER_HISTORY_SIZE,
+        "min_samples_for_stats": DEFAULT_OUTLIER_MIN_SAMPLES,
+        "temperature_bounds": DEFAULT_OUTLIER_TEMP_BOUNDS,
+        "power_bounds": DEFAULT_OUTLIER_POWER_BOUNDS,
+    }
 
 
 def _read_file_sync(file_path: str) -> str:
@@ -268,8 +314,17 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
     entry_data = hass.data[DOMAIN][entry.entry_id]
     seasonal_learner = entry_data.get("seasonal_learners", {}).get(entity_id, None)
     
-    # 2. Always create a dedicated OffsetEngine for this entity
-    offset_engine = OffsetEngine(entry.data, seasonal_learner)
+    # 2. Get outlier configuration and create dedicated OffsetEngine for this entity
+    # Get options safely for backward compatibility
+    options = entry.options if hasattr(entry, 'options') else {}
+    outlier_config = _build_outlier_config(options)
+    
+    # Create OffsetEngine with outlier config
+    offset_engine = OffsetEngine(
+        config=entry.data,
+        seasonal_learner=seasonal_learner,
+        outlier_detection_config=outlier_config
+    )
     
     # Store the engine instance for the platform to use, keyed by entity_id
     hass.data[DOMAIN][entry.entry_id]["offset_engines"][entity_id] = offset_engine

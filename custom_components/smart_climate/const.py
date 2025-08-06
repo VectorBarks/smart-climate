@@ -108,8 +108,12 @@ DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS = 1
 DEFAULT_CLEAR_SKY_ADJUSTMENT = -1.0
 
 # Outlier detection default values
-DEFAULT_OUTLIER_DETECTION_ENABLED = True
-DEFAULT_OUTLIER_SENSITIVITY = 2.5
+DEFAULT_OUTLIER_DETECTION_ENABLED = True  # Enable outlier detection by default
+DEFAULT_OUTLIER_SENSITIVITY = 2.5  # Modified Z-score threshold for outlier detection
+DEFAULT_OUTLIER_HISTORY_SIZE = 100  # Number of historical samples to keep for analysis
+DEFAULT_OUTLIER_MIN_SAMPLES = 10  # Minimum samples required before outlier detection starts
+DEFAULT_OUTLIER_TEMP_BOUNDS = (0, 40)  # Temperature bounds (min, max) in Celsius for validation
+DEFAULT_OUTLIER_POWER_BOUNDS = (0, 5000)  # Power bounds (min, max) in watts for validation
 
 # Service names
 SERVICE_SET_OFFSET = "set_offset"
