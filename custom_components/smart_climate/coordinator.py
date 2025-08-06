@@ -11,6 +11,7 @@ from .models import SmartClimateData, OffsetInput, ModeAdjustments
 from .errors import SmartClimateError
 from .outlier_detector import OutlierDetector
 from .dto import SystemHealthData
+from .thermal_models import ThermalState
 
 if TYPE_CHECKING:
     from .sensor_manager import SensorManager
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
     from .thermal_preferences import UserPreferences
     from .cycle_monitor import CycleMonitor
     from .comfort_band_controller import ComfortBandController
+    from .thermal_manager import ThermalManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,10 +65,22 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             self._user_preferences = user_preferences
             self._cycle_monitor = cycle_monitor
             self._comfort_band_controller = comfort_band_controller
-            _LOGGER.debug("Thermal efficiency enabled with components: model=%s, prefs=%s, monitor=%s, controller=%s",
+            
+            # Initialize ThermalManager (Phase 2)
+            if thermal_model and user_preferences:
+                from .thermal_manager import ThermalManager
+                self._thermal_manager = ThermalManager(hass, thermal_model, user_preferences)
+                _LOGGER.debug("ThermalManager initialized in %s state", self._thermal_manager.current_state.value)
+            else:
+                self._thermal_manager = None
+                _LOGGER.warning("ThermalManager not initialized - missing thermal_model or user_preferences")
+            
+            _LOGGER.debug("Thermal efficiency enabled with components: model=%s, prefs=%s, monitor=%s, controller=%s, manager=%s",
                          thermal_model is not None, user_preferences is not None,
-                         cycle_monitor is not None, comfort_band_controller is not None)
+                         cycle_monitor is not None, comfort_band_controller is not None,
+                         self._thermal_manager is not None)
         else:
+            self._thermal_manager = None
             _LOGGER.debug("Thermal efficiency disabled")
         
         # Initialize outlier detection
@@ -193,6 +207,47 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             
             # Calculate offset if we have room temperature
             calculated_offset = 0.0
+            thermal_window = None
+            learning_target = None
+            
+            # Phase 2: ThermalManager state-aware protocol
+            if self.thermal_efficiency_enabled and self._thermal_manager and room_temp is not None:
+                try:
+                    # Get current setpoint (approximate from room temp for now)
+                    setpoint = room_temp  # TODO: Get actual setpoint from wrapped entity
+                    
+                    # Calculate operating window using ThermalManager
+                    thermal_window = self._thermal_manager.get_operating_window(
+                        setpoint=setpoint,
+                        outdoor_temp=outdoor_temp or 25.0,  # Default outdoor temp
+                        hvac_mode=hvac_mode or "cool"
+                    )
+                    
+                    # Control OffsetEngine learning based on current state
+                    current_state = self._thermal_manager.current_state
+                    if current_state == ThermalState.DRIFTING:
+                        self._offset_engine.pause_learning()
+                        _LOGGER.debug("Learning paused for DRIFTING state")
+                    elif current_state == ThermalState.CORRECTING:
+                        self._offset_engine.resume_learning()
+                        _LOGGER.debug("Learning resumed for CORRECTING state")
+                    
+                    # Get learning target for state-aware training
+                    learning_target = self._thermal_manager.get_learning_target(
+                        current=room_temp,
+                        window=thermal_window
+                    )
+                    
+                    _LOGGER.debug(
+                        "ThermalManager state: %s, window: (%.1f, %.1f), learning_target: %.1f",
+                        current_state.value, thermal_window[0], thermal_window[1], learning_target
+                    )
+                    
+                except Exception as exc:
+                    _LOGGER.warning("Error in ThermalManager state logic: %s", exc)
+                    thermal_window = None
+                    learning_target = None
+            
             if room_temp is not None:
                 # Create offset input with proper AC internal temp
                 now = datetime.now()
@@ -207,14 +262,19 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                     hvac_mode=hvac_mode
                 )
                 
-                offset_result = self._offset_engine.calculate_offset(offset_input)
+                # Pass thermal window to offset calculation (Phase 2 integration)
+                if thermal_window is not None:
+                    offset_result = self._offset_engine.calculate_offset(offset_input, thermal_window=thermal_window)
+                else:
+                    offset_result = self._offset_engine.calculate_offset(offset_input)
+                    
                 calculated_offset = offset_result.offset
                 
                 _LOGGER.debug(
                     "Updated coordinator data: ac_internal=%.1f°C, room_temp=%.1f°C, "
-                    "outdoor_temp=%s, power=%s, offset=%.1f°C, reason=%s",
+                    "outdoor_temp=%s, power=%s, offset=%.1f°C, reason=%s, thermal_window=%s",
                     ac_internal_temp, room_temp, outdoor_temp, power, 
-                    calculated_offset, offset_result.reason
+                    calculated_offset, offset_result.reason, thermal_window
                 )
             else:
                 _LOGGER.warning("No room temperature available for offset calculation")
@@ -227,50 +287,64 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             }
             outlier_results = self._execute_outlier_detection(sensor_data)
             
-            # Execute thermal efficiency calculations (Phase 1)
-            thermal_window = None
+            # Execute thermal efficiency calculations (Phase 1 & Phase 2 integration)
             should_ac_run = None
             cycle_health = None
             
             if self.thermal_efficiency_enabled and room_temp is not None:
                 try:
-                    # Calculate operating window based on current setpoint
-                    setpoint = room_temp  # Use room temp as approximate setpoint for now
-                    thermal_window = self._comfort_band_controller.get_operating_window(
-                        setpoint=setpoint,
-                        outdoor_temp=outdoor_temp,
-                        hvac_mode=hvac_mode
-                    )
+                    # If ThermalManager is available (Phase 2), use it for AC decisions
+                    if self._thermal_manager and thermal_window:
+                        setpoint = room_temp  # Approximate setpoint
+                        should_ac_run = self._thermal_manager.should_ac_run(
+                            current=room_temp,
+                            setpoint=setpoint,
+                            window=thermal_window
+                        )
+                        _LOGGER.debug("Using ThermalManager AC decision: %s", should_ac_run)
                     
-                    # Determine if AC should run based on thermal efficiency logic
-                    should_ac_run = self._comfort_band_controller.should_ac_run(
-                        current_temp=room_temp,
-                        setpoint=setpoint,
-                        operating_window=thermal_window,
-                        hvac_mode=hvac_mode,
-                        outdoor_temp=outdoor_temp,
-                        prediction_minutes=15  # 15-minute prediction window for Phase 1
-                    )
+                    # Otherwise fall back to Phase 1 comfort band controller
+                    elif self._comfort_band_controller:
+                        setpoint = room_temp  # Use room temp as approximate setpoint for now
+                        if thermal_window is None:
+                            thermal_window = self._comfort_band_controller.get_operating_window(
+                                setpoint=setpoint,
+                                outdoor_temp=outdoor_temp,
+                                hvac_mode=hvac_mode
+                            )
+                        
+                        # Determine if AC should run based on comfort band logic
+                        should_ac_run = self._comfort_band_controller.should_ac_run(
+                            current_temp=room_temp,
+                            setpoint=setpoint,
+                            operating_window=thermal_window,
+                            hvac_mode=hvac_mode,
+                            outdoor_temp=outdoor_temp,
+                            prediction_minutes=15  # 15-minute prediction window for Phase 1
+                        )
+                        _LOGGER.debug("Using ComfortBandController AC decision: %s", should_ac_run)
                     
-                    # Get cycle health data
-                    avg_on, avg_off = self._cycle_monitor.get_average_cycle_duration()
-                    cycle_health = {
-                        "can_turn_on": self._cycle_monitor.can_turn_on(),
-                        "can_turn_off": self._cycle_monitor.can_turn_off(),
-                        "needs_adjustment": self._cycle_monitor.needs_adjustment(),
-                        "avg_on_duration": avg_on,
-                        "avg_off_duration": avg_off
-                    }
+                    # Get cycle health data (both Phase 1 & 2)
+                    if self._cycle_monitor:
+                        avg_on, avg_off = self._cycle_monitor.get_average_cycle_duration()
+                        cycle_health = {
+                            "can_turn_on": self._cycle_monitor.can_turn_on(),
+                            "can_turn_off": self._cycle_monitor.can_turn_off(),
+                            "needs_adjustment": self._cycle_monitor.needs_adjustment(),
+                            "avg_on_duration": avg_on,
+                            "avg_off_duration": avg_off
+                        }
                     
                     _LOGGER.debug(
-                        "Thermal efficiency calculations: window=(%.1f, %.1f), should_run=%s, cycle_health=%s",
-                        thermal_window[0], thermal_window[1], should_ac_run, cycle_health["needs_adjustment"]
+                        "Thermal efficiency calculations: window=%s, should_run=%s, cycle_health=%s",
+                        thermal_window, should_ac_run, cycle_health["needs_adjustment"] if cycle_health else None
                     )
                     
                 except Exception as exc:
                     _LOGGER.warning("Error in thermal efficiency calculations: %s", exc)
                     # Use safe defaults on error
-                    thermal_window = (room_temp - 1.0, room_temp + 1.0) if room_temp else None
+                    if thermal_window is None:
+                        thermal_window = (room_temp - 1.0, room_temp + 1.0) if room_temp else None
                     should_ac_run = False
                     cycle_health = {
                         "can_turn_on": True,
@@ -286,6 +360,14 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 _LOGGER.info("Coordinator performing startup calculation (offset=%.1f°C)", calculated_offset)
                 self._is_startup = False  # Reset after first calculation
             
+            # Determine Phase 2 state information
+            thermal_state = None
+            learning_active = False
+            
+            if self.thermal_efficiency_enabled and self._thermal_manager:
+                thermal_state = self._thermal_manager.current_state.value
+                learning_active = not getattr(self._offset_engine, '_learning_paused', False)
+            
             return SmartClimateData(
                 room_temp=room_temp,
                 outdoor_temp=outdoor_temp,
@@ -299,7 +381,11 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 thermal_window=thermal_window,
                 should_ac_run=should_ac_run,
                 cycle_health=cycle_health,
-                thermal_efficiency_enabled=self.thermal_efficiency_enabled
+                thermal_efficiency_enabled=self.thermal_efficiency_enabled,
+                # Phase 2 fields
+                thermal_state=thermal_state,
+                learning_active=learning_active,
+                learning_target=learning_target
             )
             
         except Exception as err:

@@ -269,6 +269,9 @@ class OffsetEngine:
         else:
             _LOGGER.debug("No outlier detection configured")
         
+        # State-aware learning protocol (v1.4.0)
+        self._learning_paused: bool = False
+        
         # Dashboard cache for performance
         self._dashboard_cache: Dict[str, Any] = {}
         self._cache_hits = 0
@@ -615,6 +618,16 @@ class OffsetEngine:
         
         _LOGGER.info("Learning data reset completed")
     
+    def pause_learning(self) -> None:
+        """Pause learning updates (state-aware protocol for thermal efficiency)."""
+        self._learning_paused = True
+        _LOGGER.debug("Learning paused for state-aware thermal management")
+    
+    def resume_learning(self) -> None:
+        """Resume learning updates (state-aware protocol for thermal efficiency)."""
+        self._learning_paused = False
+        _LOGGER.debug("Learning resumed for state-aware thermal management")
+    
     def get_predicted_hysteresis_delta(self, outdoor_temp: Optional[float] = None) -> Optional[float]:
         """Get predicted hysteresis delta with seasonal context when available.
         
@@ -687,11 +700,12 @@ class OffsetEngine:
         _LOGGER.debug("Using basic offset calculation: %.2f", base_offset)
         return base_offset
     
-    def calculate_offset(self, input_data: OffsetInput) -> OffsetResult:
+    def calculate_offset(self, input_data: OffsetInput, thermal_window: Optional[Tuple[float, float]] = None) -> OffsetResult:
         """Calculate temperature offset based on current conditions.
         
         Args:
             input_data: OffsetInput containing all sensor data and context
+            thermal_window: Optional thermal window (lower, upper) for unclamped offset
             
         Returns:
             OffsetResult with calculated offset and metadata
@@ -1090,7 +1104,8 @@ class OffsetEngine:
         self,
         predicted_offset: float,
         actual_offset: float,
-        input_data: OffsetInput
+        input_data: OffsetInput,
+        learning_target_temp: Optional[float] = None
     ) -> None:
         """Record actual performance for learning feedback.
         
@@ -1098,9 +1113,19 @@ class OffsetEngine:
             predicted_offset: The offset that was predicted/used
             actual_offset: The offset that actually worked best
             input_data: The input conditions for this sample
+            learning_target_temp: Optional target temperature for state-aware learning
         """
         if not self._enable_learning or not self._learner:
             # Learning disabled, silently ignore
+            return
+        
+        # Check if learning is paused (state-aware protocol)
+        if self._learning_paused:
+            _LOGGER.debug(
+                "Learning paused - skipping sample recording "
+                "(predicted=%.2f°C, actual=%.2f°C)",
+                predicted_offset, actual_offset
+            )
             return
         
         # CRITICAL: Prevent ML feedback loop by checking adjustment source

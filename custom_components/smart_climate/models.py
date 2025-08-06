@@ -62,6 +62,9 @@ class SmartClimateData:
         should_ac_run: Whether AC should run based on thermal efficiency logic
         cycle_health: Dictionary containing cycle monitoring health data
         thermal_efficiency_enabled: Whether thermal efficiency features are active
+        thermal_state: Current thermal state name (Phase 2)
+        learning_active: Whether OffsetEngine learning is active (Phase 2)
+        learning_target: Boundary target temperature for learning (Phase 2)
     """
     room_temp: Optional[float]
     outdoor_temp: Optional[float]
@@ -77,6 +80,10 @@ class SmartClimateData:
     should_ac_run: Optional[bool] = None
     cycle_health: Optional[dict] = None
     thermal_efficiency_enabled: bool = False
+    # Phase 2 thermal state fields
+    thermal_state: Optional[str] = None
+    learning_active: bool = False
+    learning_target: Optional[float] = None
     
     def __post_init__(self):
         """Initialize default values for outlier fields."""
