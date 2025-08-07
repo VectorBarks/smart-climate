@@ -30,6 +30,7 @@ from .const import (
     DEFAULT_OUTLIER_TEMP_BOUNDS,
     DEFAULT_OUTLIER_POWER_BOUNDS,
     DEFAULT_SHADOW_MODE,
+    DEFAULT_PREFERENCE_LEVEL,
 )
 from .data_store import SmartClimateDataStore
 from .entity_waiter import EntityWaiter, EntityNotAvailableError
