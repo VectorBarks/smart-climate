@@ -160,7 +160,6 @@ MIN_ON_TIME_SECONDS = 300    # 5 minutes minimum AC on time
 # Thermal efficiency default values
 DEFAULT_THERMAL_EFFICIENCY_ENABLED = False  # Disabled by default for existing installations
 DEFAULT_PREFERENCE_LEVEL = "balanced"
-DEFAULT_SHADOW_MODE = False
 DEFAULT_PRIMING_DURATION_HOURS = 36
 DEFAULT_RECOVERY_DURATION_MINUTES = 45
 DEFAULT_PROBE_DRIFT_LIMIT = 2.0
