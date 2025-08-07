@@ -394,12 +394,11 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             thermal_efficiency_enabled = False
             thermal_components = {}
     
-    # Create OffsetEngine with outlier config and thermal components
+    # Create OffsetEngine with outlier config (thermal components stored separately)
     offset_engine = OffsetEngine(
         config=entry.data,
         seasonal_learner=seasonal_learner,
-        outlier_detection_config=outlier_config,
-        thermal_components=thermal_components.get("thermal_model") if thermal_efficiency_enabled else None
+        outlier_detection_config=outlier_config
     )
     
     # Store the engine instance for the platform to use, keyed by entity_id
