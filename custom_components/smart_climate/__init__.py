@@ -318,171 +318,221 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntry, entity_id: str):
     """Set up persistence for a single climate entity."""
-    _LOGGER.debug("Setting up persistence for entity: %s", entity_id)
-
-    # 1. Get seasonal learner for this entity (if available)
-    entry_data = hass.data[DOMAIN][entry.entry_id]
-    seasonal_learner = entry_data.get("seasonal_learners", {}).get(entity_id, None)
-    
-    # 2. Get outlier configuration and create dedicated OffsetEngine for this entity
-    # Get options safely for backward compatibility
-    options = entry.options if hasattr(entry, 'options') else {}
-    outlier_config = _build_outlier_config(options)
-    
-    # 3. Set up thermal efficiency components if enabled
-    thermal_components = {}
-    thermal_efficiency_enabled = entry.data.get("thermal_efficiency_enabled", False)
-    shadow_mode = entry.data.get("shadow_mode", DEFAULT_SHADOW_MODE)
-    
-    if thermal_efficiency_enabled:
-        _LOGGER.info("Setting up thermal efficiency components for entity: %s", entity_id)
-        
-        try:
-            # Phase 1: Foundation components
-            thermal_model = PassiveThermalModel(
-                tau_cooling=entry.data.get("tau_cooling", 90.0),
-                tau_warming=entry.data.get("tau_warming", 150.0)
-            )
-            
-            # Parse preference level from config
-            pref_level_str = entry.data.get("preference_level", DEFAULT_PREFERENCE_LEVEL)
-            pref_level = PreferenceLevel[pref_level_str.upper()]
-            
-            user_preferences = UserPreferences(
-                level=pref_level,
-                comfort_band=entry.data.get("comfort_band", 1.5),
-                confidence_threshold=entry.data.get("confidence_threshold", 0.7),
-                probe_drift=entry.data.get("probe_drift", 2.0)
-            )
-            
-            # Phase 2: State machine and manager
-            thermal_manager = ThermalManager(
-                hass=hass,
-                thermal_model=thermal_model,
-                preferences=user_preferences
-            )
-            
-            # Phase 3: Advanced features
-            probe_manager = ProbeManager(
-                hass=hass,
-                thermal_model=thermal_model,
-                preferences=user_preferences,
-                max_concurrent_probes=1,
-                passive_detection_enabled=True
-            )
-            
-            status_sensor = SmartClimateStatusSensor(
-                hass=hass,
-                thermal_manager=thermal_manager,
-                offset_engine=None,  # Will be set after OffsetEngine creation
-                cycle_monitor=None   # Will be set after creation
-            )
-            
-            thermal_components = {
-                "thermal_model": thermal_model,
-                "user_preferences": user_preferences,
-                "thermal_manager": thermal_manager,
-                "probe_manager": probe_manager,
-                "status_sensor": status_sensor,
-                "shadow_mode": shadow_mode
-            }
-            
-            _LOGGER.info("Thermal efficiency components initialized for entity: %s (shadow_mode: %s)", entity_id, shadow_mode)
-            
-        except Exception as exc:
-            _LOGGER.warning("Failed to initialize thermal efficiency components for %s: %s - continuing without thermal features", entity_id, exc)
-            thermal_efficiency_enabled = False
-            thermal_components = {}
-    
-    # Create OffsetEngine with outlier config (thermal components stored separately)
-    offset_engine = OffsetEngine(
-        config=entry.data,
-        seasonal_learner=seasonal_learner,
-        outlier_detection_config=outlier_config
-    )
-    
-    # Store the engine instance for the platform to use, keyed by entity_id
-    hass.data[DOMAIN][entry.entry_id]["offset_engines"][entity_id] = offset_engine
-    
-    # Store thermal components if enabled
-    if thermal_efficiency_enabled and thermal_components:
-        # Update status sensor with OffsetEngine reference
-        thermal_components["status_sensor"]._offset_engine = offset_engine
-        
-        # Store thermal components for platform access
-        if "thermal_components" not in hass.data[DOMAIN][entry.entry_id]:
-            hass.data[DOMAIN][entry.entry_id]["thermal_components"] = {}
-        hass.data[DOMAIN][entry.entry_id]["thermal_components"][entity_id] = thermal_components
-        
-        _LOGGER.info("Thermal components stored for entity: %s", entity_id)
-    
-    # Create DataUpdateCoordinator for this entity
-    async def async_update_data():
-        """Fetch data from offset engine."""
-        try:
-            data = await offset_engine.async_get_dashboard_data()
-            return data
-        except Exception as exc:
-            _LOGGER.error("Error fetching dashboard data for %s: %s", entity_id, exc)
-            raise UpdateFailed(f"Error fetching dashboard data: {exc}") from exc
-    
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=f"smart_climate_{entry.entry_id}_{entity_id}",
-        update_method=async_update_data,
-        update_interval=timedelta(seconds=30),
-    )
-    
-    # Store the coordinator instance for the sensor platform to use
-    hass.data[DOMAIN][entry.entry_id]["coordinators"][entity_id] = coordinator
-
-    # 3. Try to create persistence - graceful degradation if it fails
     try:
-        data_store = SmartClimateDataStore(hass, entity_id)
-        
-        # Store the data store instance for the button platform to use
-        hass.data[DOMAIN][entry.entry_id]["data_stores"][entity_id] = data_store
-        
-        # 4. Link the data store to the engine for persistence operations
-        offset_engine.set_data_store(data_store)
-        
-        # 5. Load saved learning data and restore engine state
-        try:
-            learning_data_loaded = await offset_engine.async_load_learning_data()
-            if learning_data_loaded:
-                _LOGGER.debug("Learning data and engine state restored for entity: %s", entity_id)
-            else:
-                _LOGGER.debug("No learning data to restore for entity: %s", entity_id)
-        except Exception as exc:
-            _LOGGER.warning("Failed to load learning data for %s: %s", entity_id, exc)
-            # Continue setup without loaded data
+        _LOGGER.info("[DEBUG] Starting persistence setup for entity: %s", entity_id)
+        _LOGGER.debug("Setting up persistence for entity: %s", entity_id)
 
-        # 6. Set up periodic saving and store the unload callback for cleanup
-        try:
-            unload_listener = await offset_engine.async_setup_periodic_save(hass)
-            hass.data[DOMAIN][entry.entry_id]["unload_listeners"].append(unload_listener)
-            _LOGGER.debug("Periodic save configured for entity: %s", entity_id)
-        except Exception as exc:
-            _LOGGER.warning("Failed to setup periodic save for %s: %s", entity_id, exc)
-            # Continue without periodic saving
-
-        _LOGGER.debug("Persistence setup complete for entity: %s", entity_id)
-
-    except Exception as exc:
-        _LOGGER.warning(
-            "Failed to set up persistence for entity %s: %s - continuing without persistence", 
-            entity_id, exc
+        # 1. Get seasonal learner for this entity (if available)
+        _LOGGER.info("[DEBUG] Accessing entry_data for entity: %s", entity_id)
+        entry_data = hass.data[DOMAIN][entry.entry_id]
+        _LOGGER.info("[DEBUG] Entry_data keys: %s", list(entry_data.keys()))
+        seasonal_learner = entry_data.get("seasonal_learners", {}).get(entity_id, None)
+        _LOGGER.info("[DEBUG] Seasonal learner found: %s", seasonal_learner is not None)
+    
+        # 2. Get outlier configuration and create dedicated OffsetEngine for this entity
+        # Get options safely for backward compatibility
+        _LOGGER.info("[DEBUG] Getting outlier configuration for entity: %s", entity_id)
+        options = entry.options if hasattr(entry, 'options') else {}
+        outlier_config = _build_outlier_config(options)
+        _LOGGER.info("[DEBUG] Outlier config created successfully")
+    
+        # 3. Set up thermal efficiency components if enabled
+        _LOGGER.info("[DEBUG] Checking thermal efficiency configuration for entity: %s", entity_id)
+        thermal_components = {}
+        thermal_efficiency_enabled = entry.data.get("thermal_efficiency_enabled", False)
+        shadow_mode = entry.data.get("shadow_mode", DEFAULT_SHADOW_MODE)
+        _LOGGER.info("[DEBUG] Thermal efficiency enabled: %s, shadow_mode: %s", thermal_efficiency_enabled, shadow_mode)
+    
+        if thermal_efficiency_enabled:
+            _LOGGER.info("Setting up thermal efficiency components for entity: %s", entity_id)
+            
+            try:
+                _LOGGER.info("[DEBUG] Creating thermal model for entity: %s", entity_id)
+                # Phase 1: Foundation components
+                thermal_model = PassiveThermalModel(
+                    tau_cooling=entry.data.get("tau_cooling", 90.0),
+                    tau_warming=entry.data.get("tau_warming", 150.0)
+                )
+                _LOGGER.info("[DEBUG] Thermal model created successfully")
+                
+                # Parse preference level from config
+                _LOGGER.info("[DEBUG] Creating user preferences for entity: %s", entity_id)
+                pref_level_str = entry.data.get("preference_level", DEFAULT_PREFERENCE_LEVEL)
+                pref_level = PreferenceLevel[pref_level_str.upper()]
+                
+                user_preferences = UserPreferences(
+                    level=pref_level,
+                    comfort_band=entry.data.get("comfort_band", 1.5),
+                    confidence_threshold=entry.data.get("confidence_threshold", 0.7),
+                    probe_drift=entry.data.get("probe_drift", 2.0)
+                )
+                _LOGGER.info("[DEBUG] User preferences created successfully")
+            
+                # Phase 2: State machine and manager
+                _LOGGER.info("[DEBUG] Creating thermal manager for entity: %s", entity_id)
+                thermal_manager = ThermalManager(
+                    hass=hass,
+                    thermal_model=thermal_model,
+                    preferences=user_preferences
+                )
+                _LOGGER.info("[DEBUG] Thermal manager created successfully")
+                
+                # Phase 3: Advanced features
+                _LOGGER.info("[DEBUG] Creating probe manager for entity: %s", entity_id)
+                probe_manager = ProbeManager(
+                    hass=hass,
+                    thermal_model=thermal_model,
+                    preferences=user_preferences,
+                    max_concurrent_probes=1,
+                    passive_detection_enabled=True
+                )
+                _LOGGER.info("[DEBUG] Probe manager created successfully")
+                
+                _LOGGER.info("[DEBUG] Creating status sensor for entity: %s", entity_id)
+                status_sensor = SmartClimateStatusSensor(
+                    hass=hass,
+                    thermal_manager=thermal_manager,
+                    offset_engine=None,  # Will be set after OffsetEngine creation
+                    cycle_monitor=None   # Will be set after creation
+                )
+                _LOGGER.info("[DEBUG] Status sensor created successfully")
+            
+                _LOGGER.info("[DEBUG] Creating thermal components dictionary for entity: %s", entity_id)
+                thermal_components = {
+                    "thermal_model": thermal_model,
+                    "user_preferences": user_preferences,
+                    "thermal_manager": thermal_manager,
+                    "probe_manager": probe_manager,
+                    "status_sensor": status_sensor,
+                    "shadow_mode": shadow_mode
+                }
+                _LOGGER.info("[DEBUG] Thermal components dictionary created successfully")
+            
+                _LOGGER.info("Thermal efficiency components initialized for entity: %s (shadow_mode: %s)", entity_id, shadow_mode)
+                
+            except Exception as exc:
+                _LOGGER.error("[DEBUG] Failed to initialize thermal efficiency components for %s: %s", entity_id, exc, exc_info=True)
+                _LOGGER.warning("Failed to initialize thermal efficiency components for %s: %s - continuing without thermal features", entity_id, exc)
+                thermal_efficiency_enabled = False
+                thermal_components = {}
+    
+        # Create OffsetEngine with outlier config (thermal components stored separately)
+        _LOGGER.info("[DEBUG] Creating OffsetEngine for entity: %s", entity_id)
+        offset_engine = OffsetEngine(
+            config=entry.data,
+            seasonal_learner=seasonal_learner,
+            outlier_detection_config=outlier_config
         )
-        # Entity will work without persistence - graceful degradation
+        _LOGGER.info("[DEBUG] OffsetEngine created successfully")
+        
+        # Store the engine instance for the platform to use, keyed by entity_id
+        _LOGGER.info("[DEBUG] Storing OffsetEngine in hass.data for entity: %s", entity_id)
+        hass.data[DOMAIN][entry.entry_id]["offset_engines"][entity_id] = offset_engine
+        _LOGGER.info("[DEBUG] OffsetEngine stored successfully")
     
-    # 7. Perform initial coordinator data fetch
-    try:
-        await coordinator.async_config_entry_first_refresh()
-        _LOGGER.debug("Initial coordinator data fetched for entity: %s", entity_id)
+        # Store thermal components if enabled
+        if thermal_efficiency_enabled and thermal_components:
+            _LOGGER.info("[DEBUG] Storing thermal components for entity: %s", entity_id)
+            # Update status sensor with OffsetEngine reference
+            thermal_components["status_sensor"]._offset_engine = offset_engine
+            _LOGGER.info("[DEBUG] Updated status sensor with OffsetEngine reference")
+            
+            # Store thermal components for platform access
+            if "thermal_components" not in hass.data[DOMAIN][entry.entry_id]:
+                hass.data[DOMAIN][entry.entry_id]["thermal_components"] = {}
+                _LOGGER.info("[DEBUG] Created thermal_components dict in hass.data")
+            hass.data[DOMAIN][entry.entry_id]["thermal_components"][entity_id] = thermal_components
+            _LOGGER.info("[DEBUG] Stored thermal components in hass.data")
+            
+            _LOGGER.info("Thermal components stored for entity: %s", entity_id)
+        else:
+            _LOGGER.info("[DEBUG] Thermal components NOT stored - enabled: %s, components: %s", thermal_efficiency_enabled, bool(thermal_components))
+    
+        # Create DataUpdateCoordinator for this entity
+        _LOGGER.info("[DEBUG] Creating DataUpdateCoordinator for entity: %s", entity_id)
+        async def async_update_data():
+            """Fetch data from offset engine."""
+            try:
+                data = await offset_engine.async_get_dashboard_data()
+                return data
+            except Exception as exc:
+                _LOGGER.error("Error fetching dashboard data for %s: %s", entity_id, exc)
+                raise UpdateFailed(f"Error fetching dashboard data: {exc}") from exc
+        
+        coordinator = DataUpdateCoordinator(
+            hass,
+            _LOGGER,
+            name=f"smart_climate_{entry.entry_id}_{entity_id}",
+            update_method=async_update_data,
+            update_interval=timedelta(seconds=30),
+        )
+        _LOGGER.info("[DEBUG] DataUpdateCoordinator created successfully")
+        
+        # Store the coordinator instance for the sensor platform to use
+        _LOGGER.info("[DEBUG] Storing coordinator in hass.data for entity: %s", entity_id)
+        hass.data[DOMAIN][entry.entry_id]["coordinators"][entity_id] = coordinator
+        _LOGGER.info("[DEBUG] Coordinator stored successfully")
+
+        # 3. Try to create persistence - graceful degradation if it fails
+        _LOGGER.info("[DEBUG] Creating data persistence for entity: %s", entity_id)
+        try:
+            data_store = SmartClimateDataStore(hass, entity_id)
+            _LOGGER.info("[DEBUG] DataStore created successfully")
+            
+            # Store the data store instance for the button platform to use
+            hass.data[DOMAIN][entry.entry_id]["data_stores"][entity_id] = data_store
+            _LOGGER.info("[DEBUG] DataStore stored in hass.data")
+            
+            # 4. Link the data store to the engine for persistence operations
+            offset_engine.set_data_store(data_store)
+            _LOGGER.info("[DEBUG] DataStore linked to OffsetEngine")
+        
+            # 5. Load saved learning data and restore engine state
+            _LOGGER.info("[DEBUG] Loading learning data for entity: %s", entity_id)
+            try:
+                learning_data_loaded = await offset_engine.async_load_learning_data()
+                if learning_data_loaded:
+                    _LOGGER.debug("Learning data and engine state restored for entity: %s", entity_id)
+                else:
+                    _LOGGER.debug("No learning data to restore for entity: %s", entity_id)
+            except Exception as exc:
+                _LOGGER.warning("Failed to load learning data for %s: %s", entity_id, exc)
+                # Continue setup without loaded data
+    
+            # 6. Set up periodic saving and store the unload callback for cleanup
+            _LOGGER.info("[DEBUG] Setting up periodic save for entity: %s", entity_id)
+            try:
+                unload_listener = await offset_engine.async_setup_periodic_save(hass)
+                hass.data[DOMAIN][entry.entry_id]["unload_listeners"].append(unload_listener)
+                _LOGGER.debug("Periodic save configured for entity: %s", entity_id)
+            except Exception as exc:
+                _LOGGER.warning("Failed to setup periodic save for %s: %s", entity_id, exc)
+                # Continue without periodic saving
+    
+            _LOGGER.debug("Persistence setup complete for entity: %s", entity_id)
+
+        except Exception as exc:
+            _LOGGER.error("[DEBUG] Failed to set up persistence for entity %s: %s", entity_id, exc, exc_info=True)
+            _LOGGER.warning(
+                "Failed to set up persistence for entity %s: %s - continuing without persistence", 
+                entity_id, exc
+            )
+            # Entity will work without persistence - graceful degradation
+        
+        # 7. Perform initial coordinator data fetch
+        _LOGGER.info("[DEBUG] Performing initial coordinator data fetch for entity: %s", entity_id)
+        try:
+            await coordinator.async_config_entry_first_refresh()
+            _LOGGER.debug("Initial coordinator data fetched for entity: %s", entity_id)
+        except Exception as exc:
+            _LOGGER.warning("Failed to fetch initial coordinator data for %s: %s", entity_id, exc)
+            # Continue without initial data - coordinator will retry on its schedule
+        
+        _LOGGER.info("[DEBUG] Entity persistence setup completed successfully for: %s", entity_id)
+        
     except Exception as exc:
-        _LOGGER.warning("Failed to fetch initial coordinator data for %s: %s", entity_id, exc)
-        # Continue without initial data - coordinator will retry on its schedule
+        _LOGGER.error("[DEBUG] CRITICAL: Fatal error in _async_setup_entity_persistence for %s: %s", entity_id, exc, exc_info=True)
+        raise  # Re-raise the exception so it gets caught by the asyncio.gather error handling
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
