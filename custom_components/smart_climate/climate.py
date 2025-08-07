@@ -3009,6 +3009,23 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
         else:
             _LOGGER.debug("Weather forecast disabled. Skipping ForecastEngine.")
         
+        # Retrieve thermal efficiency configuration and components
+        thermal_efficiency_enabled = config.get("thermal_efficiency_enabled", False)
+        thermal_components = {}
+
+        if thermal_efficiency_enabled:
+            entry_data = hass.data.get(DOMAIN, {}).get(config_entry.entry_id, {})
+            all_thermal_components = entry_data.get("thermal_components", {})
+            thermal_components = all_thermal_components.get(climate_entity_id, {})
+            
+            if thermal_components:
+                _LOGGER.debug("Retrieved thermal components for %s: %s", 
+                             climate_entity_id, 
+                             list(thermal_components.keys()))
+            else:
+                _LOGGER.warning("No thermal components found for %s despite thermal_efficiency_enabled=True", 
+                               climate_entity_id)
+        
         _LOGGER.debug("Creating SmartClimateCoordinator with update interval: %s", 
                       config.get("update_interval", 180))
         
@@ -3018,7 +3035,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             sensor_manager,
             offset_engine,
             mode_manager,
-            forecast_engine=forecast_engine
+            forecast_engine=forecast_engine,
+            thermal_efficiency_enabled=thermal_efficiency_enabled,
+            thermal_model=thermal_components.get("thermal_model"),
+            user_preferences=thermal_components.get("user_preferences"),
+            cycle_monitor=thermal_components.get("cycle_monitor"),
+            comfort_band_controller=thermal_components.get("comfort_band_controller")
         )
         
         # Wire the forecast engine to the offset engine for dashboard data
