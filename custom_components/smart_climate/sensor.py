@@ -1,6 +1,6 @@
 """Sensor platform for the Smart Climate integration.
 
-This module provides 35 sensors across 6 categories for comprehensive Smart Climate monitoring:
+This module provides up to 47 sensors across 7 categories for comprehensive Smart Climate monitoring:
 
 1. Legacy Dashboard Sensors (5): Core functionality display
 2. Advanced Feature Sensors (4): v1.3.0+ features status
@@ -8,7 +8,8 @@ This module provides 35 sensors across 6 categories for comprehensive Smart Clim
 4. Performance Sensors (6): System efficiency metrics
 5. AC Learning Sensors (5): HVAC behavior tracking
 6. System Health Sensors (5): Resource monitoring and diagnostics
-7. Outlier Detection Sensors (1): Outlier monitoring and statistics
+7. Thermal Efficiency Sensors (12): v1.4.0+ thermal state machine monitoring
+8. Outlier Detection Sensors (1): Outlier monitoring and statistics
 
 Key Features:
 - Sensor caching with race condition protection
@@ -77,6 +78,22 @@ from .sensor_system_health import (
     SamplesPerDaySensor,
     ConvergenceTrendSensor,
     OutlierDetectionSensor,
+)
+from .sensor_thermal import (
+    ThermalStateSensor,
+    OperatingWindowLowerSensor,
+    OperatingWindowUpperSensor,
+    ComfortPreferenceSensor,
+    ShadowModeSensor,
+    ModelConfidenceSensor,
+    TauCoolingSensor,
+    TauWarmingSensor,
+    AverageOnCycleSensor,
+    AverageOffCycleSensor,
+    CycleHealthSensor,
+    AdjustedComfortBandSensor,
+    LastProbeResultSensor,
+    ProbingActiveSensor,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -150,6 +167,32 @@ async def async_setup_entry(
             ConvergenceTrendSensor(coordinator, entity_id, config_entry),
             OutlierDetectionSensor(coordinator, entity_id, config_entry),
         ])
+        
+        # === THERMAL EFFICIENCY SENSORS (12) ===
+        # Only add thermal sensors when thermal efficiency is enabled
+        thermal_efficiency_enabled = config_entry.options.get("thermal_efficiency_enabled", False)
+        if thermal_efficiency_enabled:
+            sensors.extend([
+                # Dashboard Sensors (5)
+                ThermalStateSensor(coordinator, entity_id, config_entry),
+                OperatingWindowLowerSensor(coordinator, entity_id, config_entry),
+                OperatingWindowUpperSensor(coordinator, entity_id, config_entry),
+                ComfortPreferenceSensor(coordinator, entity_id, config_entry),
+                ShadowModeSensor(coordinator, entity_id, config_entry),
+                
+                # Performance Sensors (5)
+                ModelConfidenceSensor(coordinator, entity_id, config_entry),
+                TauCoolingSensor(coordinator, entity_id, config_entry),
+                TauWarmingSensor(coordinator, entity_id, config_entry),
+                AverageOnCycleSensor(coordinator, entity_id, config_entry),
+                AverageOffCycleSensor(coordinator, entity_id, config_entry),
+                CycleHealthSensor(coordinator, entity_id, config_entry),
+                
+                # Debug Sensors (3) - Disabled by default via entity_registry_enabled_default=False
+                AdjustedComfortBandSensor(coordinator, entity_id, config_entry),
+                LastProbeResultSensor(coordinator, entity_id, config_entry),
+                ProbingActiveSensor(coordinator, entity_id, config_entry),
+            ])
         
         # === OUTLIER DETECTION SENSORS (1) ===
         # Only add OutlierCountSensor when outlier detection is enabled

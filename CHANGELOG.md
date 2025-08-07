@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0-beta9] - 2025-08-07
+
+### 🌡️ **Thermal Efficiency Sensor Enhancements**
+
+#### **New Thermal Sensor Entities**
+- **NEW**: **13 Thermal Sensors** - Comprehensive visibility into thermal efficiency system
+  - **Dashboard Sensors (5)**: Thermal state, operating window boundaries, comfort preference, shadow mode status
+  - **Performance Sensors (5)**: Model confidence, tau cooling/warming constants, average on/off cycles, cycle health
+  - **Debug Sensors (3)**: Adjusted comfort band, last probe result, probing active status
+- **Conditional Loading**: Sensors only appear when thermal efficiency is enabled
+- **Proper Device Classes**: Temperature, percentage, duration sensors with appropriate units
+- **Smart Defaults**: Debug sensors disabled by default to avoid UI clutter
+
+#### **Bug Fixes & Improvements**
+- **FIXED**: Weather Forecast and Seasonal Adaptation sensors showing "unknown" state
+  - OffsetEngine now properly checks configuration state, not just component existence
+  - Added config awareness for forecast_enabled and outdoor_sensor settings
+- **FIXED**: convergence_trend attribute always showing "unknown"
+  - Removed broken get_variance_history() call that didn't exist
+  - Now properly retrieves data from coordinator or offset engine
+- **ENHANCED**: Comprehensive debug logging for predictions
+  - Seasonal: Shows outdoor temp, pattern counts, bucket selection, contribution %
+  - Weather: Shows forecast data, strategy evaluation, activation reasons
+  - Integration: Shows how components work together, confidence calculations
+
 ## [1.3.1] - 2025-08-05
 
 ### 🎯 **Major Feature Release: Outlier Detection & Data Quality Protection**
