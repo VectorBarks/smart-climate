@@ -339,9 +339,15 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
         # 3. Set up thermal efficiency components if enabled
         _LOGGER.info("[DEBUG] Checking thermal efficiency configuration for entity: %s", entity_id)
         thermal_components = {}
-        thermal_efficiency_enabled = entry.data.get("thermal_efficiency_enabled", False)
-        shadow_mode = entry.data.get("shadow_mode", DEFAULT_SHADOW_MODE)
+        # Merge entry.data and entry.options to get current configuration
+        # entry.options takes precedence over entry.data for user-modifiable settings
+        config = {**entry.data, **entry.options}
+        thermal_efficiency_enabled = config.get("thermal_efficiency_enabled", False)
+        shadow_mode = config.get("shadow_mode", DEFAULT_SHADOW_MODE)
         _LOGGER.info("[DEBUG] Thermal efficiency enabled: %s, shadow_mode: %s", thermal_efficiency_enabled, shadow_mode)
+        _LOGGER.info("[DEBUG] Config from data: %s, from options: %s", 
+                     entry.data.get("thermal_efficiency_enabled", "not set"),
+                     entry.options.get("thermal_efficiency_enabled", "not set"))
     
         if thermal_efficiency_enabled:
             _LOGGER.info("Setting up thermal efficiency components for entity: %s", entity_id)
@@ -350,21 +356,21 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                 _LOGGER.info("[DEBUG] Creating thermal model for entity: %s", entity_id)
                 # Phase 1: Foundation components
                 thermal_model = PassiveThermalModel(
-                    tau_cooling=entry.data.get("tau_cooling", 90.0),
-                    tau_warming=entry.data.get("tau_warming", 150.0)
+                    tau_cooling=config.get("tau_cooling", 90.0),
+                    tau_warming=config.get("tau_warming", 150.0)
                 )
                 _LOGGER.info("[DEBUG] Thermal model created successfully")
                 
                 # Parse preference level from config
                 _LOGGER.info("[DEBUG] Creating user preferences for entity: %s", entity_id)
-                pref_level_str = entry.data.get("preference_level", DEFAULT_PREFERENCE_LEVEL)
+                pref_level_str = config.get("preference_level", DEFAULT_PREFERENCE_LEVEL)
                 pref_level = PreferenceLevel[pref_level_str.upper()]
                 
                 user_preferences = UserPreferences(
                     level=pref_level,
-                    comfort_band=entry.data.get("comfort_band", 1.5),
-                    confidence_threshold=entry.data.get("confidence_threshold", 0.7),
-                    probe_drift=entry.data.get("probe_drift", 2.0)
+                    comfort_band=config.get("comfort_band", 1.5),
+                    confidence_threshold=config.get("confidence_threshold", 0.7),
+                    probe_drift=config.get("probe_drift", 2.0)
                 )
                 _LOGGER.info("[DEBUG] User preferences created successfully")
             
