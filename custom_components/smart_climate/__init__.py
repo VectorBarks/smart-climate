@@ -144,9 +144,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Smart Climate Control from a config entry."""
     _LOGGER.info("Setting up Smart Climate Control from config entry: %s", entry.entry_id)
 
+    # Create merged configuration (options override data for user-modifiable settings)
+    config = {**entry.data, **entry.options}
+    
     # Initialize data structure for this config entry
     entry_data = {
-        "config": entry.data,
+        "config": config,
         "offset_engines": {},  # Stores one engine per climate entity
         "data_stores": {},  # Stores one data store per climate entity
         "coordinators": {},  # Stores one coordinator per climate entity
@@ -163,8 +166,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         entity_waiter = EntityWaiter()
         # Get configurable timeout, cap at 300 seconds
-        timeout = min(entry.data.get("initial_timeout", DEFAULT_INITIAL_TIMEOUT), 300)
-        await entity_waiter.wait_for_required_entities(hass, entry.data, timeout=timeout)
+        timeout = min(config.get("initial_timeout", DEFAULT_INITIAL_TIMEOUT), 300)
+        await entity_waiter.wait_for_required_entities(hass, config, timeout=timeout)
         _LOGGER.info("All required entities are available for entry: %s", entry.entry_id)
         
         # Clear retry attempt on successful entity wait
@@ -173,11 +176,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             
     except EntityNotAvailableError as exc:
         # Check if retry is enabled
-        if not entry.data.get("enable_retry", DEFAULT_RETRY_ENABLED):
+        if not config.get("enable_retry", DEFAULT_RETRY_ENABLED):
             raise HomeAssistantError(f"Required entities not available: {exc}") from exc
             
         # Check if we've exceeded max retry attempts
-        max_attempts = entry.data.get("max_retry_attempts", DEFAULT_MAX_RETRY_ATTEMPTS)
+        max_attempts = config.get("max_retry_attempts", DEFAULT_MAX_RETRY_ATTEMPTS)
         if retry_attempt >= max_attempts:
             # Send notification about failure
             await async_create_notification(
@@ -211,10 +214,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     climate_entities = []
     
     # Handle both single entity (climate_entity) and multiple entities configurations
-    if "climate_entity" in entry.data:
-        climate_entities = [entry.data["climate_entity"]]
-    elif "climate_entities" in entry.data:
-        climate_entities = entry.data["climate_entities"]
+    if "climate_entity" in config:
+        climate_entities = [config["climate_entity"]]
+    elif "climate_entities" in config:
+        climate_entities = config["climate_entities"]
     
     if climate_entities:
         _LOGGER.debug("Setting up seasonal adaptation for climate entities: %s", climate_entities)
@@ -223,7 +226,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry_data["seasonal_learners"] = {}
         
         # Check for outdoor sensor configuration
-        outdoor_sensor_id = entry.data.get("outdoor_sensor")
+        outdoor_sensor_id = config.get("outdoor_sensor")
         
         # Handle empty string as None (invalid configuration)
         if outdoor_sensor_id == "":
@@ -272,10 +275,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     climate_entities = []
     
     # Handle both single entity (climate_entity) and multiple entities configurations
-    if "climate_entity" in entry.data:
-        climate_entities = [entry.data["climate_entity"]]
-    elif "climate_entities" in entry.data:
-        climate_entities = entry.data["climate_entities"]
+    if "climate_entity" in config:
+        climate_entities = [config["climate_entity"]]
+    elif "climate_entities" in config:
+        climate_entities = config["climate_entities"]
     
     if not climate_entities:
         _LOGGER.warning("No climate entities found in config entry for persistence setup")
@@ -425,7 +428,7 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
         # Create OffsetEngine with outlier config (thermal components stored separately)
         _LOGGER.info("[DEBUG] Creating OffsetEngine for entity: %s", entity_id)
         offset_engine = OffsetEngine(
-            config=entry.data,
+            config=config,
             seasonal_learner=seasonal_learner,
             outlier_detection_config=outlier_config
         )
@@ -638,10 +641,11 @@ async def handle_generate_dashboard(call: ServiceCall) -> None:
             f"Config entry {config_entry_id} not found"
         )
     
-    # Extract user's configured sensor entity IDs from config entry data
-    user_room_sensor = config_entry.data.get("room_sensor") or "sensor.unknown"
-    user_outdoor_sensor = config_entry.data.get("outdoor_sensor") or "sensor.unknown"
-    user_power_sensor = config_entry.data.get("power_sensor") or "sensor.unknown"
+    # Extract user's configured sensor entity IDs from merged config
+    dashboard_config = {**config_entry.data, **config_entry.options}
+    user_room_sensor = dashboard_config.get("room_sensor") or "sensor.unknown"
+    user_outdoor_sensor = dashboard_config.get("outdoor_sensor") or "sensor.unknown"
+    user_power_sensor = dashboard_config.get("power_sensor") or "sensor.unknown"
     
     _LOGGER.debug("User configured sensors - room: %s, outdoor: %s, power: %s", 
                  user_room_sensor, user_outdoor_sensor, user_power_sensor)
