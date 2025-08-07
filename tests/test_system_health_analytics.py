@@ -105,6 +105,9 @@ class TestSystemHealthAnalytics:
 
     def test_convergence_trend_available_in_attributes(self):
         """Test that convergence_trend is available in extra_state_attributes."""
+        # Arrange - set up a proper mock for _analyze_convergence_trend
+        self.mock_offset_engine._analyze_convergence_trend = Mock(return_value="stable")
+        
         # Act
         attributes = self.entity.extra_state_attributes
         
@@ -321,14 +324,8 @@ class TestSystemHealthAnalytics:
     def test_convergence_trend_improving(self):
         """Test convergence trend when learning is improving."""
         # Arrange
-        # Mock recent offset variance showing decreasing variance (improving)
-        mock_variance_history = [
-            {"timestamp": time.time() - 86400, "variance": 2.5},  # 24h ago
-            {"timestamp": time.time() - 43200, "variance": 2.0},  # 12h ago
-            {"timestamp": time.time() - 21600, "variance": 1.5},  # 6h ago
-            {"timestamp": time.time() - 3600, "variance": 1.0},   # 1h ago
-        ]
-        self.mock_offset_engine.get_variance_history = Mock(return_value=mock_variance_history)
+        # Mock the offset engine's _analyze_convergence_trend method
+        self.mock_offset_engine._analyze_convergence_trend = Mock(return_value="improving")
         
         # Act
         trend = self.entity._get_convergence_trend()
@@ -339,14 +336,8 @@ class TestSystemHealthAnalytics:
     def test_convergence_trend_stable(self):
         """Test convergence trend when learning is stable."""
         # Arrange
-        # Mock recent offset variance showing stable variance
-        mock_variance_history = [
-            {"timestamp": time.time() - 86400, "variance": 1.0},  # 24h ago
-            {"timestamp": time.time() - 43200, "variance": 1.1},  # 12h ago
-            {"timestamp": time.time() - 21600, "variance": 0.9},  # 6h ago
-            {"timestamp": time.time() - 3600, "variance": 1.0},   # 1h ago
-        ]
-        self.mock_offset_engine.get_variance_history = Mock(return_value=mock_variance_history)
+        # Mock the offset engine's _analyze_convergence_trend method
+        self.mock_offset_engine._analyze_convergence_trend = Mock(return_value="stable")
         
         # Act
         trend = self.entity._get_convergence_trend()
@@ -357,14 +348,8 @@ class TestSystemHealthAnalytics:
     def test_convergence_trend_declining(self):
         """Test convergence trend when learning is declining."""
         # Arrange
-        # Mock recent offset variance showing increasing variance (declining)
-        mock_variance_history = [
-            {"timestamp": time.time() - 86400, "variance": 1.0},  # 24h ago
-            {"timestamp": time.time() - 43200, "variance": 1.5},  # 12h ago
-            {"timestamp": time.time() - 21600, "variance": 2.0},  # 6h ago
-            {"timestamp": time.time() - 3600, "variance": 2.5},   # 1h ago
-        ]
-        self.mock_offset_engine.get_variance_history = Mock(return_value=mock_variance_history)
+        # Mock the offset engine's _analyze_convergence_trend method
+        self.mock_offset_engine._analyze_convergence_trend = Mock(return_value="declining")
         
         # Act
         trend = self.entity._get_convergence_trend()
@@ -375,10 +360,8 @@ class TestSystemHealthAnalytics:
     def test_convergence_trend_insufficient_data(self):
         """Test convergence trend with insufficient data."""
         # Arrange
-        mock_variance_history = [
-            {"timestamp": time.time() - 3600, "variance": 1.0},  # Only 1 sample
-        ]
-        self.mock_offset_engine.get_variance_history = Mock(return_value=mock_variance_history)
+        # Mock the offset engine's _analyze_convergence_trend method returning unknown
+        self.mock_offset_engine._analyze_convergence_trend = Mock(return_value="unknown")
         
         # Act
         trend = self.entity._get_convergence_trend()
@@ -389,7 +372,9 @@ class TestSystemHealthAnalytics:
     def test_convergence_trend_error_handling(self):
         """Test convergence trend error handling."""
         # Arrange
-        # Don't add get_variance_history method to offset engine
+        # Remove the _analyze_convergence_trend method from offset engine
+        if hasattr(self.mock_offset_engine, '_analyze_convergence_trend'):
+            delattr(self.mock_offset_engine, '_analyze_convergence_trend')
         
         # Act
         trend = self.entity._get_convergence_trend()

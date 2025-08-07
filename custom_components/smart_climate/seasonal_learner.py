@@ -93,6 +93,11 @@ class SeasonalHysteresisLearner:
             "Learned new cycle: start=%.1f, stop=%.1f, outdoor=%.1f, delta=%.1f, total_patterns=%d",
             start_temp, stop_temp, outdoor_temp, pattern.hysteresis_delta, len(self._patterns)
         )
+        
+        _LOGGER.info(
+            "Seasonal pattern learned: New AC cycle recorded (delta=%.1f°C) at outdoor temp %.1f°C. Total patterns: %d",
+            pattern.hysteresis_delta, outdoor_temp, len(self._patterns)
+        )
     
     def get_relevant_hysteresis_delta(self, current_outdoor_temp: Optional[float] = None) -> Optional[float]:
         """Calculates the most relevant hysteresis delta based on current outdoor temp.
@@ -115,8 +120,18 @@ class SeasonalHysteresisLearner:
             _LOGGER.debug("No outdoor temperature available for pattern matching")
             return None
         
+        _LOGGER.debug(
+            "Seasonal adaptation: outdoor_temp=%.1f°C, found %d patterns total",
+            current_outdoor_temp, len(self._patterns)
+        )
+        
         # Try to find patterns within initial tolerance (±2.5°C)
         relevant_patterns = self._find_patterns_by_outdoor_temp(current_outdoor_temp, 2.5)
+        
+        _LOGGER.debug(
+            "Seasonal: Searching patterns within ±2.5°C of %.1f°C, found %d matches",
+            current_outdoor_temp, len(relevant_patterns)
+        )
         
         # If insufficient patterns in bucket, try wider tolerance (±5°C)
         if len(relevant_patterns) < self._min_samples_for_bucket:
@@ -125,6 +140,11 @@ class SeasonalHysteresisLearner:
                 len(relevant_patterns), self._min_samples_for_bucket
             )
             relevant_patterns = self._find_patterns_by_outdoor_temp(current_outdoor_temp, 5.0)
+            
+            _LOGGER.debug(
+                "Seasonal: Searching patterns within ±5.0°C of %.1f°C, found %d matches",
+                current_outdoor_temp, len(relevant_patterns)
+            )
         
         # If still insufficient, use all patterns as graceful degradation
         if len(relevant_patterns) < self._min_samples_for_bucket:
@@ -133,6 +153,10 @@ class SeasonalHysteresisLearner:
                 len(relevant_patterns), self._min_samples_for_bucket
             )
             relevant_patterns = self._patterns
+            _LOGGER.debug(
+                "Seasonal: Using all %d patterns as fallback (graceful degradation)",
+                len(relevant_patterns)
+            )
         
         if not relevant_patterns:
             _LOGGER.warning("No relevant patterns found for hysteresis delta calculation")
@@ -142,10 +166,19 @@ class SeasonalHysteresisLearner:
         deltas = [pattern.hysteresis_delta for pattern in relevant_patterns]
         median_delta = statistics.median(deltas)
         
-        _LOGGER.debug(
-            "Calculated hysteresis delta: outdoor_temp=%.1f, patterns_used=%d/%d, delta=%.1f",
-            current_outdoor_temp, len(relevant_patterns), len(self._patterns), median_delta
-        )
+        # Determine which bucket was used for the final calculation
+        if len(relevant_patterns) < len(self._patterns):
+            temp_range_lower = current_outdoor_temp - (5.0 if len(relevant_patterns) > len(self._find_patterns_by_outdoor_temp(current_outdoor_temp, 2.5)) else 2.5)
+            temp_range_upper = current_outdoor_temp + (5.0 if len(relevant_patterns) > len(self._find_patterns_by_outdoor_temp(current_outdoor_temp, 2.5)) else 2.5)
+            _LOGGER.debug(
+                "Seasonal: Using %d patterns from bucket [%.1f-%.1f°C], median delta=%.1f°C",
+                len(relevant_patterns), temp_range_lower, temp_range_upper, median_delta
+            )
+        else:
+            _LOGGER.debug(
+                "Seasonal: Using all %d patterns (fallback), median delta=%.1f°C",
+                len(relevant_patterns), median_delta
+            )
         
         return median_delta
     
@@ -388,6 +421,7 @@ class SeasonalHysteresisLearner:
             # Base contribution on pattern count and accuracy
             pattern_count = self.get_pattern_count()
             if pattern_count == 0:
+                _LOGGER.debug("Seasonal contribution: No patterns available, contribution=0%")
                 return 0.0
             
             accuracy = self.get_seasonal_accuracy()
@@ -398,6 +432,11 @@ class SeasonalHysteresisLearner:
             
             # Contribution is accuracy scaled by pattern factor
             contribution = accuracy * pattern_factor
+            
+            _LOGGER.debug(
+                "Seasonal contribution calculation: patterns=%d, accuracy=%.1f%%, pattern_factor=%.2f, contribution=%.1f%%",
+                pattern_count, accuracy, pattern_factor, contribution
+            )
             
             return round(contribution, 1)
             

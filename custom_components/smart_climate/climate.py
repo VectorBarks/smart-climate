@@ -2426,52 +2426,23 @@ class SmartClimateEntity(ClimateEntity):
     def _get_convergence_trend(self) -> str:
         """Get learning convergence trend analysis."""
         try:
-            if not hasattr(self._offset_engine, 'get_variance_history'):
-                return "unknown"
+            # First try to get from coordinator data (preferred)
+            if hasattr(self, '_coordinator') and self._coordinator and hasattr(self._coordinator, 'data'):
+                if self._coordinator.data and isinstance(self._coordinator.data, dict):
+                    system_health = self._coordinator.data.get('system_health', {})
+                    if isinstance(system_health, dict):
+                        trend = system_health.get('convergence_trend')
+                        if trend is not None:
+                            return trend
             
-            variance_history = self._offset_engine.get_variance_history()
-            if not variance_history or len(variance_history) < 3:
-                return "unknown"
+            # Fallback to calling offset engine directly
+            if hasattr(self, '_offset_engine') and self._offset_engine:
+                if hasattr(self._offset_engine, '_analyze_convergence_trend'):
+                    return self._offset_engine._analyze_convergence_trend()
             
-            # Sort by timestamp to ensure chronological order
-            sorted_history = sorted(
-                variance_history,
-                key=lambda x: x.get('timestamp', 0) if isinstance(x, dict) else 0
-            )
-            
-            if len(sorted_history) < 3:
-                return "unknown"
-            
-            # Analyze trend in variance (lower variance = better convergence)
-            variances = [item.get('variance', 0) for item in sorted_history]
-            
-            # Calculate trend over last few points
-            recent_count = min(5, len(variances))
-            recent_variances = variances[-recent_count:]
-            
-            if len(recent_variances) < 2:
-                return "unknown"
-            
-            # Simple trend analysis: compare start and end of recent period
-            start_variance = recent_variances[0]
-            end_variance = recent_variances[-1]
-            
-            # Calculate relative change
-            if start_variance == 0:
-                return "stable" if end_variance < 0.1 else "declining"
-            
-            change_ratio = (end_variance - start_variance) / start_variance
-            
-            # Classify trend based on variance change
-            if change_ratio < -0.1:  # Variance decreased significantly
-                return "improving"
-            elif change_ratio > 0.1:  # Variance increased significantly
-                return "declining"
-            else:  # Small change
-                return "stable"
-                
+            return "unknown"
         except Exception as exc:
-            _LOGGER.debug("Error analyzing convergence trend: %s", exc)
+            _LOGGER.warning("Error getting convergence trend: %s", exc)
             return "unknown"
     
     # Phase 6: Advanced Algorithm Metrics Methods

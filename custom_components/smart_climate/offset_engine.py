@@ -37,6 +37,8 @@ from .const import (
     DEFAULT_VALIDATION_TEMP_MIN,
     DEFAULT_VALIDATION_TEMP_MAX,
     DEFAULT_VALIDATION_RATE_LIMIT_SECONDS,
+    CONF_FORECAST_ENABLED,
+    CONF_OUTDOOR_SENSOR,
 )
 
 if TYPE_CHECKING:
@@ -254,9 +256,14 @@ class OffsetEngine:
         self._prediction_active: bool = False
         self._adjustment_source: Optional[str] = None  # Track if adjustment from prediction vs user
         
+        # Weather forecast configuration (from config, not existence)
+        self._weather_forecast_enabled = config.get(CONF_FORECAST_ENABLED, False)
+        
         # Seasonal learning integration
         self._seasonal_learner: Optional["SeasonalHysteresisLearner"] = seasonal_learner
-        self._seasonal_features_enabled: bool = seasonal_learner is not None
+        # Check config for outdoor sensor, not just learner existence
+        outdoor_sensor = config.get(CONF_OUTDOOR_SENSOR)
+        self._seasonal_features_enabled: bool = outdoor_sensor is not None and outdoor_sensor != ""
         
         # Delay learning integration
         self._delay_learner: Optional["DelayLearner"] = delay_learner
@@ -674,9 +681,16 @@ class OffsetEngine:
         # Basic offset calculation
         base_offset = ac_temp - room_temp
         
+        _LOGGER.debug(
+            "Seasonal offset calculation: room_temp=%.1f°C, ac_temp=%.1f°C, outdoor_temp=%s, base_offset=%.2f°C",
+            room_temp, ac_temp, f"{outdoor_temp:.1f}°C" if outdoor_temp is not None else "None", base_offset
+        )
+        
         # Try to enhance with seasonal context
         if self._seasonal_features_enabled and self._seasonal_learner and outdoor_temp is not None:
             try:
+                _LOGGER.debug("Seasonal: Attempting to enhance offset with seasonal learning")
+                
                 # Get seasonal hysteresis prediction
                 seasonal_delta = self._seasonal_learner.get_relevant_hysteresis_delta(outdoor_temp)
                 
@@ -686,18 +700,33 @@ class OffsetEngine:
                     seasonal_factor = seasonal_delta / 2.5  # Normalize around typical hysteresis delta
                     seasonal_adjustment = base_offset * (0.8 + 0.4 * seasonal_factor)
                     
+                    contribution_pct = self._seasonal_learner.get_seasonal_contribution()
+                    
                     _LOGGER.debug(
-                        "Seasonal offset calculation: base=%.2f, seasonal_delta=%.2f, "
-                        "seasonal_factor=%.2f, adjusted=%.2f",
+                        "Seasonal offset enhancement: base=%.2f°C, seasonal_delta=%.2f°C, "
+                        "seasonal_factor=%.2f, adjusted=%.2f°C",
                         base_offset, seasonal_delta, seasonal_factor, seasonal_adjustment
                     )
                     
+                    _LOGGER.info(
+                        "Seasonal: Applying hysteresis delta %.1f°C to offset calculation (contribution: %.0f%%)",
+                        seasonal_delta, contribution_pct
+                    )
+                    
                     return seasonal_adjustment
+                else:
+                    _LOGGER.debug("Seasonal: No relevant hysteresis delta available for outdoor temp %.1f°C", outdoor_temp)
             except Exception as exc:
                 _LOGGER.warning("Seasonal offset calculation failed: %s", exc)
+        elif self._seasonal_features_enabled and not self._seasonal_learner:
+            _LOGGER.debug("Seasonal: Features enabled but no seasonal learner available")
+        elif not self._seasonal_features_enabled:
+            _LOGGER.debug("Seasonal: Features disabled in configuration")
+        else:
+            _LOGGER.debug("Seasonal: No outdoor temperature available for seasonal enhancement")
         
         # Fall back to basic calculation
-        _LOGGER.debug("Using basic offset calculation: %.2f", base_offset)
+        _LOGGER.debug("Seasonal: Using basic offset calculation: %.2f°C", base_offset)
         return base_offset
     
     def calculate_offset(self, input_data: OffsetInput, thermal_window: Optional[Tuple[float, float]] = None) -> OffsetResult:
@@ -735,6 +764,7 @@ class OffsetEngine:
             
             # Use seasonal offset calculation if available, otherwise basic calculation
             if self._seasonal_features_enabled:
+                _LOGGER.debug("Using seasonal-enhanced offset calculation")
                 base_offset = self.calculate_seasonal_offset(
                     input_data.room_temp, 
                     input_data.ac_internal_temp, 
@@ -742,6 +772,7 @@ class OffsetEngine:
                 )
             else:
                 base_offset = input_data.ac_internal_temp - input_data.room_temp
+                _LOGGER.debug("Using basic offset calculation: %.2f°C", base_offset)
             
             # Apply mode-specific adjustments
             mode_adjusted_offset = self._apply_mode_adjustments(base_offset, input_data)
@@ -836,7 +867,11 @@ class OffsetEngine:
             learning_error = None
             if self._enable_learning and self._learner and self._learner._enhanced_samples:
                 try:
-                    _LOGGER.debug("Attempting learning prediction for offset calculation")
+                    sample_count = len(self._learner._enhanced_samples)
+                    _LOGGER.debug(
+                        "Attempting learning prediction for offset calculation (%d samples available)",
+                        sample_count
+                    )
                     # Use enhanced predict method with hysteresis context
                     learned_offset = self._learner.predict(
                         ac_temp=input_data.ac_internal_temp,
@@ -849,7 +884,7 @@ class OffsetEngine:
                     learning_confidence = 0.8  # High confidence for hysteresis-aware prediction
                     
                     _LOGGER.debug(
-                        "Learning prediction: rule_based=%s, learned=%s, confidence=%s",
+                        "Learning prediction: rule_based=%.2f°C, learned=%.2f°C, confidence=%.1f",
                         rule_based_offset, learned_offset, learning_confidence
                     )
                     
@@ -857,15 +892,19 @@ class OffsetEngine:
                         # Weighted combination based on learning confidence
                         final_offset = (1 - learning_confidence) * rule_based_offset + learning_confidence * learned_offset
                         learning_used = True
-                        _LOGGER.debug("Using learning-enhanced offset: %s (weight: %s)", final_offset, learning_confidence)
+                        _LOGGER.debug(
+                            "Using learning-enhanced offset: %.2f°C (weight: %.1f, %d%% learning / %d%% rule-based)", 
+                            final_offset, learning_confidence, 
+                            int(learning_confidence * 100), int((1 - learning_confidence) * 100)
+                        )
                     else:
-                        _LOGGER.debug("Learning confidence too low (%s), using rule-based only", learning_confidence)
+                        _LOGGER.debug("Learning confidence too low (%.1f), using rule-based only", learning_confidence)
                         
                 except Exception as exc:
                     _LOGGER.warning("Learning prediction failed, using rule-based fallback: %s", exc)
                     learning_error = str(exc)
             elif self._enable_learning and self._learner:
-                _LOGGER.debug("Learning enabled but insufficient data for prediction")
+                _LOGGER.debug("Learning enabled but insufficient data for prediction (need >0 samples)")
             elif self._enable_learning:
                 _LOGGER.debug("Learning enabled but no learner instance available")
             
@@ -888,10 +927,30 @@ class OffsetEngine:
             )
             
             _LOGGER.debug(
-                "Offset calculation complete: final_offset=%s, clamped=%s, learning_used=%s, confidence=%s",
+                "Offset calculation complete: final_offset=%.2f°C, clamped=%s, learning_used=%s, confidence=%.2f",
                 clamped_offset, was_clamped, learning_used, confidence
             )
             _LOGGER.debug("Offset calculation reason: %s", reason)
+            
+            # Log summary of all contributing factors
+            factors = []
+            if self._seasonal_features_enabled and self._seasonal_learner and input_data.outdoor_temp is not None:
+                contribution = self._seasonal_learner.get_seasonal_contribution()
+                factors.append(f"seasonal({contribution:.0f}%)")
+            if self._weather_forecast_enabled and self._forecast_engine:
+                try:
+                    forecast_offset = self._forecast_engine.predictive_offset
+                    if abs(forecast_offset) > 0.01:
+                        factors.append(f"forecast({forecast_offset:+.1f}°C)")
+                except Exception:
+                    pass
+            if learning_used:
+                factors.append(f"learning({learning_confidence:.1f})")
+            
+            if factors:
+                _LOGGER.debug("Contributing factors: %s", ", ".join(factors))
+            else:
+                _LOGGER.debug("Contributing factors: rule-based only")
             
             # Store the last calculated offset for dashboard data
             self._last_offset = clamped_offset
@@ -1421,9 +1480,29 @@ class OffsetEngine:
         
         # Seasonal information
         if self._seasonal_features_enabled and input_data.outdoor_temp is not None:
-            reasons.append(f"seasonal-enhanced (outdoor: {input_data.outdoor_temp:.1f}°C)")
+            if self._seasonal_learner:
+                contribution = self._seasonal_learner.get_seasonal_contribution()
+                pattern_count = self._seasonal_learner.get_pattern_count()
+                reasons.append(f"seasonal-enhanced ({pattern_count} patterns, {contribution:.0f}% contribution, outdoor: {input_data.outdoor_temp:.1f}°C)")
+            else:
+                reasons.append(f"seasonal-configured (outdoor: {input_data.outdoor_temp:.1f}°C, no learner)")
         elif self._seasonal_features_enabled:
             reasons.append("seasonal available but no outdoor temp")
+        
+        # Weather forecast information
+        if self._weather_forecast_enabled and self._forecast_engine:
+            try:
+                forecast_offset = self._forecast_engine.predictive_offset
+                active_strategy = self._forecast_engine.active_strategy_info
+                if abs(forecast_offset) > 0.01:
+                    strategy_name = active_strategy.get('name', 'unknown') if active_strategy else 'unknown'
+                    reasons.append(f"weather-forecast ({strategy_name}: {forecast_offset:+.1f}°C)")
+                else:
+                    reasons.append("weather-forecast (no active strategy)")
+            except Exception:
+                reasons.append("weather-forecast (error getting status)")
+        elif self._weather_forecast_enabled:
+            reasons.append("weather-forecast (configured but no engine)")
         
         # Learning information
         if self._enable_learning and self._learner:
@@ -1486,11 +1565,32 @@ class OffsetEngine:
         # More data points increase confidence
         if input_data.outdoor_temp is not None:
             base_confidence += 0.2
-            # Additional boost if seasonal features are enabled
-            if self._seasonal_features_enabled:
-                base_confidence += 0.1
+            # Additional boost if seasonal features are enabled and operational
+            if self._seasonal_features_enabled and self._seasonal_learner:
+                seasonal_contribution = self._seasonal_learner.get_seasonal_contribution()
+                confidence_boost = 0.1 * (seasonal_contribution / 100.0)  # Scale by actual contribution
+                base_confidence += confidence_boost
+                _LOGGER.debug(
+                    "Confidence boost from seasonal data: +%.2f (based on %.1f%% contribution)",
+                    confidence_boost, seasonal_contribution
+                )
+            elif self._seasonal_features_enabled:
+                base_confidence += 0.05  # Smaller boost if configured but not operational
+                
         if input_data.power_consumption is not None:
             base_confidence += 0.2
+            
+        # Weather forecast confidence contribution
+        if self._weather_forecast_enabled and self._forecast_engine:
+            try:
+                active_strategy = self._forecast_engine.active_strategy_info
+                if active_strategy:
+                    base_confidence += 0.15  # Boost for active weather strategy
+                    _LOGGER.debug("Confidence boost from active weather strategy: +0.15")
+                else:
+                    base_confidence += 0.05  # Small boost for available but inactive forecast
+            except Exception:
+                pass
         
         # Mode-specific confidence adjustments
         if input_data.mode in ["away", "sleep", "boost"]:
@@ -1772,7 +1872,10 @@ class OffsetEngine:
     
     def _get_seasonal_data(self) -> SeasonalData:
         """Get seasonal learning data with graceful handling."""
-        if not hasattr(self, '_seasonal_learner') or not self._seasonal_learner:
+        # Check both config AND component existence for operational status
+        is_operationally_enabled = self._seasonal_features_enabled and self._seasonal_learner is not None
+        
+        if not is_operationally_enabled:
             return SeasonalData(enabled=False)
         
         try:
@@ -2192,8 +2295,8 @@ class OffsetEngine:
             "cached_offset": self._stable_calibration_offset,
         }
         
-        # Get weather forecast data
-        weather_forecast = self._forecast_engine is not None
+        # Get weather forecast data (based on config AND engine existence)
+        weather_forecast = self._weather_forecast_enabled and self._forecast_engine is not None
         predictive_offset = 0.0
         if self._forecast_engine:
             try:
