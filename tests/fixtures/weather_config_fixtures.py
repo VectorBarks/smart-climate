@@ -173,7 +173,7 @@ def weather_config_builder():
                 strategies.append({
                     "name": "heat_wave",
                     "enabled": True,
-                    "type": "heat_wave",
+                    "strategy_type": "heat_wave",
                     "temp_threshold": heat_wave_threshold,
                     "min_duration_hours": DEFAULT_HEAT_WAVE_MIN_DURATION_HOURS,
                     "lookahead_hours": DEFAULT_HEAT_WAVE_LOOKAHEAD_HOURS,
@@ -185,7 +185,7 @@ def weather_config_builder():
                 strategies.append({
                     "name": "clear_sky",
                     "enabled": True,
-                    "type": "clear_sky",
+                    "strategy_type": "clear_sky",
                     "condition": clear_sky_condition,
                     "min_duration_hours": DEFAULT_CLEAR_SKY_MIN_DURATION_HOURS,
                     "lookahead_hours": DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS,

@@ -53,6 +53,7 @@ def create_sensor_entity(base_cls=SensorEntity):
             self.coordinator = coordinator
             self._base_entity_id = base_entity_id
             self._sensor_type = sensor_type
+            self._config_entry = config_entry
             
             # Generate unique ID
             safe_entity_id = base_entity_id.replace(".", "_")

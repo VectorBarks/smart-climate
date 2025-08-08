@@ -67,8 +67,8 @@ def build_predictive_config(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     heat_wave_strategy = {
         "name": "heat_wave",
         "enabled": True,
-        "type": "heat_wave",
-        "temp_threshold": config.get(
+        "strategy_type": "heat_wave",
+        "temp_threshold_c": config.get(
             CONF_HEAT_WAVE_TEMP_THRESHOLD, DEFAULT_HEAT_WAVE_TEMP_THRESHOLD
         ),
         "min_duration_hours": config.get(
@@ -89,7 +89,7 @@ def build_predictive_config(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     clear_sky_strategy = {
         "name": "clear_sky",
         "enabled": True,
-        "type": "clear_sky",
+        "strategy_type": "clear_sky",
         "condition": config.get(
             CONF_CLEAR_SKY_CONDITION, DEFAULT_CLEAR_SKY_CONDITION
         ),

@@ -135,7 +135,8 @@ class ForecastEngine:
         _LOGGER.debug("Weather: Evaluating %d configured predictive strategies", len(self._strategies))
 
         for strategy_config in self._strategies:
-            strategy_type = strategy_config.get("strategy_type")
+            # Support both "strategy_type" (new) and "type" (legacy) for backward compatibility
+            strategy_type = strategy_config.get("strategy_type") or strategy_config.get("type")
             strategy_name = strategy_config.get("name", strategy_type)
             
             _LOGGER.debug("Weather: Evaluating '%s' strategy (%s)", strategy_name, strategy_type)
@@ -194,7 +195,8 @@ class ForecastEngine:
     def _evaluate_heat_wave_strategy(self, config: Dict[str, Any], now: datetime) -> None:
         """Evaluator for the 'heat_wave' strategy type."""
         lookahead = timedelta(hours=config.get("lookahead_hours", 48))
-        temp_threshold = config["temp_threshold_c"]
+        # Support both "temp_threshold_c" (new) and "temp_threshold" (legacy)
+        temp_threshold = config.get("temp_threshold_c") or config.get("temp_threshold")
         min_duration = config.get("min_duration_hours", 5)
         pre_action_hours = config.get("pre_action_hours", 4)
         
@@ -228,16 +230,18 @@ class ForecastEngine:
             )
             
             if now >= pre_action_start_time:
+                # Support both adjustment and adjustment_c for backward compatibility
+                adjustment = config.get("adjustment", config.get("adjustment_c", 0.0))
                 self._active_strategy = ActiveStrategy(
                     name=config["name"],
-                    adjustment=config["adjustment_c"],
+                    adjustment=adjustment,
                     end_time=event_start_time,
                 )
                 # Add reason for logging
                 self._active_strategy.reason = f"heat wave >={temp_threshold}°C detected in {hours_until_event:.1f}h"
                 _LOGGER.debug(
                     "Weather: Heat wave strategy activated - pre-cooling with %+.1f°C until event starts",
-                    config["adjustment_c"]
+                    adjustment
                 )
             else:
                 hours_until_preaction = (pre_action_start_time - now).total_seconds() / 3600
@@ -295,16 +299,18 @@ class ForecastEngine:
             )
             
             if now >= pre_action_start_time:
+                # Support both adjustment and adjustment_c for backward compatibility
+                adjustment = config.get("adjustment", config.get("adjustment_c", 0.0))
                 self._active_strategy = ActiveStrategy(
                     name=config["name"],
-                    adjustment=config["adjustment_c"],
+                    adjustment=adjustment,
                     end_time=event_start_time,
                 )
                 # Add reason for logging
                 self._active_strategy.reason = f"{consecutive_hours} consecutive {target_condition} hours"
                 _LOGGER.debug(
                     "Weather: Clear sky strategy activated - applying %+.1f°C offset until clear period starts",
-                    config["adjustment_c"]
+                    adjustment
                 )
             else:
                 hours_until_preaction = (pre_action_start_time - now).total_seconds() / 3600

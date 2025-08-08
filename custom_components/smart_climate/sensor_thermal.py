@@ -55,9 +55,21 @@ class SmartClimateThermalSensor(SmartClimateSensorEntity):
         try:
             entry_data = self.hass.data[DOMAIN][self._config_entry.entry_id]
             thermal_components = entry_data.get("thermal_components", {})
-            return thermal_components.get(self._base_entity_id, {})
-        except (KeyError, AttributeError):
-            _LOGGER.debug("Thermal components not available for %s", self._base_entity_id)
+            
+            # Debug logging
+            _LOGGER.debug(
+                "Looking for thermal components: base_entity_id=%s, available_keys=%s", 
+                self._base_entity_id, 
+                list(thermal_components.keys()) if thermal_components else "none"
+            )
+            
+            components = thermal_components.get(self._base_entity_id, {})
+            if not components:
+                _LOGGER.debug("No thermal components found for %s", self._base_entity_id)
+                return None
+            return components
+        except (KeyError, AttributeError) as e:
+            _LOGGER.debug("Error getting thermal components for %s: %s", self._base_entity_id, e)
             return None
 
 
