@@ -13,6 +13,8 @@ from typing import List, Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from .models import HvacCycleData
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -97,6 +99,47 @@ class SeasonalHysteresisLearner:
         _LOGGER.info(
             "Seasonal pattern learned: New AC cycle recorded (delta=%.1f°C) at outdoor temp %.1f°C. Total patterns: %d",
             pattern.hysteresis_delta, outdoor_temp, len(self._patterns)
+        )
+    
+    def learn_from_cycle_data(self, cycle_data: HvacCycleData) -> None:
+        """Records a new completed AC cycle from structured cycle data.
+        
+        Args:
+            cycle_data: Complete cycle data including temperatures and timing
+        """
+        if cycle_data.outdoor_temp_at_start is None:
+            _LOGGER.debug(
+                "Cannot learn cycle without outdoor temperature data"
+            )
+            return
+        
+        # Use the stabilized temp as the stop temp since that's more accurate
+        # for hysteresis learning than the immediate stop temp
+        stop_temp = cycle_data.stabilized_temp
+        
+        # Create new pattern
+        pattern = LearnedPattern(
+            timestamp=cycle_data.start_time.timestamp(),
+            start_temp=cycle_data.start_temp,
+            stop_temp=stop_temp,
+            outdoor_temp=cycle_data.outdoor_temp_at_start
+        )
+        
+        self._patterns.append(pattern)
+        
+        # Prune old patterns
+        self._prune_old_patterns()
+        
+        _LOGGER.debug(
+            "Learned cycle from structured data: start=%.1f, stabilized=%.1f, outdoor=%.1f, delta=%.1f, duration=%s, total_patterns=%d",
+            cycle_data.start_temp, stop_temp, cycle_data.outdoor_temp_at_start, 
+            pattern.hysteresis_delta, cycle_data.end_time - cycle_data.start_time, len(self._patterns)
+        )
+        
+        _LOGGER.info(
+            "Seasonal pattern learned from cycle: delta=%.1f°C at outdoor temp %.1f°C (duration: %s). Total patterns: %d",
+            pattern.hysteresis_delta, cycle_data.outdoor_temp_at_start, 
+            cycle_data.end_time - cycle_data.start_time, len(self._patterns)
         )
     
     def get_relevant_hysteresis_delta(self, current_outdoor_temp: Optional[float] = None) -> Optional[float]:

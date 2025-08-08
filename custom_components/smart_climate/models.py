@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import time, datetime
 from typing import Optional
+from enum import Enum
 
 
 @dataclass
@@ -113,3 +114,22 @@ class ActiveStrategy:
     name: str
     adjustment: float
     end_time: datetime
+
+
+class HvacCycleState(Enum):
+    """Represents the state of the AC cycle detection."""
+    IDLE = "idle"  # AC is off, not in a post-cool period
+    COOLING = "cooling"  # AC is actively cooling
+    POST_COOL_RISE = "post_cool_rise"  # AC just turned off, waiting for temp to stabilize
+
+
+@dataclass
+class HvacCycleData:
+    """Holds all relevant data for a completed cooling cycle."""
+    start_time: datetime
+    end_time: datetime
+    start_temp: float
+    end_temp: float
+    stabilized_temp: float  # The temperature measured after the post-cool rise period
+    outdoor_temp_at_start: float
+    power_usage_kwh: Optional[float] = None  # Optional power data

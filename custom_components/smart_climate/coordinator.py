@@ -6,13 +6,15 @@ from typing import TYPE_CHECKING, Optional
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.components.climate.const import HVAC_ACTION_COOLING
 
-from .models import SmartClimateData, OffsetInput, ModeAdjustments
+from .models import SmartClimateData, OffsetInput, ModeAdjustments, HvacCycleState, HvacCycleData
 from .errors import SmartClimateError
 from .outlier_detector import OutlierDetector
 from .dto import SystemHealthData
 from .thermal_models import ThermalState
-from .const import DOMAIN
+from .const import DOMAIN, SEASONAL_LEARNER_STORAGE_VERSION, POST_COOL_RISE_PERIOD_MINUTES, SEASONAL_SAVE_INTERVAL_MINUTES
 
 if TYPE_CHECKING:
     from .sensor_manager import SensorManager
@@ -44,7 +46,8 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         user_preferences: Optional["UserPreferences"] = None,
         cycle_monitor: Optional["CycleMonitor"] = None,
         comfort_band_controller: Optional["ComfortBandController"] = None,
-        thermal_efficiency_enabled: bool = False
+        thermal_efficiency_enabled: bool = False,
+        wrapped_entity_id: Optional[str] = None
     ):
         """Initialize the coordinator."""
         super().__init__(
@@ -57,6 +60,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         self._offset_engine = offset_engine
         self._mode_manager = mode_manager
         self._forecast_engine = forecast_engine
+        self._wrapped_entity_id = wrapped_entity_id
         self._is_startup = True  # Flag for startup calculation
         
         # Initialize thermal efficiency components (Phase 1)
@@ -92,6 +96,277 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         else:
             self._outlier_detector = None
             _LOGGER.debug("Outlier detection disabled")
+        
+        # Initialize seasonal learning cycle detection
+        self._cycle_state = HvacCycleState.IDLE
+        self._current_cycle_data = {}
+        self._post_cool_start_time = None
+        self._seasonal_learner = None  # Will be set by entity setup
+        self._seasonal_save_interval_canceller = None
+        
+        _LOGGER.debug("Seasonal learning cycle detection initialized in IDLE state")
+    
+    def set_seasonal_learner(self, seasonal_learner):
+        """Set the seasonal learner instance for cycle detection.
+        
+        Args:
+            seasonal_learner: SeasonalHysteresisLearner instance
+        """
+        self._seasonal_learner = seasonal_learner
+        _LOGGER.debug("Seasonal learner set for coordinator cycle detection")
+    
+    async def async_initialize_seasonal_learning(self):
+        """Initialize seasonal learning with historical migration and periodic saving."""
+        if not self._seasonal_learner:
+            _LOGGER.debug("No seasonal learner available for initialization")
+            return
+        
+        _LOGGER.info("Initializing seasonal learning system...")
+        
+        # Load existing seasonal data
+        await self._seasonal_learner.async_load()
+        
+        # Run one-time historical migration
+        await self._async_migrate_historical_data()
+        
+        # Set up periodic saving
+        self._seasonal_save_interval_canceller = async_track_time_interval(
+            self.hass, 
+            self._async_periodic_seasonal_save, 
+            timedelta(minutes=SEASONAL_SAVE_INTERVAL_MINUTES)
+        )
+        
+        _LOGGER.info("Seasonal learning system initialized successfully")
+    
+    async def _async_periodic_seasonal_save(self, now: datetime = None) -> None:
+        """Periodically save the seasonal learner's state."""
+        if self._seasonal_learner:
+            try:
+                await self._seasonal_learner.async_save()
+                _LOGGER.debug("Periodic seasonal learner save completed")
+            except Exception as exc:
+                _LOGGER.error("Error during periodic seasonal save: %s", exc)
+    
+    async def _async_migrate_historical_data(self):
+        """Process historical enhanced_samples to build initial seasonal model."""
+        if not self._seasonal_learner:
+            return
+        
+        # Check if migration is needed by looking at pattern count
+        if self._seasonal_learner.get_pattern_count() > 0:
+            _LOGGER.debug("Seasonal learner already has patterns, skipping migration")
+            return
+        
+        # Get historical data from offset engine
+        if hasattr(self, '_offset_engine') and hasattr(self._offset_engine, '_learner'):
+            try:
+                enhanced_samples = getattr(self._offset_engine._learner, '_enhanced_samples', [])
+                if not enhanced_samples:
+                    _LOGGER.debug("No enhanced samples found for migration")
+                    return
+                
+                _LOGGER.info("Starting seasonal learning migration from %d historical samples", len(enhanced_samples))
+                
+                # Reconstruct cycles from samples
+                historical_cycles = self._reconstruct_cycles_from_samples(enhanced_samples)
+                _LOGGER.info("Reconstructed %d historical cycles from samples", len(historical_cycles))
+                
+                # Feed cycles to seasonal learner
+                for cycle in historical_cycles:
+                    self._seasonal_learner.learn_from_cycle_data(cycle)
+                
+                # Save the migrated data
+                await self._seasonal_learner.async_save()
+                
+                _LOGGER.info("Historical data migration complete: %d cycles processed", len(historical_cycles))
+                
+            except Exception as exc:
+                _LOGGER.error("Error during historical data migration: %s", exc)
+        else:
+            _LOGGER.debug("No offset engine available for migration")
+    
+    def _reconstruct_cycles_from_samples(self, samples):
+        """Parse historical samples to find cooling cycles."""
+        if not samples:
+            return []
+        
+        # Sort samples by timestamp
+        try:
+            sorted_samples = sorted(samples, key=lambda s: s.get('timestamp', ''))
+        except Exception as exc:
+            _LOGGER.warning("Error sorting samples for migration: %s", exc)
+            return []
+        
+        cycles = []
+        in_cycle = False
+        cycle_start_sample = None
+        post_cool_rise_period = timedelta(minutes=POST_COOL_RISE_PERIOD_MINUTES)
+        
+        for i, sample in enumerate(sorted_samples):
+            try:
+                # Check if sample has required fields
+                hvac_action = sample.get('hvac_action')
+                if not hvac_action:
+                    # Try to infer from power consumption
+                    power = sample.get('power')
+                    if power is not None and power > 100:  # Assume >100W means cooling
+                        hvac_action = 'cooling'
+                    else:
+                        hvac_action = 'idle'
+                
+                is_cooling = hvac_action == 'cooling'
+                
+                if is_cooling and not in_cycle:
+                    # Start of new cycle
+                    in_cycle = True
+                    cycle_start_sample = sample
+                    _LOGGER.debug("Found cycle start at %s", sample.get('timestamp', 'unknown'))
+                    
+                elif not is_cooling and in_cycle and cycle_start_sample:
+                    # End of cycle
+                    in_cycle = False
+                    cycle_end_sample = sample
+                    
+                    # Find stabilized temperature after post-cool period
+                    end_time = datetime.fromisoformat(cycle_end_sample['timestamp'].replace('Z', '+00:00'))
+                    stabilized_sample = None
+                    
+                    for future_sample in sorted_samples[i + 1:]:
+                        try:
+                            future_time = datetime.fromisoformat(future_sample['timestamp'].replace('Z', '+00:00'))
+                            if future_time >= end_time + post_cool_rise_period:
+                                stabilized_sample = future_sample
+                                break
+                        except (ValueError, KeyError):
+                            continue
+                    
+                    if stabilized_sample:
+                        try:
+                            cycle = HvacCycleData(
+                                start_time=datetime.fromisoformat(cycle_start_sample['timestamp'].replace('Z', '+00:00')),
+                                end_time=end_time,
+                                start_temp=float(cycle_start_sample.get('room_temp', 0)),
+                                end_temp=float(cycle_end_sample.get('room_temp', 0)),
+                                stabilized_temp=float(stabilized_sample.get('room_temp', 0)),
+                                outdoor_temp_at_start=float(cycle_start_sample.get('outdoor_temp', 25))
+                            )
+                            
+                            # Validate cycle makes sense
+                            if (cycle.start_temp > cycle.end_temp and 
+                                cycle.stabilized_temp >= cycle.end_temp and
+                                cycle.outdoor_temp_at_start is not None):
+                                cycles.append(cycle)
+                                _LOGGER.debug("Valid cycle: %.1f->%.1f->%.1f°C outdoor %.1f°C", 
+                                            cycle.start_temp, cycle.end_temp, 
+                                            cycle.stabilized_temp, cycle.outdoor_temp_at_start)
+                        except (ValueError, KeyError) as exc:
+                            _LOGGER.debug("Skipping invalid cycle data: %s", exc)
+                    
+                    cycle_start_sample = None
+                    
+            except Exception as exc:
+                _LOGGER.debug("Error processing sample during migration: %s", exc)
+                continue
+        
+        return cycles
+    
+    def _get_hvac_action(self, sensor_data):
+        """Determine HVAC action from sensor data and wrapped entity state."""
+        # Try to get HVAC action from wrapped entity first
+        if hasattr(self, '_wrapped_entity_id') and self._wrapped_entity_id:
+            wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state and wrapped_state.attributes:
+                hvac_action = wrapped_state.attributes.get("hvac_action")
+                if hvac_action:
+                    return hvac_action
+        
+        # Fallback: infer from power consumption
+        power = sensor_data.get("power")
+        if power is not None:
+            # Use same threshold as in enhanced samples migration
+            return "cooling" if power > 100 else "idle"
+        
+        # Default fallback
+        return "idle"
+    
+    def _run_cycle_detection_state_machine(self, hvac_action, room_temp, outdoor_temp):
+        """Core state machine for detecting live AC cycles."""
+        if not self._seasonal_learner or room_temp is None:
+            return
+        
+        now = datetime.now()
+        is_cooling = hvac_action == "cooling"
+        post_cool_rise_period = timedelta(minutes=POST_COOL_RISE_PERIOD_MINUTES)
+        
+        current_state = self._cycle_state
+        _LOGGER.debug("Cycle detection: state=%s, hvac_action=%s, temp=%.1f", 
+                     current_state.value, hvac_action, room_temp)
+        
+        # State: IDLE
+        if self._cycle_state == HvacCycleState.IDLE:
+            if is_cooling:
+                _LOGGER.debug("Cycle detected: IDLE -> COOLING")
+                self._cycle_state = HvacCycleState.COOLING
+                self._current_cycle_data = {
+                    "start_time": now,
+                    "start_temp": room_temp,
+                    "outdoor_temp_at_start": outdoor_temp or 25.0,  # Default if None
+                }
+                _LOGGER.info("AC cycle started: temp=%.1f°C, outdoor=%.1f°C", 
+                           room_temp, self._current_cycle_data["outdoor_temp_at_start"])
+        
+        # State: COOLING
+        elif self._cycle_state == HvacCycleState.COOLING:
+            if not is_cooling:
+                _LOGGER.debug("Cycle phase change: COOLING -> POST_COOL_RISE")
+                self._cycle_state = HvacCycleState.POST_COOL_RISE
+                self._current_cycle_data["end_time"] = now
+                self._current_cycle_data["end_temp"] = room_temp
+                self._post_cool_start_time = now
+                _LOGGER.info("AC cycle ended, waiting for temperature stabilization: temp=%.1f°C", room_temp)
+        
+        # State: POST_COOL_RISE
+        elif self._cycle_state == HvacCycleState.POST_COOL_RISE:
+            if is_cooling:
+                # AC turned back on before period ended. Discard and start new cycle.
+                _LOGGER.warning("New cooling cycle started before post-cool period finished. Resetting.")
+                self._cycle_state = HvacCycleState.IDLE
+                self._current_cycle_data = {}
+                self._post_cool_start_time = None
+                # Re-run to enter COOLING state immediately
+                self._run_cycle_detection_state_machine(hvac_action, room_temp, outdoor_temp)
+                return
+            
+            if now >= self._post_cool_start_time + post_cool_rise_period:
+                _LOGGER.debug("Cycle complete: POST_COOL_RISE -> IDLE. Learning from data.")
+                try:
+                    cycle_data = HvacCycleData(
+                        start_time=self._current_cycle_data["start_time"],
+                        end_time=self._current_cycle_data["end_time"], 
+                        start_temp=self._current_cycle_data["start_temp"],
+                        end_temp=self._current_cycle_data["end_temp"],
+                        stabilized_temp=room_temp,
+                        outdoor_temp_at_start=self._current_cycle_data["outdoor_temp_at_start"]
+                    )
+                    
+                    # Only learn if the cycle makes sense
+                    if (cycle_data.start_temp > cycle_data.end_temp and
+                        cycle_data.stabilized_temp >= cycle_data.end_temp):
+                        self._seasonal_learner.learn_from_cycle_data(cycle_data)
+                        _LOGGER.info("Seasonal learning cycle completed: %.1f->%.1f->%.1f°C (outdoor %.1f°C, duration %s)", 
+                                   cycle_data.start_temp, cycle_data.end_temp, cycle_data.stabilized_temp,
+                                   cycle_data.outdoor_temp_at_start, cycle_data.end_time - cycle_data.start_time)
+                    else:
+                        _LOGGER.debug("Skipping invalid cycle: start=%.1f, end=%.1f, stabilized=%.1f", 
+                                    cycle_data.start_temp, cycle_data.end_temp, cycle_data.stabilized_temp)
+                        
+                except (KeyError, ValueError, TypeError) as exc:
+                    _LOGGER.error("Failed to process completed cycle due to invalid data: %s", exc)
+                
+                # Reset for the next cycle
+                self._cycle_state = HvacCycleState.IDLE
+                self._current_cycle_data = {}
+                self._post_cool_start_time = None
     
     async def async_force_startup_refresh(self) -> None:
         """Force immediate refresh for startup scenario."""
@@ -287,6 +562,11 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 "power": power
             }
             outlier_results = self._execute_outlier_detection(sensor_data)
+            
+            # Execute seasonal learning cycle detection
+            if self._seasonal_learner:
+                hvac_action = self._get_hvac_action(sensor_data)
+                self._run_cycle_detection_state_machine(hvac_action, room_temp, outdoor_temp)
             
             # Execute thermal efficiency calculations (Phase 1 & Phase 2 integration)
             should_ac_run = None

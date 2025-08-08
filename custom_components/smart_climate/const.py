@@ -35,6 +35,11 @@ CONF_ADAPTIVE_DELAY = "adaptive_delay"
 CONF_PREDICTIVE = "predictive"
 CONF_DELAY_LEARNING_TIMEOUT = "delay_learning_timeout"
 
+# Seasonal learning constants
+SEASONAL_LEARNER_STORAGE_VERSION = 1
+POST_COOL_RISE_PERIOD_MINUTES = 10  # How long to wait after cooling stops to measure stabilized temp
+SEASONAL_SAVE_INTERVAL_MINUTES = 15  # How often to persist seasonal learner data
+
 # Weather forecast configuration keys
 CONF_FORECAST_ENABLED = "forecast_enabled"
 CONF_WEATHER_ENTITY = "weather_entity"
