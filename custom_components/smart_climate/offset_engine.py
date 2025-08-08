@@ -1672,6 +1672,17 @@ class OffsetEngine:
                             len(hysteresis_data.get("start_temps", [])), 
                             len(hysteresis_data.get("stop_temps", [])))
 
+            # Collect seasonal data if seasonal learner exists
+            seasonal_data = None
+            if self._seasonal_learner:
+                try:
+                    seasonal_data = self._seasonal_learner.serialize_for_persistence()
+                    pattern_count = seasonal_data.get("pattern_count", 0)
+                    _LOGGER.debug("Serializing seasonal data: %d patterns", pattern_count)
+                except Exception as exc:
+                    # Log error but continue - seasonal failure doesn't block offset data save
+                    _LOGGER.debug("Failed to get seasonal data: %s", exc)
+
             # Collect thermal data if callback is provided
             thermal_data = None
             if self._get_thermal_data_cb:
@@ -1691,7 +1702,8 @@ class OffsetEngine:
                         "enable_learning": self._enable_learning
                     },
                     "learner_data": learner_data,
-                    "hysteresis_data": hysteresis_data if hysteresis_data is not None else None
+                    "hysteresis_data": hysteresis_data if hysteresis_data is not None else None,
+                    "seasonal_data": seasonal_data  # NEW: Added seasonal data to v2.1 schema
                 },
                 "thermal_data": thermal_data
             }
@@ -1770,6 +1782,7 @@ class OffsetEngine:
                 engine_state = learning_data.get("engine_state", {})
                 learner_data = learning_data.get("learner_data")
                 hysteresis_data = learning_data.get("hysteresis_data")
+                seasonal_data = learning_data.get("seasonal_data")
                 
             else:
                 # v1.0 format (no version field) or v2 format - treat as learning data only
@@ -1781,6 +1794,33 @@ class OffsetEngine:
                 engine_state = persistent_data.get("engine_state", {})
                 learner_data = persistent_data.get("learner_data")
                 hysteresis_data = persistent_data.get("hysteresis_data")
+                seasonal_data = None  # v1.0/v2 format doesn't have seasonal data
+
+            # One-time migration: Check for old seasonal store file and migrate if exists
+            if self._seasonal_learner and seasonal_data is None:
+                try:
+                    # Import needed modules for file operations
+                    from pathlib import Path
+                    import json
+                    
+                    old_store_path = Path(self._data_store._hass.config.config_dir) / ".storage" / "smart_climate_seasonal_patterns.json"
+                    if old_store_path.exists():
+                        _LOGGER.info("Found old seasonal patterns file, migrating to new storage format")
+                        with open(old_store_path, 'r', encoding='utf-8') as f:
+                            old_data = json.load(f)
+                        
+                        # Extract seasonal data from old Store format
+                        if old_data and "data" in old_data:
+                            seasonal_data = old_data["data"]
+                            _LOGGER.info("Migrated seasonal data from old storage file")
+                            
+                            # Delete old file after successful migration
+                            old_store_path.unlink()
+                            _LOGGER.info("Deleted old seasonal storage file after migration")
+                        else:
+                            _LOGGER.warning("Old seasonal file found but no data section")
+                except Exception as exc:
+                    _LOGGER.warning("Failed to migrate old seasonal data: %s", exc)
 
             # Restore engine state from persistence
             if isinstance(engine_state, dict):
@@ -1824,6 +1864,19 @@ class OffsetEngine:
                 _LOGGER.debug("Hysteresis is enabled, but no hysteresis data found in persistence.")
             else:
                 _LOGGER.debug("Hysteresis is disabled, skipping hysteresis data load.")
+
+            # Load seasonal data if available and seasonal learner exists
+            if self._seasonal_learner and seasonal_data:
+                try:
+                    self._seasonal_learner.restore_from_persistence(seasonal_data)
+                    pattern_count = seasonal_data.get("pattern_count", 0)
+                    _LOGGER.info("Seasonal data loaded successfully: %d patterns", pattern_count)
+                except Exception as exc:
+                    _LOGGER.warning("Failed to restore seasonal data: %s", exc)
+            elif self._seasonal_learner:
+                _LOGGER.debug("Seasonal learner exists, but no seasonal data found in persistence.")
+            else:
+                _LOGGER.debug("No seasonal learner configured, skipping seasonal data load.")
 
             # Restore thermal data if callback is provided and thermal data exists
             if self._restore_thermal_data_cb and thermal_data:

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.components.climate.const import HVAC_ACTION_COOLING
 
 from .models import SmartClimateData, OffsetInput, ModeAdjustments, HvacCycleState, HvacCycleData
 from .errors import SmartClimateError
@@ -139,11 +138,12 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         _LOGGER.info("Seasonal learning system initialized successfully")
     
     async def _async_periodic_seasonal_save(self, now: datetime = None) -> None:
-        """Periodically save the seasonal learner's state."""
-        if self._seasonal_learner:
+        """Periodically save the seasonal learner's state via offset engine."""
+        if self._seasonal_learner and self._offset_engine:
             try:
-                await self._seasonal_learner.async_save()
-                _LOGGER.debug("Periodic seasonal learner save completed")
+                # Save via offset engine which will include seasonal data
+                await self._offset_engine.async_save_learning_data()
+                _LOGGER.debug("Periodic seasonal learner save completed via offset engine")
             except Exception as exc:
                 _LOGGER.error("Error during periodic seasonal save: %s", exc)
     
@@ -175,8 +175,9 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 for cycle in historical_cycles:
                     self._seasonal_learner.learn_from_cycle_data(cycle)
                 
-                # Save the migrated data
-                await self._seasonal_learner.async_save()
+                # Save the migrated data via offset engine
+                if self._offset_engine:
+                    await self._offset_engine.async_save_learning_data()
                 
                 _LOGGER.info("Historical data migration complete: %d cycles processed", len(historical_cycles))
                 

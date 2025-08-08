@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.storage import Store
 
 from .models import HvacCycleData
 
@@ -49,13 +48,8 @@ class SeasonalHysteresisLearner:
         self._outdoor_temp_bucket_size = 5.0  # degrees C/F for pattern matching
         self._min_samples_for_bucket = 3
         
-        # Initialize storage
-        self._store = Store(
-            hass,
-            version=1,
-            key=f"smart_climate_seasonal_patterns",
-            encoder=None
-        )
+        # Storage is now handled by OffsetEngine via callbacks
+        # No longer using separate Store instance
         
         _LOGGER.debug(
             "SeasonalHysteresisLearner initialized: outdoor_sensor=%s, retention_days=%d, bucket_size=%.1f",
@@ -292,81 +286,64 @@ class SeasonalHysteresisLearner:
         
         return matching_patterns
     
-    async def async_load(self) -> None:
-        """Load learned patterns from storage."""
-        try:
-            stored_data = await self._store.async_load()
-            
-            if stored_data is None:
-                _LOGGER.debug("No stored seasonal patterns found")
-                return
-            
-            if not isinstance(stored_data, dict) or "patterns" not in stored_data:
-                _LOGGER.warning("Invalid stored seasonal pattern data structure")
-                return
-            
-            # Load patterns from storage
-            self._patterns = []
-            pattern_data = stored_data["patterns"]
-            
-            for pattern_dict in pattern_data:
-                try:
-                    pattern = LearnedPattern(
-                        timestamp=float(pattern_dict["timestamp"]),
-                        start_temp=float(pattern_dict["start_temp"]),
-                        stop_temp=float(pattern_dict["stop_temp"]),
-                        outdoor_temp=float(pattern_dict["outdoor_temp"])
-                    )
-                    self._patterns.append(pattern)
-                except (KeyError, ValueError, TypeError) as exc:
-                    _LOGGER.warning(
-                        "Skipping invalid stored pattern: %s. Error: %s",
-                        pattern_dict, exc
-                    )
-            
-            # Prune old patterns after loading
-            self._prune_old_patterns()
-            
-            _LOGGER.info(
-                "Loaded %d seasonal patterns from storage",
-                len(self._patterns)
-            )
-            
-        except Exception as exc:
-            _LOGGER.error(
-                "Error loading seasonal patterns from storage: %s",
-                exc
-            )
+    def serialize_for_persistence(self) -> dict:
+        """Serialize patterns for storage.
+        
+        Returns:
+            Dictionary with patterns data ready for persistence
+        """
+        return {
+            "patterns": [
+                {
+                    "timestamp": p.timestamp,
+                    "start_temp": p.start_temp,
+                    "stop_temp": p.stop_temp,
+                    "outdoor_temp": p.outdoor_temp
+                }
+                for p in self._patterns
+            ],
+            "pattern_count": len(self._patterns)
+        }
     
-    async def async_save(self) -> None:
-        """Save learned patterns to storage."""
-        try:
-            # Prepare data for storage
-            pattern_data = []
-            for pattern in self._patterns:
-                pattern_data.append({
-                    "timestamp": pattern.timestamp,
-                    "start_temp": pattern.start_temp,
-                    "stop_temp": pattern.stop_temp,
-                    "outdoor_temp": pattern.outdoor_temp
-                })
-            
-            stored_data = {
-                "patterns": pattern_data
-            }
-            
-            await self._store.async_save(stored_data)
-            
-            _LOGGER.debug(
-                "Saved %d seasonal patterns to storage",
-                len(self._patterns)
-            )
-            
-        except Exception as exc:
-            _LOGGER.error(
-                "Error saving seasonal patterns to storage: %s",
-                exc
-            )
+    def restore_from_persistence(self, data: dict) -> None:
+        """Restore patterns from storage.
+        
+        Args:
+            data: Dictionary containing patterns data from persistence
+        """
+        if not data or "patterns" not in data:
+            _LOGGER.debug("No pattern data to restore")
+            return
+        
+        self._patterns = []
+        pattern_data = data["patterns"]
+        
+        for pattern_dict in pattern_data:
+            try:
+                pattern = LearnedPattern(
+                    timestamp=float(pattern_dict["timestamp"]),
+                    start_temp=float(pattern_dict["start_temp"]),
+                    stop_temp=float(pattern_dict["stop_temp"]),
+                    outdoor_temp=float(pattern_dict["outdoor_temp"])
+                )
+                self._patterns.append(pattern)
+            except (KeyError, ValueError, TypeError) as exc:
+                _LOGGER.warning(
+                    "Skipping invalid stored pattern: %s. Error: %s",
+                    pattern_dict, exc
+                )
+        
+        # Prune old patterns after loading
+        self._prune_old_patterns()
+        
+        pattern_count = data.get("pattern_count", len(self._patterns))
+        _LOGGER.info(
+            "Restored %d seasonal patterns from persistence",
+            len(self._patterns)
+        )
+    
+    # Removed async_save() and async_load() methods
+    # Storage is now handled by OffsetEngine via serialize_for_persistence() and restore_from_persistence()
     
     def get_pattern_count(self) -> int:
         """Get the number of learned patterns.
