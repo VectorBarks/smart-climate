@@ -122,8 +122,8 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         
         _LOGGER.info("Initializing seasonal learning system...")
         
-        # Load existing seasonal data
-        await self._seasonal_learner.async_load()
+        # Seasonal data is now loaded via OffsetEngine's unified storage
+        # No separate async_load() needed anymore
         
         # Run one-time historical migration
         await self._async_migrate_historical_data()

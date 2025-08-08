@@ -242,15 +242,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     # Store for OffsetEngine integration
                     entry_data["seasonal_learners"][entity_id] = seasonal_learner
                     
-                    # Load seasonal patterns from storage
-                    try:
-                        await seasonal_learner.async_load()
-                    except Exception as load_exc:
-                        _LOGGER.warning(
-                            "Failed to load seasonal patterns for entity %s: %s",
-                            entity_id, load_exc
-                        )
-                        # Continue with empty patterns - graceful degradation
+                    # Seasonal data is now loaded via OffsetEngine's unified storage
+                    # No separate async_load() needed - data will be restored
+                    # when OffsetEngine loads its learning data
                     
                     _LOGGER.info(
                         "Seasonal adaptation features enabled for entity %s with outdoor sensor %s",
