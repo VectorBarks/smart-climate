@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+from functools import partial
 from typing import Any, Dict, List, Optional
 from datetime import timedelta
 
@@ -425,13 +426,62 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                 thermal_efficiency_enabled = False
                 thermal_components = {}
     
-        # Create OffsetEngine with outlier config (thermal components stored separately)
-        _LOGGER.info("[DEBUG] Creating OffsetEngine for entity: %s", entity_id)
-        offset_engine = OffsetEngine(
-            config=config,
-            seasonal_learner=seasonal_learner,
-            outlier_detection_config=outlier_config
-        )
+        # Create SmartClimateCoordinator for thermal persistence callbacks (Architecture §10.6.1)
+        _LOGGER.info("[DEBUG] Creating SmartClimateCoordinator for entity: %s", entity_id)
+        from .coordinator import SmartClimateCoordinator
+        
+        # Note: We need to create a minimal coordinator instance for callback access
+        # The full coordinator setup happens in the climate platform
+        smart_coordinator = SmartClimateCoordinator.__new__(SmartClimateCoordinator)
+        smart_coordinator.hass = hass
+        _LOGGER.info("[DEBUG] SmartClimateCoordinator created for callback access")
+        
+        # Create thermal persistence callbacks using functools.partial (Architecture §10.6.1)
+        get_thermal_cb = None
+        restore_thermal_cb = None
+        
+        if thermal_efficiency_enabled and thermal_components:
+            _LOGGER.info("[DEBUG] Creating thermal persistence callbacks for entity: %s", entity_id)
+            get_thermal_cb = partial(smart_coordinator.get_thermal_data, entity_id)
+            restore_thermal_cb = partial(smart_coordinator.restore_thermal_data, entity_id)
+            _LOGGER.info("[DEBUG] Thermal persistence callbacks created successfully")
+        
+        # Create OffsetEngine with thermal callbacks (Architecture §10.2.1)
+        _LOGGER.info("[DEBUG] Creating OffsetEngine with callbacks for entity: %s", entity_id)
+        try:
+            # Check if OffsetEngine constructor accepts callbacks
+            import inspect
+            offset_engine_sig = inspect.signature(OffsetEngine.__init__)
+            accepts_callbacks = (
+                "get_thermal_data_cb" in offset_engine_sig.parameters or
+                "thermal_callbacks" in offset_engine_sig.parameters
+            )
+            
+            if accepts_callbacks and get_thermal_cb is not None:
+                _LOGGER.info("[DEBUG] OffsetEngine supports callbacks - creating with thermal persistence")
+                offset_engine = OffsetEngine(
+                    config=config,
+                    seasonal_learner=seasonal_learner,
+                    outlier_detection_config=outlier_config,
+                    get_thermal_data_cb=get_thermal_cb,
+                    restore_thermal_data_cb=restore_thermal_cb
+                )
+            else:
+                _LOGGER.info("[DEBUG] OffsetEngine does not support callbacks yet - creating without")
+                offset_engine = OffsetEngine(
+                    config=config,
+                    seasonal_learner=seasonal_learner,
+                    outlier_detection_config=outlier_config
+                )
+                
+        except Exception as exc:
+            _LOGGER.warning("[DEBUG] Error creating OffsetEngine with callbacks: %s - falling back to basic creation", exc)
+            offset_engine = OffsetEngine(
+                config=config,
+                seasonal_learner=seasonal_learner,
+                outlier_detection_config=outlier_config
+            )
+            
         _LOGGER.info("[DEBUG] OffsetEngine created successfully")
         
         # Store the engine instance for the platform to use, keyed by entity_id

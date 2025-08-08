@@ -48,6 +48,10 @@ if TYPE_CHECKING:
     from .delay_learner import DelayLearner
     from .forecast_engine import ForecastEngine
 
+# Type definitions for thermal persistence callbacks
+GetThermalDataCallback = Callable[[], Optional[Dict[str, Any]]]
+RestoreThermalDataCallback = Callable[[Dict[str, Any]], None]
+
 _LOGGER = logging.getLogger(__name__)
 
 # Calibration phase threshold - configurable in the future
@@ -213,7 +217,9 @@ class OffsetEngine:
         config: dict, 
         seasonal_learner: Optional["SeasonalHysteresisLearner"] = None,
         delay_learner: Optional["DelayLearner"] = None,
-        outlier_detection_config: Optional[dict] = None
+        outlier_detection_config: Optional[dict] = None,
+        get_thermal_data_cb: Optional[GetThermalDataCallback] = None,
+        restore_thermal_data_cb: Optional[RestoreThermalDataCallback] = None
     ):
         """Initialize the offset engine with configuration.
         
@@ -222,10 +228,16 @@ class OffsetEngine:
             seasonal_learner: Optional seasonal learner for enhanced predictions
             delay_learner: Optional delay learner for adaptive timing
             outlier_detection_config: Optional configuration for outlier detection
+            get_thermal_data_cb: Optional callback to get thermal data for persistence
+            restore_thermal_data_cb: Optional callback to restore thermal data from persistence
         """
         self._max_offset = config.get("max_offset", 5.0)
         self._ml_enabled = config.get("ml_enabled", True)
         self._ml_model = None  # Loaded when available
+        
+        # Thermal persistence callbacks (v2.1 schema support)
+        self._get_thermal_data_cb = get_thermal_data_cb
+        self._restore_thermal_data_cb = restore_thermal_data_cb
         
         # ForecastEngine reference (set later via set_forecast_engine)
         self._forecast_engine = None
@@ -1660,18 +1672,29 @@ class OffsetEngine:
                             len(hysteresis_data.get("start_temps", [])), 
                             len(hysteresis_data.get("stop_temps", [])))
 
-            # Create a comprehensive state dictionary including the engine's state
+            # Collect thermal data if callback is provided
+            thermal_data = None
+            if self._get_thermal_data_cb:
+                try:
+                    thermal_data = self._get_thermal_data_cb()
+                    if thermal_data:
+                        _LOGGER.debug("Retrieved thermal data for persistence")
+                except Exception as exc:
+                    # Log error but continue - thermal failure doesn't block offset data save
+                    _LOGGER.debug("Failed to get thermal data: %s", exc)
+
+            # Create a comprehensive state dictionary with v2.1 schema
             persistent_data = {
-                "version": 2,  # Updated for v2 schema with hysteresis support
-                "engine_state": {
-                    "enable_learning": self._enable_learning
+                "version": "2.1",  # Updated for v2.1 schema with thermal persistence support
+                "learning_data": {
+                    "engine_state": {
+                        "enable_learning": self._enable_learning
+                    },
+                    "learner_data": learner_data,
+                    "hysteresis_data": hysteresis_data if hysteresis_data is not None else None
                 },
-                "learner_data": learner_data
+                "thermal_data": thermal_data
             }
-            
-            # Only include hysteresis_data if hysteresis is enabled
-            if hysteresis_data is not None:
-                persistent_data["hysteresis_data"] = hysteresis_data
 
             _LOGGER.debug(
                 "Saving learning data: samples=%s, learning_enabled=%s, has_learner_data=%s",
@@ -1734,32 +1757,48 @@ class OffsetEngine:
             
             _LOGGER.debug("Loaded persistent data with keys: %s", list(persistent_data.keys()))
 
-            # --- KEY FIX: Restore engine state from persistence ---
-            engine_state = persistent_data.get("engine_state", {})
+            # Detect data format version and migrate if necessary
+            data_version = persistent_data.get("version")
             
-            # Validate engine_state is a dictionary before accessing
+            if data_version == "2.1":
+                # Native v2.1 format - extract sections
+                _LOGGER.debug("Loading native v2.1 format data")
+                learning_data = persistent_data.get("learning_data", {})
+                thermal_data = persistent_data.get("thermal_data")
+                
+                # Extract learning components from v2.1 structure
+                engine_state = learning_data.get("engine_state", {})
+                learner_data = learning_data.get("learner_data")
+                hysteresis_data = learning_data.get("hysteresis_data")
+                
+            else:
+                # v1.0 format (no version field) or v2 format - treat as learning data only
+                _LOGGER.debug("Migrating from v1.0/v2 format to v2.1 structure")
+                learning_data = persistent_data
+                thermal_data = None
+                
+                # Extract learning components from old structure
+                engine_state = persistent_data.get("engine_state", {})
+                learner_data = persistent_data.get("learner_data")
+                hysteresis_data = persistent_data.get("hysteresis_data")
+
+            # Restore engine state from persistence
             if isinstance(engine_state, dict):
                 persisted_learning_enabled = engine_state.get("enable_learning")
-            else:
-                _LOGGER.warning("Invalid engine_state format: expected dict, got %s", type(engine_state).__name__)
-                persisted_learning_enabled = None
-
-            if persisted_learning_enabled is not None:
-                if self._enable_learning != persisted_learning_enabled:
-                    _LOGGER.info(
-                        "Restoring learning state from persistence: %s (was %s from config)",
-                        persisted_learning_enabled, self._enable_learning
-                    )
-                    self._enable_learning = persisted_learning_enabled
-                    # If learning is now enabled, ensure the learner instance exists
-                    if self._enable_learning and not self._learner:
-                        self._learner = EnhancedLightweightOffsetLearner()
-                        _LOGGER.debug("EnhancedLightweightOffsetLearner initialized during data load.")
-            # --- END OF KEY FIX ---
+                if persisted_learning_enabled is not None:
+                    if self._enable_learning != persisted_learning_enabled:
+                        _LOGGER.info(
+                            "Restoring learning state from persistence: %s (was %s from config)",
+                            persisted_learning_enabled, self._enable_learning
+                        )
+                        self._enable_learning = persisted_learning_enabled
+                        # If learning is now enabled, ensure the learner instance exists
+                        if self._enable_learning and not self._learner:
+                            self._learner = EnhancedLightweightOffsetLearner()
+                            _LOGGER.debug("EnhancedLightweightOffsetLearner initialized during data load.")
 
             # Load learner data if it exists, regardless of enable_learning state
             # This preserves accumulated data even when learning is temporarily disabled
-            learner_data = persistent_data.get("learner_data")
             if learner_data:
                 # Ensure learner exists before restoring data
                 if not self._learner:
@@ -1774,19 +1813,30 @@ class OffsetEngine:
             else:
                 _LOGGER.debug("No learner data found in persistence.")
 
-            # Load hysteresis data if available (v2 schema) and hysteresis is enabled
-            if self._hysteresis_enabled:
-                hysteresis_data = persistent_data.get("hysteresis_data")
-                if hysteresis_data:
-                    try:
-                        self._hysteresis_learner.restore_from_persistence(hysteresis_data)
-                        _LOGGER.info("Hysteresis data loaded successfully.")
-                    except Exception as exc:
-                        _LOGGER.warning("Failed to restore hysteresis data: %s", exc)
-                else:
-                    _LOGGER.debug("Hysteresis is enabled, but no hysteresis data found in persistence (v1 data or fresh start).")
+            # Load hysteresis data if available and hysteresis is enabled
+            if self._hysteresis_enabled and hysteresis_data:
+                try:
+                    self._hysteresis_learner.restore_from_persistence(hysteresis_data)
+                    _LOGGER.info("Hysteresis data loaded successfully.")
+                except Exception as exc:
+                    _LOGGER.warning("Failed to restore hysteresis data: %s", exc)
+            elif self._hysteresis_enabled:
+                _LOGGER.debug("Hysteresis is enabled, but no hysteresis data found in persistence.")
             else:
                 _LOGGER.debug("Hysteresis is disabled, skipping hysteresis data load.")
+
+            # Restore thermal data if callback is provided and thermal data exists
+            if self._restore_thermal_data_cb and thermal_data:
+                try:
+                    self._restore_thermal_data_cb(thermal_data)
+                    _LOGGER.debug("Thermal data restored successfully")
+                except Exception as exc:
+                    # Log error but continue - thermal restore failure doesn't block load
+                    _LOGGER.debug("Failed to restore thermal data: %s", exc)
+            elif thermal_data:
+                _LOGGER.debug("Thermal data found but no restore callback provided")
+            else:
+                _LOGGER.debug("No thermal data found in persistence")
 
             self._notify_update_callbacks()  # Notify listeners of the restored state
             return True

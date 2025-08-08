@@ -258,3 +258,129 @@ class MockConfigValidation:
 # Replace the module completely
 sys.modules['homeassistant.helpers.config_validation'] = MockConfigValidation()
 mock_cv = MockConfigValidation()
+
+
+# Import pytest for fixtures (used below)
+import pytest
+
+# Thermal persistence test fixtures
+@pytest.fixture
+def mock_thermal_callbacks():
+    """Mock thermal persistence callbacks using unittest.mock.MagicMock."""
+    get_thermal_data_cb = MagicMock()
+    restore_thermal_data_cb = MagicMock()
+    
+    # Default return value for get callback
+    get_thermal_data_cb.return_value = {
+        "version": "1.0",
+        "state": {
+            "current_state": "DRIFTING",
+            "last_transition": "2025-08-08T15:45:00Z"
+        },
+        "model": {
+            "tau_cooling": 95.5,
+            "tau_warming": 148.2,
+            "last_modified": "2025-08-08T15:30:00Z"
+        },
+        "probe_history": [],
+        "confidence": 0.75
+    }
+    
+    return get_thermal_data_cb, restore_thermal_data_cb
+
+
+@pytest.fixture  
+def mock_failing_thermal_callbacks():
+    """Mock thermal callbacks that simulate failures for testing."""
+    get_thermal_data_cb = MagicMock()
+    restore_thermal_data_cb = MagicMock()
+    
+    # Simulate callback failures
+    get_thermal_data_cb.side_effect = Exception("Get callback failed")
+    restore_thermal_data_cb.side_effect = Exception("Restore callback failed")
+    
+    return get_thermal_data_cb, restore_thermal_data_cb
+
+
+@pytest.fixture
+def mock_thermal_manager():
+    """Mock ThermalManager for testing thermal persistence."""
+    manager = MagicMock()
+    manager.serialize.return_value = {
+        "version": "1.0", 
+        "state": {
+            "current_state": "PRIMING",
+            "last_transition": "2025-08-08T16:00:00Z"
+        },
+        "model": {
+            "tau_cooling": 90.0,
+            "tau_warming": 150.0,
+            "last_modified": "2025-08-08T16:00:00Z"
+        },
+        "probe_history": [],
+        "confidence": 0.0,
+        "metadata": {
+            "saves_count": 0,
+            "corruption_recoveries": 0,
+            "schema_version": "1.0"
+        }
+    }
+    manager.reset = MagicMock()
+    manager.restore = MagicMock()
+    return manager
+
+
+@pytest.fixture
+def thermal_data_structure_helper():
+    """Helper to create valid thermal_data structures for testing."""
+    def create_thermal_data_dict(
+        current_state: str = "PRIMING",
+        tau_cooling: float = 90.0,
+        tau_warming: float = 150.0,
+        confidence: float = 0.0
+    ):
+        return {
+            "version": "1.0",
+            "state": {
+                "current_state": current_state,
+                "last_transition": "2025-08-08T16:00:00Z"
+            },
+            "model": {
+                "tau_cooling": tau_cooling,
+                "tau_warming": tau_warming,
+                "last_modified": "2025-08-08T16:00:00Z"
+            },
+            "probe_history": [],
+            "confidence": confidence,
+            "metadata": {
+                "saves_count": 0,
+                "corruption_recoveries": 0,
+                "schema_version": "1.0"
+            }
+        }
+    return create_thermal_data_dict
+
+
+@pytest.fixture
+def mock_callback_failure_simulation():
+    """Helper to simulate various callback failure modes."""
+    def create_failing_get_callback():
+        cb = MagicMock()
+        cb.side_effect = Exception("Simulated get failure")
+        return cb
+    
+    def create_failing_restore_callback():
+        cb = MagicMock()
+        cb.side_effect = Exception("Simulated restore failure") 
+        return cb
+        
+    def create_timeout_callback():
+        cb = MagicMock()
+        cb.side_effect = TimeoutError("Callback timed out")
+        return cb
+        
+    return {
+        "failing_get": create_failing_get_callback,
+        "failing_restore": create_failing_restore_callback,
+        "timeout": create_timeout_callback
+    }

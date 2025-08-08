@@ -272,10 +272,11 @@ class TestOffsetEngineHysteresisIntegration:
             mock_save.assert_called_once()
             saved_data = mock_save.call_args[0][0]
             
-            assert saved_data["version"] == 2
-            assert "hysteresis_data" in saved_data
-            assert saved_data["hysteresis_data"]["start_temps"] == [24.5]
-            assert saved_data["hysteresis_data"]["stop_temps"] == [23.5]
+            assert saved_data["version"] == "2.1"
+            assert "learning_data" in saved_data
+            assert "hysteresis_data" in saved_data["learning_data"]
+            assert saved_data["learning_data"]["hysteresis_data"]["start_temps"] == [24.5]
+            assert saved_data["learning_data"]["hysteresis_data"]["stop_temps"] == [23.5]
 
     @pytest.mark.asyncio
     async def test_persistence_serialization_without_hysteresis_when_disabled(self):
@@ -297,9 +298,10 @@ class TestOffsetEngineHysteresisIntegration:
             mock_save.assert_called_once()
             saved_data = mock_save.call_args[0][0]
             
-            # Should still be v2 but without hysteresis_data
-            assert saved_data["version"] == 2
-            assert "hysteresis_data" not in saved_data
+            # Should be v2.1 with null hysteresis_data when disabled
+            assert saved_data["version"] == "2.1"
+            assert "learning_data" in saved_data
+            assert saved_data["learning_data"]["hysteresis_data"] is None
 
     @pytest.mark.asyncio
     async def test_persistence_backward_compatibility_v1_data(self):

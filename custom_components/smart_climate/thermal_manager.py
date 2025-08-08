@@ -3,7 +3,8 @@ Coordinates thermal states, operating window calculations, and AC control decisi
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, Any
+from datetime import datetime
 from homeassistant.core import HomeAssistant
 
 from .thermal_models import ThermalState
@@ -84,6 +85,13 @@ class ThermalManager:
         self._state_handlers: Dict[ThermalState, StateHandler] = {}
         self._last_hvac_mode = "cool"  # Default assumption
         self._setpoint = 24.0  # Default setpoint
+        self._last_transition: Optional[datetime] = None
+        
+        # Diagnostic properties per §10.2.3
+        self._thermal_data_last_saved: Optional[datetime] = None
+        self._thermal_state_restored: bool = False
+        self._corruption_recovery_count: int = 0
+        self._saves_count: int = 0
         
         # Initialize state handlers registry
         self._initialize_state_handlers()
@@ -128,8 +136,9 @@ class ThermalManager:
             _LOGGER.error("Error in exit handler for state %s: %s", old_state.value, e)
             raise
         
-        # Update state
+        # Update state and record timestamp
         self._current_state = new_state
+        self._last_transition = datetime.now()
         
         # Call enter handler for new state
         try:
@@ -266,3 +275,257 @@ class ThermalManager:
             )
         
         return target
+
+    # Diagnostic properties per §10.2.3
+    @property
+    def thermal_data_last_saved(self) -> Optional[datetime]:
+        """Get timestamp of last thermal data save."""
+        return self._thermal_data_last_saved
+
+    @property
+    def thermal_state_restored(self) -> bool:
+        """Get whether thermal state was restored from disk."""
+        return self._thermal_state_restored
+
+    @property
+    def corruption_recovery_count(self) -> int:
+        """Get count of corrupted field recoveries."""
+        return self._corruption_recovery_count
+
+    # Persistence methods per §10.2.3
+    def serialize(self) -> Dict[str, Any]:
+        """Serialize thermal manager state for persistence.
+        
+        Returns complete thermal data structure per c_architecture.md §10.2.3
+        including version, state, model, probe_history, confidence, and metadata.
+        
+        Returns:
+            Dict containing serialized thermal data
+        """
+        # Get probe history from thermal model (max 5 entries)
+        probe_history = []
+        if hasattr(self._model, '_probe_history'):
+            probes = list(self._model._probe_history)[-5:]  # Take most recent 5
+            for probe in probes:
+                probe_data = {
+                    "tau_value": probe.tau_value,
+                    "confidence": probe.confidence,
+                    "duration": probe.duration,
+                    "fit_quality": probe.fit_quality,
+                    "aborted": probe.aborted,
+                    "timestamp": datetime.now().isoformat()  # Current timestamp for serialization
+                }
+                probe_history.append(probe_data)
+
+        return {
+            "version": "1.0",
+            "state": {
+                "current_state": self._current_state.value,
+                "last_transition": self._last_transition.isoformat() if self._last_transition else datetime.now().isoformat()
+            },
+            "model": {
+                "tau_cooling": getattr(self._model, '_tau_cooling', 90.0),
+                "tau_warming": getattr(self._model, '_tau_warming', 150.0), 
+                "last_modified": datetime.now().isoformat()
+            },
+            "probe_history": probe_history,
+            "confidence": self._model.get_confidence() if hasattr(self._model, 'get_confidence') else 0.0,
+            "metadata": {
+                "saves_count": self._saves_count,
+                "corruption_recoveries": self._corruption_recovery_count,
+                "schema_version": "1.0"
+            }
+        }
+
+    def restore(self, data: Dict[str, Any]) -> None:
+        """Restore thermal manager state from persistence data.
+        
+        Performs field-level validation and recovery per c_architecture.md §10.4.1.
+        Uses defaults for invalid fields and logs debug information for each recovery.
+        
+        Args:
+            data: Dictionary containing thermal persistence data
+        """
+        self._thermal_state_restored = True
+        recovery_count_start = self._corruption_recovery_count
+
+        try:
+            # Restore state section with validation
+            if "state" in data:
+                state_data = data["state"]
+                
+                # Validate and restore thermal state
+                if "current_state" in state_data:
+                    try:
+                        state_value = state_data["current_state"]
+                        # Try to find the enum by value
+                        for state in ThermalState:
+                            if state.value == state_value:
+                                self._current_state = state
+                                _LOGGER.debug("Restored thermal state: %s", state_value)
+                                break
+                        else:
+                            # State value not found in enum
+                            raise ValueError(f"Unknown thermal state: {state_value}")
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.debug("Invalid thermal state '%s', using PRIMING: %s", 
+                                    state_data.get("current_state"), e)
+                        self._current_state = ThermalState.PRIMING
+                        self._corruption_recovery_count += 1
+                
+                # Restore last transition timestamp
+                if "last_transition" in state_data:
+                    try:
+                        timestamp_str = state_data["last_transition"]
+                        self._last_transition = datetime.fromisoformat(timestamp_str)
+                        _LOGGER.debug("Restored last transition: %s", timestamp_str)
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.debug("Invalid last_transition timestamp, using current time: %s", e)
+                        self._last_transition = datetime.now()
+                        self._corruption_recovery_count += 1
+
+            # Restore model section with validation
+            if "model" in data:
+                model_data = data["model"]
+                
+                # Validate and restore tau_cooling (1-1000 range)
+                if "tau_cooling" in model_data:
+                    tau_cooling = model_data["tau_cooling"]
+                    if isinstance(tau_cooling, (int, float)) and 1 <= tau_cooling <= 1000:
+                        if hasattr(self._model, '_tau_cooling'):
+                            self._model._tau_cooling = float(tau_cooling)
+                        _LOGGER.debug("Restored tau_cooling: %.1f", tau_cooling)
+                    else:
+                        _LOGGER.debug("Invalid tau_cooling %.1f, using default 90.0", tau_cooling)
+                        if hasattr(self._model, '_tau_cooling'):
+                            self._model._tau_cooling = 90.0
+                        self._corruption_recovery_count += 1
+                
+                # Validate and restore tau_warming (1-1000 range)  
+                if "tau_warming" in model_data:
+                    tau_warming = model_data["tau_warming"]
+                    if isinstance(tau_warming, (int, float)) and 1 <= tau_warming <= 1000:
+                        if hasattr(self._model, '_tau_warming'):
+                            self._model._tau_warming = float(tau_warming)
+                        _LOGGER.debug("Restored tau_warming: %.1f", tau_warming)
+                    else:
+                        _LOGGER.debug("Invalid tau_warming %.1f, using default 150.0", tau_warming)
+                        if hasattr(self._model, '_tau_warming'):
+                            self._model._tau_warming = 150.0
+                        self._corruption_recovery_count += 1
+
+            # Restore probe history with validation
+            if "probe_history" in data and hasattr(self._model, '_probe_history'):
+                probe_data = data["probe_history"]
+                if isinstance(probe_data, list):
+                    from collections import deque
+                    from .thermal_models import ProbeResult
+                    
+                    restored_probes = deque(maxlen=5)
+                    for probe_dict in probe_data[-5:]:  # Take most recent 5
+                        try:
+                            # Validate probe fields
+                            if (isinstance(probe_dict, dict) and
+                                "tau_value" in probe_dict and
+                                "confidence" in probe_dict and
+                                "duration" in probe_dict and
+                                "fit_quality" in probe_dict and
+                                "aborted" in probe_dict):
+                                
+                                # Validate ranges
+                                duration = probe_dict["duration"]
+                                confidence = probe_dict["confidence"] 
+                                fit_quality = probe_dict["fit_quality"]
+                                
+                                if (isinstance(duration, (int, float)) and duration > 0 and
+                                    isinstance(confidence, (int, float)) and 0.0 <= confidence <= 1.0 and
+                                    isinstance(fit_quality, (int, float)) and 0.0 <= fit_quality <= 1.0):
+                                    
+                                    probe = ProbeResult(
+                                        tau_value=float(probe_dict["tau_value"]),
+                                        confidence=float(confidence),
+                                        duration=int(duration),
+                                        fit_quality=float(fit_quality),
+                                        aborted=bool(probe_dict["aborted"])
+                                    )
+                                    restored_probes.append(probe)
+                                    _LOGGER.debug("Restored probe: tau=%.1f, confidence=%.2f", 
+                                                probe.tau_value, probe.confidence)
+                                else:
+                                    _LOGGER.debug("Invalid probe field ranges, discarding probe")
+                                    self._corruption_recovery_count += 1
+                            else:
+                                _LOGGER.debug("Invalid probe structure, discarding probe")
+                                self._corruption_recovery_count += 1
+                        except Exception as e:
+                            _LOGGER.debug("Error restoring probe, discarding: %s", e)
+                            self._corruption_recovery_count += 1
+                    
+                    self._model._probe_history = restored_probes
+
+            # Restore confidence (informational, validated by model)
+            if "confidence" in data:
+                confidence = data["confidence"]
+                if not (isinstance(confidence, (int, float)) and 0.0 <= confidence <= 1.0):
+                    _LOGGER.debug("Invalid confidence %.2f, model will calculate", confidence)
+                    self._corruption_recovery_count += 1
+
+            # Restore metadata
+            if "metadata" in data:
+                metadata = data["metadata"]
+                if isinstance(metadata, dict):
+                    # Restore saves count
+                    if "saves_count" in metadata:
+                        saves_count = metadata["saves_count"]
+                        if isinstance(saves_count, int) and saves_count >= 0:
+                            self._saves_count = saves_count
+                        else:
+                            _LOGGER.debug("Invalid saves_count, using 0")
+                            self._corruption_recovery_count += 1
+                    
+                    # Restore historical corruption recoveries
+                    if "corruption_recoveries" in metadata:
+                        historical_recoveries = metadata["corruption_recoveries"]
+                        if isinstance(historical_recoveries, int) and historical_recoveries >= 0:
+                            # Add historical to current session recoveries
+                            self._corruption_recovery_count += historical_recoveries
+                        else:
+                            _LOGGER.debug("Invalid corruption_recoveries, ignoring")
+
+        except Exception as e:
+            _LOGGER.error("Error during thermal data restoration: %s", e)
+            # Reset to safe defaults on critical error
+            self._current_state = ThermalState.PRIMING
+            self._corruption_recovery_count += 1
+
+        # Log summary if any recoveries occurred
+        recoveries_this_session = self._corruption_recovery_count - recovery_count_start
+        if recoveries_this_session > 0:
+            _LOGGER.warning("Thermal data restoration completed with %d field recoveries", 
+                          recoveries_this_session)
+
+    def reset(self) -> None:
+        """Reset thermal manager to default state.
+        
+        Resets to PRIMING state with default tau values and clears probe history
+        per c_architecture.md §10.2.3. Used by thermal reset button.
+        """
+        _LOGGER.info("Resetting thermal manager to defaults")
+        
+        # Reset state to PRIMING (safest default)
+        self._current_state = ThermalState.PRIMING
+        self._last_transition = datetime.now()
+        
+        # Reset thermal model to defaults
+        if hasattr(self._model, '_tau_cooling'):
+            self._model._tau_cooling = 90.0
+        if hasattr(self._model, '_tau_warming'):
+            self._model._tau_warming = 150.0
+        
+        # Clear probe history
+        if hasattr(self._model, '_probe_history'):
+            from collections import deque
+            self._model._probe_history = deque(maxlen=5)
+        
+        _LOGGER.debug("Thermal manager reset complete: state=%s, tau_cooling=90.0, tau_warming=150.0",
+                     self._current_state.value)

@@ -12,6 +12,7 @@ from .errors import SmartClimateError
 from .outlier_detector import OutlierDetector
 from .dto import SystemHealthData
 from .thermal_models import ThermalState
+from .const import DOMAIN
 
 if TYPE_CHECKING:
     from .sensor_manager import SensorManager
@@ -449,3 +450,112 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         Alias method for _get_system_health_data to match test expectations.
         """
         return self._get_system_health_data()
+    
+    # Thermal Data Persistence Methods (Architecture §10.2.2)
+    
+    def get_thermal_data(self, entity_id: str) -> Optional[dict]:
+        """Get thermal data for specific entity persistence.
+        
+        Architecture compliance: §10.2.2 SmartClimateCoordinator extensions
+        Component access pattern: hass.data[DOMAIN][entry_id]["thermal_components"][entity_id]
+        
+        Args:
+            entity_id: Climate entity ID to get thermal data for
+            
+        Returns:
+            Dict with thermal data if ThermalManager found, None otherwise
+        """
+        try:
+            # Look up ThermalManager via hass.data pattern
+            # Note: We need to find the correct entry_id for this entity
+            for entry_id, entry_data in self.hass.data.get(DOMAIN, {}).items():
+                thermal_components = entry_data.get("thermal_components", {})
+                if entity_id in thermal_components:
+                    thermal_manager = thermal_components[entity_id].get("thermal_manager")
+                    if thermal_manager:
+                        # Call thermal_manager.serialize() if found
+                        _LOGGER.debug("Getting thermal data for entity %s", entity_id)
+                        return thermal_manager.serialize()
+                    break
+            
+            _LOGGER.debug("No thermal manager found for entity %s", entity_id)
+            return None
+            
+        except Exception as exc:
+            _LOGGER.warning("Error getting thermal data for entity %s: %s", entity_id, exc)
+            return None
+    
+    def restore_thermal_data(self, entity_id: str, data: dict) -> None:
+        """Restore thermal data for specific entity.
+        
+        Architecture compliance: §10.2.2 SmartClimateCoordinator extensions
+        Component access pattern: hass.data[DOMAIN][entry_id]["thermal_components"][entity_id]
+        
+        Args:
+            entity_id: Climate entity ID to restore thermal data for
+            data: Thermal data dict to restore
+        """
+        try:
+            # Look up ThermalManager via hass.data pattern
+            # Note: We need to find the correct entry_id for this entity
+            for entry_id, entry_data in self.hass.data.get(DOMAIN, {}).items():
+                thermal_components = entry_data.get("thermal_components", {})
+                if entity_id in thermal_components:
+                    thermal_manager = thermal_components[entity_id].get("thermal_manager")
+                    if thermal_manager:
+                        # Call thermal_manager.restore(data) if found
+                        _LOGGER.debug("Restoring thermal data for entity %s", entity_id)
+                        thermal_manager.restore(data)
+                        return
+                    break
+            
+            _LOGGER.debug("No thermal manager found for entity %s to restore data", entity_id)
+            
+        except Exception as exc:
+            _LOGGER.warning("Error restoring thermal data for entity %s: %s", entity_id, exc)
+    
+    # Helper methods for button entity use (Architecture §10.2.2)
+    
+    def get_thermal_manager(self, entity_id: str) -> Optional["ThermalManager"]:
+        """Get ThermalManager for specific entity.
+        
+        Helper method for button entity use per architecture.
+        
+        Args:
+            entity_id: Climate entity ID to get thermal manager for
+            
+        Returns:
+            ThermalManager instance if found, None otherwise
+        """
+        try:
+            # Look up ThermalManager via hass.data pattern
+            for entry_id, entry_data in self.hass.data.get(DOMAIN, {}).items():
+                thermal_components = entry_data.get("thermal_components", {})
+                if entity_id in thermal_components:
+                    return thermal_components[entity_id].get("thermal_manager")
+            return None
+        except Exception as exc:
+            _LOGGER.warning("Error getting thermal manager for entity %s: %s", entity_id, exc)
+            return None
+    
+    def get_offset_engine(self, entity_id: str) -> Optional["OffsetEngine"]:
+        """Get OffsetEngine for specific entity.
+        
+        Helper method for button entity use per architecture.
+        
+        Args:
+            entity_id: Climate entity ID to get offset engine for
+            
+        Returns:
+            OffsetEngine instance if found, None otherwise
+        """
+        try:
+            # Look up OffsetEngine via hass.data pattern
+            for entry_id, entry_data in self.hass.data.get(DOMAIN, {}).items():
+                offset_engines = entry_data.get("offset_engines", {})
+                if entity_id in offset_engines:
+                    return offset_engines[entity_id]
+            return None
+        except Exception as exc:
+            _LOGGER.warning("Error getting offset engine for entity %s: %s", entity_id, exc)
+            return None

@@ -9,6 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.smart_climate.button import (
     ResetTrainingDataButton,
+    SmartClimateThermalResetButton,
     async_setup_entry
 )
 from custom_components.smart_climate.const import DOMAIN
@@ -220,3 +221,188 @@ class TestAsyncSetupEntry:
             
             # Should log warning for missing data stores
             mock_logger.warning.assert_called()
+            
+    @pytest.mark.asyncio
+    async def test_setup_with_thermal_components(self, mock_hass, mock_config_entry):
+        """Test setting up thermal reset buttons when thermal components exist."""
+        # Add thermal components to mock data
+        mock_hass.data[DOMAIN]["test_entry"]["thermal_components"] = {
+            "climate.test_ac": {"thermal_manager": Mock()},
+            "climate.test_ac2": {"thermal_manager": Mock()}
+        }
+        
+        async_add_entities = AsyncMock()
+        
+        await async_setup_entry(mock_hass, mock_config_entry, async_add_entities)
+        
+        # Should create 4 buttons total: 2 training data + 2 thermal reset
+        async_add_entities.assert_called_once()
+        buttons = async_add_entities.call_args[0][0]
+        assert len(buttons) == 4
+        
+        # Check that we have both types of buttons
+        training_buttons = [b for b in buttons if isinstance(b, ResetTrainingDataButton)]
+        thermal_buttons = [b for b in buttons if isinstance(b, SmartClimateThermalResetButton)]
+        assert len(training_buttons) == 2
+        assert len(thermal_buttons) == 2
+
+
+@pytest.fixture
+def mock_hass_with_thermal():
+    """Create a mock Home Assistant with thermal components."""
+    hass = Mock()
+    hass.data = {
+        DOMAIN: {
+            "test_entry": {
+                "offset_engines": {
+                    "climate.test_ac": Mock(),
+                },
+                "thermal_components": {
+                    "climate.test_ac": {
+                        "thermal_manager": Mock(),
+                    }
+                }
+            }
+        }
+    }
+    # Add spec to the thermal manager
+    hass.data[DOMAIN]["test_entry"]["thermal_components"]["climate.test_ac"]["thermal_manager"].reset = Mock()
+    hass.data[DOMAIN]["test_entry"]["offset_engines"]["climate.test_ac"].save_learning_data = AsyncMock()
+    return hass
+
+
+@pytest.fixture 
+def mock_thermal_manager():
+    """Create a mock thermal manager."""
+    thermal_manager = Mock()
+    thermal_manager.reset = Mock()
+    return thermal_manager
+
+
+class TestSmartClimateThermalResetButton:
+    """Test the SmartClimateThermalResetButton entity."""
+    
+    def test_init(self, mock_hass_with_thermal, mock_config_entry):
+        """Test thermal reset button initialization."""
+        button = SmartClimateThermalResetButton(
+            mock_hass_with_thermal, mock_config_entry, "climate.test_ac"
+        )
+        
+        assert button.hass == mock_hass_with_thermal
+        assert button._config_entry == mock_config_entry
+        assert button._entity_id == "climate.test_ac" 
+        assert button._attr_name == "Reset Thermal Data"
+        assert button._attr_unique_id == "climate_test_ac_thermal_reset"
+        assert button.icon == "mdi:thermometer-off"
+        
+    def test_device_info(self, mock_hass_with_thermal, mock_config_entry):
+        """Test device info links to parent climate entity."""
+        button = SmartClimateThermalResetButton(
+            mock_hass_with_thermal, mock_config_entry, "climate.test_ac"
+        )
+        
+        device_info = button._attr_device_info
+        # Should link to parent climate entity device  
+        assert device_info["identifiers"] == {(DOMAIN, "climate_test_ac")}
+        
+    @pytest.mark.asyncio
+    async def test_async_press_success(self, mock_hass_with_thermal, mock_config_entry):
+        """Test successful thermal reset button press."""
+        button = SmartClimateThermalResetButton(
+            mock_hass_with_thermal, mock_config_entry, "climate.test_ac"
+        )
+        
+        # Get references to the mocked components
+        thermal_manager = mock_hass_with_thermal.data[DOMAIN]["test_entry"]["thermal_components"]["climate.test_ac"]["thermal_manager"]
+        offset_engine = mock_hass_with_thermal.data[DOMAIN]["test_entry"]["offset_engines"]["climate.test_ac"]
+        
+        # Mock the logger to verify logging
+        with patch("custom_components.smart_climate.button._LOGGER") as mock_logger:
+            await button.async_press()
+            
+            # Verify methods were called in correct order
+            thermal_manager.reset.assert_called_once()
+            offset_engine.save_learning_data.assert_called_once()
+            
+            # Verify logging
+            mock_logger.info.assert_called()
+            info_calls = [str(call) for call in mock_logger.info.call_args_list]
+            assert any("Thermal reset button pressed" in call for call in info_calls)
+            
+    @pytest.mark.asyncio
+    async def test_async_press_no_thermal_manager(self, mock_hass_with_thermal, mock_config_entry):
+        """Test button press when thermal manager is not found."""
+        # Remove thermal components
+        mock_hass_with_thermal.data[DOMAIN]["test_entry"]["thermal_components"] = {}
+        
+        button = SmartClimateThermalResetButton(
+            mock_hass_with_thermal, mock_config_entry, "climate.test_ac"
+        )
+        
+        with patch("custom_components.smart_climate.button._LOGGER") as mock_logger:
+            await button.async_press()
+            
+            # Should log warning and not call reset
+            mock_logger.warning.assert_called()
+            assert "No thermal manager found" in str(mock_logger.warning.call_args)
+            
+    @pytest.mark.asyncio
+    async def test_async_press_no_offset_engine(self, mock_hass_with_thermal, mock_config_entry):
+        """Test button press when offset engine is not found."""
+        # Remove offset engines  
+        mock_hass_with_thermal.data[DOMAIN]["test_entry"]["offset_engines"] = {}
+        
+        button = SmartClimateThermalResetButton(
+            mock_hass_with_thermal, mock_config_entry, "climate.test_ac"  
+        )
+        
+        thermal_manager = mock_hass_with_thermal.data[DOMAIN]["test_entry"]["thermal_components"]["climate.test_ac"]["thermal_manager"]
+        
+        with patch("custom_components.smart_climate.button._LOGGER") as mock_logger:
+            await button.async_press()
+            
+            # Thermal manager should still be reset
+            thermal_manager.reset.assert_called_once()
+            
+            # Should log warning about missing offset engine
+            mock_logger.warning.assert_called() 
+            assert "No offset engine found" in str(mock_logger.warning.call_args)
+            
+    @pytest.mark.asyncio
+    async def test_async_press_thermal_reset_error(self, mock_hass_with_thermal, mock_config_entry):
+        """Test button press when thermal reset fails."""
+        thermal_manager = mock_hass_with_thermal.data[DOMAIN]["test_entry"]["thermal_components"]["climate.test_ac"]["thermal_manager"]
+        thermal_manager.reset.side_effect = Exception("Reset failed")
+        
+        button = SmartClimateThermalResetButton(
+            mock_hass_with_thermal, mock_config_entry, "climate.test_ac"
+        )
+        
+        with patch("custom_components.smart_climate.button._LOGGER") as mock_logger:
+            await button.async_press()
+            
+            # Error should be logged but not crash
+            mock_logger.error.assert_called()
+            assert "Failed to reset thermal data" in str(mock_logger.error.call_args)
+            
+    @pytest.mark.asyncio
+    async def test_async_press_save_error(self, mock_hass_with_thermal, mock_config_entry):
+        """Test button press when save fails."""
+        offset_engine = mock_hass_with_thermal.data[DOMAIN]["test_entry"]["offset_engines"]["climate.test_ac"]
+        offset_engine.save_learning_data = AsyncMock(side_effect=Exception("Save failed"))
+        
+        thermal_manager = mock_hass_with_thermal.data[DOMAIN]["test_entry"]["thermal_components"]["climate.test_ac"]["thermal_manager"]
+        
+        button = SmartClimateThermalResetButton(
+            mock_hass_with_thermal, mock_config_entry, "climate.test_ac"
+        )
+        
+        with patch("custom_components.smart_climate.button._LOGGER") as mock_logger:
+            await button.async_press()
+            
+            # Thermal reset should still happen
+            thermal_manager.reset.assert_called_once()
+            
+            # Error should be logged for save failure
+            mock_logger.warning.assert_called()
+            assert "Failed to save reset state" in str(mock_logger.warning.call_args)

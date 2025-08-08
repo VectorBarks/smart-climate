@@ -222,10 +222,11 @@ class TestOffsetEngineSave:
         mock_data_store.async_save_learning_data.assert_called_once()
         saved_data = mock_data_store.async_save_learning_data.call_args[0][0]
         
-        # Verify data integrity
-        assert saved_data["version"] == 2
-        assert saved_data["engine_state"]["enable_learning"] is True
-        assert saved_data["learner_data"]["statistics"]["samples"] == 42
+        # Verify data integrity with v2.1 schema
+        assert saved_data["version"] == "2.1"
+        assert saved_data["learning_data"]["engine_state"]["enable_learning"] is True
+        assert saved_data["learning_data"]["learner_data"]["statistics"]["samples"] == 42
+        assert "thermal_data" in saved_data
 
     @pytest.mark.asyncio
     async def test_periodic_save_disabled_when_learning_disabled(self):
