@@ -302,6 +302,10 @@ class ThermalManager:
         Returns:
             Dict containing serialized thermal data
         """
+        # Increment saves counter each time we serialize
+        self._saves_count += 1
+        self._thermal_data_last_saved = datetime.now()
+        
         # Get probe history from thermal model (max 5 entries)
         probe_history = []
         if hasattr(self._model, '_probe_history'):

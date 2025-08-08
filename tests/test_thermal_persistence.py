@@ -439,3 +439,26 @@ class TestThermalManagerPersistence:
         assert thermal_manager.current_state == ThermalState.CORRECTING
         # Each restore marks as restored
         assert thermal_manager.thermal_state_restored is True
+    
+    def test_saves_count_increments_on_serialize(self, thermal_manager):
+        """Test that saves_count increments each time serialize is called."""
+        # Initial state
+        assert thermal_manager._saves_count == 0
+        
+        # First serialize
+        data1 = thermal_manager.serialize()
+        assert thermal_manager._saves_count == 1
+        assert data1["metadata"]["saves_count"] == 1
+        
+        # Second serialize
+        data2 = thermal_manager.serialize()
+        assert thermal_manager._saves_count == 2
+        assert data2["metadata"]["saves_count"] == 2
+        
+        # Third serialize
+        data3 = thermal_manager.serialize()
+        assert thermal_manager._saves_count == 3
+        assert data3["metadata"]["saves_count"] == 3
+        
+        # Verify thermal_data_last_saved is updated
+        assert thermal_manager.thermal_data_last_saved is not None
