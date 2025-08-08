@@ -1,3 +1,32 @@
+# Release Notes
+
+## v1.4.1-beta5 (2025-01-08)
+
+### Summary
+Cleanup release removing obsolete seasonal data migration code and fixing startup warnings.
+
+### Bug Fixes
+- 🐛 **Fixed SeasonalHysteresisLearner warning**: Removed obsolete `async_load()` calls that caused "object has no attribute" warnings during startup
+- 🧹 **Removed unused migration code**: Cleaned up unnecessary migration logic for old seasonal_patterns.json files that never existed in production
+
+### Technical Improvements  
+- Simplified codebase by removing 25+ lines of obsolete migration code
+- Seasonal data now properly loaded through unified storage system
+- Cleaner startup logs without spurious warnings
+
+### Known Status
+- System confirmed working correctly in PRIMING state
+- Thermal manager properly initializes with conservative defaults
+- 93% ML accuracy observed in testing
+- 36+ hysteresis cycles successfully tracked
+
+### Compatibility
+- Home Assistant 2024.1 or newer
+- Python 3.11 or newer
+- All features from v1.4.1-beta4 remain functional
+
+---
+
 # Release Notes - v1.0.0
 
 ## Smart Climate Control for Home Assistant - Initial Release
