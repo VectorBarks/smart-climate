@@ -1796,31 +1796,6 @@ class OffsetEngine:
                 hysteresis_data = persistent_data.get("hysteresis_data")
                 seasonal_data = None  # v1.0/v2 format doesn't have seasonal data
 
-            # One-time migration: Check for old seasonal store file and migrate if exists
-            if self._seasonal_learner and seasonal_data is None:
-                try:
-                    # Import needed modules for file operations
-                    from pathlib import Path
-                    import json
-                    
-                    old_store_path = Path(self._data_store._hass.config.config_dir) / ".storage" / "smart_climate_seasonal_patterns.json"
-                    if old_store_path.exists():
-                        _LOGGER.info("Found old seasonal patterns file, migrating to new storage format")
-                        with open(old_store_path, 'r', encoding='utf-8') as f:
-                            old_data = json.load(f)
-                        
-                        # Extract seasonal data from old Store format
-                        if old_data and "data" in old_data:
-                            seasonal_data = old_data["data"]
-                            _LOGGER.info("Migrated seasonal data from old storage file")
-                            
-                            # Delete old file after successful migration
-                            old_store_path.unlink()
-                            _LOGGER.info("Deleted old seasonal storage file after migration")
-                        else:
-                            _LOGGER.warning("Old seasonal file found but no data section")
-                except Exception as exc:
-                    _LOGGER.warning("Failed to migrate old seasonal data: %s", exc)
 
             # Restore engine state from persistence
             if isinstance(engine_state, dict):
