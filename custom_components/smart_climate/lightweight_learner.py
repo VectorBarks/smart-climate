@@ -124,7 +124,10 @@ class LightweightOffsetLearner:
                 removed_count, self._max_history
             )
         
-        self._sample_count += 1
+        # Update pattern structures - this was the critical missing piece!
+        hour = datetime.now().hour
+        power_state = self._determine_power_state(power)
+        self.update_pattern(actual, outdoor_temp, hour, power_state)
         
         _LOGGER.debug(
             "Added enhanced sample: predicted=%.2f, actual=%.2f, hysteresis_state=%s, total_samples=%d",
@@ -347,6 +350,82 @@ class LightweightOffsetLearner:
             hour, offset, outdoor_temp, power_state, self._sample_count
         )
     
+    def rebuild_patterns_from_enhanced_samples(self) -> None:
+        """Rebuild pattern structures from existing enhanced samples.
+        
+        This method fixes installations affected by the bug where add_sample()
+        wasn't calling update_pattern(), leaving pattern structures empty despite
+        having enhanced samples data.
+        
+        The method is idempotent - it can be called multiple times safely.
+        """
+        if not self._enhanced_samples:
+            _LOGGER.debug("No enhanced samples to rebuild patterns from")
+            return
+            
+        # Clear all existing patterns first (idempotent behavior)
+        self._time_patterns = [0.0] * 24
+        self._time_pattern_counts = [0] * 24
+        self._temp_correlation_data.clear()
+        self._power_state_patterns.clear()
+        
+        rebuilt_count = 0
+        skipped_count = 0
+        
+        _LOGGER.info(
+            "Rebuilding patterns from %d enhanced samples", 
+            len(self._enhanced_samples)
+        )
+        
+        for sample in self._enhanced_samples:
+            try:
+                # Extract timestamp and parse hour
+                timestamp_str = sample.get("timestamp", "")
+                if not timestamp_str:
+                    skipped_count += 1
+                    continue
+                    
+                # Parse ISO timestamp to extract hour
+                try:
+                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    hour = timestamp.hour
+                except (ValueError, AttributeError):
+                    _LOGGER.debug(
+                        "Skipping sample with invalid timestamp: %s", 
+                        timestamp_str
+                    )
+                    skipped_count += 1
+                    continue
+                
+                # Extract required fields
+                actual = float(sample.get("actual", 0.0))
+                outdoor_temp = sample.get("outdoor_temp")  # May be None
+                power = sample.get("power")  # May be None
+                
+                # Determine power state
+                power_state = self._determine_power_state(power)
+                
+                # Update patterns using existing update_pattern method
+                self.update_pattern(actual, outdoor_temp, hour, power_state)
+                rebuilt_count += 1
+                
+            except (KeyError, ValueError, TypeError) as exc:
+                _LOGGER.debug(
+                    "Skipping malformed sample during rebuild: %s. Error: %s",
+                    sample, exc
+                )
+                skipped_count += 1
+                continue
+        
+        hours_with_data = sum(1 for count in self._time_pattern_counts if count > 0)
+        power_states_rebuilt = len(self._power_state_patterns)
+        temp_correlations_rebuilt = len(self._temp_correlation_data)
+        
+        _LOGGER.info(
+            "Pattern rebuild complete: %d samples processed, %d skipped, %d hours with data, %d power states, %d temp correlations",
+            rebuilt_count, skipped_count, hours_with_data, power_states_rebuilt, temp_correlations_rebuilt
+        )
+    
     def predict_offset(
         self,
         outdoor_temp: Optional[float],
@@ -509,6 +588,24 @@ class LightweightOffsetLearner:
         except (ZeroDivisionError, ValueError) as exc:
             _LOGGER.warning("Error in temperature correlation prediction: %s", exc)
             return None
+    
+    def _determine_power_state(self, power: Optional[float]) -> Optional[str]:
+        """Determine power state from power consumption value.
+        
+        Args:
+            power: Power consumption in watts, or None if not available
+            
+        Returns:
+            Power state string ("cooling", "idle") or None if power unavailable
+        """
+        if power is None:
+            return None
+            
+        # Use 100W as threshold - above is cooling, at or below is idle
+        if power > 100.0:
+            return "cooling"
+        else:
+            return "idle"
     
     def _calculate_sample_count_confidence(self) -> float:
         """Calculate confidence based on sample count (logarithmic scale).
@@ -907,6 +1004,23 @@ class LightweightOffsetLearner:
         power_states_loaded = len(self._power_state_patterns)
         temp_correlations = len(self._temp_correlation_data)
         enhanced_samples_loaded = len(self._enhanced_samples)
+        
+        # Check if patterns are empty but enhanced samples exist (bug scenario)
+        # This automatically fixes existing installations affected by the bug
+        if (self._enhanced_samples and 
+            hours_with_data == 0 and
+            power_states_loaded == 0 and
+            temp_correlations == 0):
+            _LOGGER.info(
+                "Patterns empty but %d enhanced samples exist, rebuilding patterns from samples",
+                enhanced_samples_loaded
+            )
+            self.rebuild_patterns_from_enhanced_samples()
+            
+            # Recalculate statistics after rebuild
+            hours_with_data = sum(1 for count in self._time_pattern_counts if count > 0)
+            power_states_loaded = len(self._power_state_patterns)
+            temp_correlations = len(self._temp_correlation_data)
         
         _LOGGER.info(
             "Loaded patterns: %s samples, %s hours with data, %s power states, %s temp correlations, %s enhanced samples",
