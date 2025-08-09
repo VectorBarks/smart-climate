@@ -420,25 +420,77 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                 thermal_efficiency_enabled = False
                 thermal_components = {}
     
-        # Create SmartClimateCoordinator for thermal persistence callbacks (Architecture §10.6.1)
-        _LOGGER.info("[DEBUG] Creating SmartClimateCoordinator for entity: %s", entity_id)
-        from .coordinator import SmartClimateCoordinator
+        # Create callbacks for thermal persistence (Architecture §10.6.1)
+        # NOTE: Instead of creating uninitialized coordinator, create direct callbacks to hass.data
+        _LOGGER.info("[DEBUG] Creating direct thermal persistence callbacks for entity: %s", entity_id)
         
-        # Note: We need to create a minimal coordinator instance for callback access
-        # The full coordinator setup happens in the climate platform
-        smart_coordinator = SmartClimateCoordinator.__new__(SmartClimateCoordinator)
-        smart_coordinator.hass = hass
-        _LOGGER.info("[DEBUG] SmartClimateCoordinator created for callback access")
-        
-        # Create thermal persistence callbacks using functools.partial (Architecture §10.6.1)
+        # Create thermal persistence callbacks using direct functions (Architecture §10.6.1)
         get_thermal_cb = None
         restore_thermal_cb = None
         
         if thermal_efficiency_enabled and thermal_components:
-            _LOGGER.info("[DEBUG] Creating thermal persistence callbacks for entity: %s", entity_id)
-            get_thermal_cb = partial(smart_coordinator.get_thermal_data, entity_id)
-            restore_thermal_cb = partial(smart_coordinator.restore_thermal_data, entity_id)
-            _LOGGER.info("[DEBUG] Thermal persistence callbacks created successfully")
+            _LOGGER.info("[DEBUG] Creating direct thermal persistence callbacks for entity: %s", entity_id)
+            
+            def get_thermal_data_direct() -> Optional[dict]:
+                """Get thermal data directly from hass.data without coordinator."""
+                try:
+                    _LOGGER.debug("get_thermal_data_direct called for entity_id: %s", entity_id)
+                    
+                    # Look up ThermalManager via hass.data pattern
+                    domain_data = hass.data.get(DOMAIN, {})
+                    _LOGGER.debug("Found %d entries in hass.data[%s]", len(domain_data), DOMAIN)
+                    
+                    for entry_id, entry_data in domain_data.items():
+                        _LOGGER.debug("Checking entry_id: %s", entry_id)
+                        thermal_components_data = entry_data.get("thermal_components", {})
+                        _LOGGER.debug("thermal_components keys: %s", list(thermal_components_data.keys()))
+                        
+                        if entity_id in thermal_components_data:
+                            thermal_manager = thermal_components_data[entity_id].get("thermal_manager")
+                            _LOGGER.debug("Found thermal_manager: %s", thermal_manager)
+                            if thermal_manager:
+                                # Call thermal_manager.serialize() if found
+                                _LOGGER.debug("Getting thermal data for entity %s", entity_id)
+                                result = thermal_manager.serialize()
+                                _LOGGER.debug("Serialized thermal data type: %s", type(result))
+                                return result
+                            break
+                    
+                    _LOGGER.debug("No thermal manager found for entity %s", entity_id)
+                    return None
+                    
+                except Exception as exc:
+                    _LOGGER.warning("Error getting thermal data for entity %s: %s", entity_id, exc, exc_info=True)
+                    return None
+                    
+            def restore_thermal_data_direct(data: dict) -> None:
+                """Restore thermal data directly from hass.data without coordinator."""
+                try:
+                    _LOGGER.debug("restore_thermal_data_direct called for entity_id: %s", entity_id)
+                    
+                    # Look up ThermalManager via hass.data pattern  
+                    domain_data = hass.data.get(DOMAIN, {})
+                    
+                    for entry_id, entry_data in domain_data.items():
+                        thermal_components_data = entry_data.get("thermal_components", {})
+                        
+                        if entity_id in thermal_components_data:
+                            thermal_manager = thermal_components_data[entity_id].get("thermal_manager")
+                            if thermal_manager:
+                                # Call thermal_manager.restore() if found
+                                _LOGGER.debug("Restoring thermal data for entity %s", entity_id)
+                                thermal_manager.restore(data)
+                                return
+                            break
+                    
+                    _LOGGER.debug("No thermal manager found for entity %s to restore", entity_id)
+                    
+                except Exception as exc:
+                    _LOGGER.warning("Error restoring thermal data for entity %s: %s", entity_id, exc, exc_info=True)
+            
+            get_thermal_cb = get_thermal_data_direct
+            restore_thermal_cb = restore_thermal_data_direct
+            _LOGGER.info("[DEBUG] Direct thermal persistence callbacks created successfully")
         
         # Create OffsetEngine with thermal callbacks (Architecture §10.2.1)
         _LOGGER.info("[DEBUG] Creating OffsetEngine with callbacks for entity: %s", entity_id)
