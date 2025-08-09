@@ -75,12 +75,14 @@ class ThermalManager:
         self,
         hass: HomeAssistant,
         thermal_model: PassiveThermalModel,
-        preferences: UserPreferences
+        preferences: UserPreferences,
+        config: Optional[Dict[str, Any]] = None
     ):
         """Initialize ThermalManager."""
         self._hass = hass
         self._model = thermal_model
         self._preferences = preferences
+        self._config = config or {}
         self._current_state = ThermalState.PRIMING  # Default to PRIMING for new users
         self._state_handlers: Dict[ThermalState, StateHandler] = {}
         self._last_hvac_mode = "cool"  # Default assumption
@@ -109,6 +111,12 @@ class ThermalManager:
     def current_state(self) -> ThermalState:
         """Get current thermal state."""
         return self._current_state
+
+    @property
+    def calibration_hour(self) -> int:
+        """Get configured calibration hour."""
+        from .const import CONF_CALIBRATION_HOUR, DEFAULT_CALIBRATION_HOUR
+        return self._config.get(CONF_CALIBRATION_HOUR, DEFAULT_CALIBRATION_HOUR)
 
     def transition_to(self, new_state: ThermalState) -> None:
         """Transition to a new thermal state.

@@ -377,7 +377,8 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                 thermal_manager = ThermalManager(
                     hass=hass,
                     thermal_model=thermal_model,
-                    preferences=user_preferences
+                    preferences=user_preferences,
+                    config=config
                 )
                 _LOGGER.info("[DEBUG] Thermal manager created successfully")
                 
