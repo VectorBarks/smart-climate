@@ -5,6 +5,7 @@ import math
 from typing import List, Optional
 from dataclasses import dataclass
 from collections import deque
+from datetime import datetime
 
 
 @dataclass
@@ -38,6 +39,7 @@ class PassiveThermalModel:
         self._tau_cooling = tau_cooling
         self._tau_warming = tau_warming
         self._probe_history: deque = deque(maxlen=5)
+        self._tau_last_modified: Optional[datetime] = None
         
     def predict_drift(
         self, 
@@ -105,17 +107,32 @@ class PassiveThermalModel:
         
         return avg_confidence * fullness_ratio
     
+    @property
+    def tau_last_modified(self) -> Optional[datetime]:
+        """
+        Get timestamp of last tau values modification.
+        
+        Returns:
+            Datetime when tau values were last modified, or None if never modified
+        """
+        return self._tau_last_modified
+    
     def update_tau(self, probe_result: ProbeResult, is_cooling: bool) -> None:
         """
         Update time constants based on probe results.
         
         Uses weighted average of probe history with weights [0.4, 0.3, 0.15, 0.1, 0.05]
         applied to most recent probes first. Maintains max 5 probe history entries.
+        Only updates tau_last_modified timestamp when tau values actually change.
         
         Args:
             probe_result: Result from thermal probing
             is_cooling: True if cooling scenario, False if warming
         """
+        # Store original values to detect changes
+        original_tau_cooling = self._tau_cooling
+        original_tau_warming = self._tau_warming
+        
         # Add to probe history (deque automatically handles maxlen=5)
         self._probe_history.append(probe_result)
         
@@ -139,6 +156,14 @@ class PassiveThermalModel:
         
         # Update the appropriate tau
         if is_cooling:
-            self._tau_cooling = weighted_sum
+            new_tau_cooling = weighted_sum
+            # Only update timestamp if value actually changed
+            if abs(new_tau_cooling - original_tau_cooling) > 0.01:  # Small tolerance for float comparison
+                self._tau_cooling = new_tau_cooling
+                self._tau_last_modified = datetime.now()
         else:
-            self._tau_warming = weighted_sum
+            new_tau_warming = weighted_sum
+            # Only update timestamp if value actually changed
+            if abs(new_tau_warming - original_tau_warming) > 0.01:  # Small tolerance for float comparison
+                self._tau_warming = new_tau_warming
+                self._tau_last_modified = datetime.now()

@@ -268,11 +268,13 @@ class SmartClimateDashboardSensor(SmartClimateSensorEntity):
                         if hasattr(thermal_manager, '_model') and hasattr(thermal_manager._model, '_probe_history'):
                             attrs["probe_history_count"] = len(thermal_manager._model._probe_history)
                         
-                        # tau_values_modified (timestamp) - use model last_modified from serialization
+                        # tau_values_modified (timestamp) - use actual modification time
                         if hasattr(thermal_manager, '_model'):
-                            # We'll use current time for now since we don't track individual modifications
-                            # TODO: Add proper tau modification tracking in thermal model
-                            attrs["tau_values_modified"] = datetime.now().isoformat()
+                            model = thermal_manager._model
+                            if hasattr(model, 'tau_last_modified') and model.tau_last_modified:
+                                attrs["tau_values_modified"] = model.tau_last_modified.isoformat()
+                            else:
+                                attrs["tau_values_modified"] = None  # Never modified
                         
                         # thermal_persistence_version (schema version)
                         attrs["thermal_persistence_version"] = "1.0"  # From §10.3.1
