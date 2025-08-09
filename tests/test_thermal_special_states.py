@@ -529,6 +529,9 @@ class TestCalibratingState:
         handler = CalibratingState()
         mock_context = Mock()
         
+        # Mock calibration_hour to be 2 (default expected value)
+        mock_context.calibration_hour = 2
+        
         # Test if current time is within optimal window (e.g., 2-3 AM)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 2, 30, 0)  # 2:30 AM
@@ -542,6 +545,9 @@ class TestCalibratingState:
         
         handler = CalibratingState()
         mock_context = Mock()
+        
+        # Mock calibration_hour to be 2 (default expected value)
+        mock_context.calibration_hour = 2
         
         # Test during busy time (e.g., 6 PM)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:

@@ -56,3 +56,6 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+
+# RepoMapper cache files
+.repomap*

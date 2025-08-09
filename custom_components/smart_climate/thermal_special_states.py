@@ -569,14 +569,18 @@ class CalibratingState(StateHandler):
             context: ThermalManager instance
             
         Returns:
-            True if within optimal time window (e.g., 2-3 AM), False otherwise
+            True if within configured calibration window (calibration_hour to calibration_hour+1), False otherwise
         """
         try:
             current_time = datetime.now()
             hour = current_time.hour
             
-            # Optimal calibration window: 2-3 AM when activity is minimal
-            return 2 <= hour <= 3
+            # Get configured calibration hour from context, fallback to 2 AM default
+            calibration_hour = getattr(context, 'calibration_hour', 2)
+            
+            # Calibration window: configured hour to configured hour + 1
+            # e.g., calibration_hour=2 means 2-3 AM window
+            return calibration_hour <= hour < calibration_hour + 1
             
         except (AttributeError, TypeError, ValueError):
             return False  # Not optimal if we can't determine time

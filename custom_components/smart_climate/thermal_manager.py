@@ -75,12 +75,14 @@ class ThermalManager:
         self,
         hass: HomeAssistant,
         thermal_model: PassiveThermalModel,
-        preferences: UserPreferences
+        preferences: UserPreferences,
+        config: Optional[Dict[str, Any]] = None
     ):
         """Initialize ThermalManager."""
         self._hass = hass
         self._model = thermal_model
         self._preferences = preferences
+        self._config = config or {}
         self._current_state = ThermalState.PRIMING  # Default to PRIMING for new users
         self._state_handlers: Dict[ThermalState, StateHandler] = {}
         self._last_hvac_mode = "cool"  # Default assumption
@@ -109,6 +111,12 @@ class ThermalManager:
     def current_state(self) -> ThermalState:
         """Get current thermal state."""
         return self._current_state
+
+    @property
+    def calibration_hour(self) -> int:
+        """Get configured calibration hour."""
+        from .const import CONF_CALIBRATION_HOUR, DEFAULT_CALIBRATION_HOUR
+        return self._config.get(CONF_CALIBRATION_HOUR, DEFAULT_CALIBRATION_HOUR)
 
     def transition_to(self, new_state: ThermalState) -> None:
         """Transition to a new thermal state.
@@ -330,7 +338,11 @@ class ThermalManager:
             "model": {
                 "tau_cooling": getattr(self._model, '_tau_cooling', 90.0),
                 "tau_warming": getattr(self._model, '_tau_warming', 150.0), 
-                "last_modified": datetime.now().isoformat()
+                "last_modified": (
+                    self._model.tau_last_modified.isoformat() 
+                    if hasattr(self._model, 'tau_last_modified') and self._model.tau_last_modified 
+                    else datetime.now().isoformat()
+                )
             },
             "probe_history": probe_history,
             "confidence": self._model.get_confidence() if hasattr(self._model, 'get_confidence') else 0.0,
@@ -416,6 +428,19 @@ class ThermalManager:
                         _LOGGER.debug("Invalid tau_warming %.1f, using default 150.0", tau_warming)
                         if hasattr(self._model, '_tau_warming'):
                             self._model._tau_warming = 150.0
+                        self._corruption_recovery_count += 1
+                
+                # Restore tau_last_modified timestamp
+                if "last_modified" in model_data:
+                    try:
+                        timestamp_str = model_data["last_modified"]
+                        if hasattr(self._model, '_tau_last_modified'):
+                            self._model._tau_last_modified = datetime.fromisoformat(timestamp_str)
+                        _LOGGER.debug("Restored tau_last_modified: %s", timestamp_str)
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.debug("Invalid tau_last_modified timestamp, using None: %s", e)
+                        if hasattr(self._model, '_tau_last_modified'):
+                            self._model._tau_last_modified = None
                         self._corruption_recovery_count += 1
 
             # Restore probe history with validation
@@ -525,6 +550,8 @@ class ThermalManager:
             self._model._tau_cooling = 90.0
         if hasattr(self._model, '_tau_warming'):
             self._model._tau_warming = 150.0
+        if hasattr(self._model, '_tau_last_modified'):
+            self._model._tau_last_modified = None
         
         # Clear probe history
         if hasattr(self._model, '_probe_history'):

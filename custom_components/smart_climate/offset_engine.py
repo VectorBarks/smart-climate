@@ -1690,6 +1690,8 @@ class OffsetEngine:
                     thermal_data = self._get_thermal_data_cb()
                     if thermal_data:
                         _LOGGER.debug("Retrieved thermal data for persistence")
+                    else:
+                        _LOGGER.debug("Thermal data callback returned None")
                 except Exception as exc:
                     # Log error but continue - thermal failure doesn't block offset data save
                     _LOGGER.debug("Failed to get thermal data: %s", exc)
