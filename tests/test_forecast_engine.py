@@ -119,8 +119,8 @@ class TestForecastEngineInitialization:
 class TestPredictiveOffset:
     """Test predictive_offset property."""
 
-    @patch('homeassistant.util.dt.utcnow')
-    def test_no_active_strategy(self, mock_utcnow):
+    @patch('homeassistant.util.dt.now')
+    def test_no_active_strategy(self, mock_now):
         """Test predictive_offset returns 0.0 when no strategy is active."""
         mock_hass = Mock()
         config = {"weather_entity": "weather.test", "strategies": []}
@@ -145,7 +145,7 @@ class TestPredictiveOffset:
             end_time=end_time
         )
         
-        with patch('homeassistant.util.dt.utcnow', return_value=current_time):
+        with patch('homeassistant.util.dt.now', return_value=current_time):
             assert engine.predictive_offset == -1.5
 
     def test_active_strategy_expired(self):
@@ -165,7 +165,7 @@ class TestPredictiveOffset:
             end_time=end_time
         )
         
-        with patch('homeassistant.util.dt.utcnow', return_value=current_time):
+        with patch('homeassistant.util.dt.now', return_value=current_time):
             result = engine.predictive_offset  # This should clear the expired strategy
             assert result == 0.0
             assert engine._active_strategy is None
@@ -175,8 +175,8 @@ class TestAsyncUpdate:
     """Test async_update method."""
 
     @pytest.mark.asyncio
-    @patch('homeassistant.util.dt.utcnow')
-    async def test_no_weather_entity_returns_early(self, mock_utcnow):
+    @patch('homeassistant.util.dt.now')
+    async def test_no_weather_entity_returns_early(self, mock_now):
         """Test that async_update returns early when no weather entity configured."""
         mock_hass = Mock()
         config = {"strategies": []}
@@ -190,8 +190,8 @@ class TestAsyncUpdate:
         engine._async_fetch_forecast.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch('custom_components.smart_climate.forecast_engine.dt_util.utcnow')
-    async def test_throttling_prevents_frequent_updates(self, mock_utcnow):
+    @patch('custom_components.smart_climate.forecast_engine.dt_util.now')
+    async def test_throttling_prevents_frequent_updates(self, mock_now):
         """Test that async_update is throttled to prevent excessive API calls."""
         mock_hass = Mock()
         config = {"weather_entity": "weather.test", "strategies": []}
@@ -206,22 +206,22 @@ class TestAsyncUpdate:
         engine._evaluate_strategies = Mock()
         
         # First call - should fetch
-        mock_utcnow.return_value = first_call_time
+        mock_now.return_value = first_call_time
         await engine.async_update()
         
         assert engine._async_fetch_forecast.call_count == 1
         assert engine._last_update == first_call_time
         
         # Second call within throttle window - should not fetch
-        mock_utcnow.return_value = second_call_time
+        mock_now.return_value = second_call_time
         await engine.async_update()
         
         assert engine._async_fetch_forecast.call_count == 1  # Still 1, not called again
         assert engine._last_update == first_call_time  # Not updated
 
     @pytest.mark.asyncio
-    @patch('custom_components.smart_climate.forecast_engine.dt_util.utcnow')
-    async def test_update_after_throttle_period(self, mock_utcnow):
+    @patch('custom_components.smart_climate.forecast_engine.dt_util.now')
+    async def test_update_after_throttle_period(self, mock_now):
         """Test that async_update fetches after throttle period expires."""
         mock_hass = Mock()
         config = {"weather_entity": "weather.test", "strategies": []}
@@ -236,26 +236,26 @@ class TestAsyncUpdate:
         engine._evaluate_strategies = Mock()
         
         # First call
-        mock_utcnow.return_value = first_call_time
+        mock_now.return_value = first_call_time
         await engine.async_update()
         
         # Second call after throttle period
-        mock_utcnow.return_value = second_call_time
+        mock_now.return_value = second_call_time
         await engine.async_update()
         
         assert engine._async_fetch_forecast.call_count == 2
         assert engine._last_update == second_call_time
 
     @pytest.mark.asyncio
-    @patch('custom_components.smart_climate.forecast_engine.dt_util.utcnow')
-    async def test_evaluate_strategies_called_on_successful_fetch(self, mock_utcnow):
+    @patch('custom_components.smart_climate.forecast_engine.dt_util.now')
+    async def test_evaluate_strategies_called_on_successful_fetch(self, mock_now):
         """Test that _evaluate_strategies is called when forecast fetch succeeds."""
         mock_hass = Mock()
         config = {"weather_entity": "weather.test", "strategies": []}
         engine = ForecastEngine(mock_hass, config)
         
         current_time = datetime(2025, 7, 13, 15, 0, 0)
-        mock_utcnow.return_value = current_time
+        mock_now.return_value = current_time
         
         # Mock successful fetch
         engine._async_fetch_forecast = AsyncMock(return_value=True)
@@ -266,15 +266,15 @@ class TestAsyncUpdate:
         engine._evaluate_strategies.assert_called_once_with(current_time)
 
     @pytest.mark.asyncio
-    @patch('custom_components.smart_climate.forecast_engine.dt_util.utcnow')
-    async def test_evaluate_strategies_not_called_on_failed_fetch(self, mock_utcnow):
+    @patch('custom_components.smart_climate.forecast_engine.dt_util.now')
+    async def test_evaluate_strategies_not_called_on_failed_fetch(self, mock_now):
         """Test that _evaluate_strategies is not called when forecast fetch fails."""
         mock_hass = Mock()
         config = {"weather_entity": "weather.test", "strategies": []}
         engine = ForecastEngine(mock_hass, config)
         
         current_time = datetime(2025, 7, 13, 15, 0, 0)
-        mock_utcnow.return_value = current_time
+        mock_now.return_value = current_time
         
         # Mock failed fetch
         engine._async_fetch_forecast = AsyncMock(return_value=False)
@@ -955,9 +955,9 @@ class TestIntegration:
     """Integration tests for complete ForecastEngine workflow."""
 
     @pytest.mark.asyncio
-    @patch('custom_components.smart_climate.forecast_engine.dt_util.utcnow')
+    @patch('custom_components.smart_climate.forecast_engine.dt_util.now')
     @patch('custom_components.smart_climate.forecast_engine.dt_util.parse_datetime')
-    async def test_complete_workflow_heat_wave_activation(self, mock_parse_datetime, mock_utcnow):
+    async def test_complete_workflow_heat_wave_activation(self, mock_parse_datetime, mock_now):
         """Test complete workflow from forecast fetch to strategy activation."""
         mock_hass = Mock()
         mock_hass.services.async_call = AsyncMock()
@@ -982,7 +982,7 @@ class TestIntegration:
         # Set up current time and forecast response
         base_time = datetime(2025, 7, 13, 10, 0, 0)
         current_time = base_time + timedelta(hours=5)  # Pre-action time for hour 9 heat wave
-        mock_utcnow.return_value = current_time
+        mock_now.return_value = current_time
         
         # Create forecast response - heat wave starting at hour 9 lasting 6 hours
         forecast_response = {"weather.test": {"forecast": []}}
@@ -1013,9 +1013,9 @@ class TestIntegration:
         assert engine.predictive_offset == -1.5
 
     @pytest.mark.asyncio
-    @patch('custom_components.smart_climate.forecast_engine.dt_util.utcnow')
+    @patch('custom_components.smart_climate.forecast_engine.dt_util.now')
     @patch('custom_components.smart_climate.forecast_engine.dt_util.parse_datetime')
-    async def test_complete_workflow_no_strategy_activation(self, mock_parse_datetime, mock_utcnow):
+    async def test_complete_workflow_no_strategy_activation(self, mock_parse_datetime, mock_now):
         """Test complete workflow when no strategy should be activated."""
         mock_hass = Mock()
         mock_hass.services.async_call = AsyncMock()
@@ -1040,7 +1040,7 @@ class TestIntegration:
         # Set up current time and forecast response
         base_time = datetime(2025, 7, 13, 10, 0, 0)
         current_time = base_time
-        mock_utcnow.return_value = current_time
+        mock_now.return_value = current_time
         
         # Create forecast response - all moderate temperatures
         forecast_response = {"weather.test": {"forecast": []}}
@@ -1065,8 +1065,8 @@ class TestIntegration:
         assert engine.predictive_offset == 0.0
 
     @pytest.mark.asyncio
-    @patch('custom_components.smart_climate.forecast_engine.dt_util.utcnow')
-    async def test_multiple_strategies_first_wins(self, mock_utcnow):
+    @patch('custom_components.smart_climate.forecast_engine.dt_util.now')
+    async def test_multiple_strategies_first_wins(self, mock_now):
         """Test that when multiple strategies match, the first one wins."""
         mock_hass = Mock()
         mock_hass.services.async_call = AsyncMock()
@@ -1101,7 +1101,7 @@ class TestIntegration:
         # Set up forecast data that would match both strategies
         base_time = datetime(2025, 7, 13, 10, 0, 0)
         current_time = base_time + timedelta(hours=6)  # Pre-action time for hour 8 event
-        mock_utcnow.return_value = current_time
+        mock_now.return_value = current_time
         
         engine._forecast_data = []
         for i in range(24):
@@ -1121,3 +1121,138 @@ class TestIntegration:
         assert engine._active_strategy is not None
         assert engine._active_strategy.name == "Heat Wave Strategy"
         assert engine._active_strategy.adjustment == -2.0
+
+
+class TestTimezoneConsistency:
+    """Test timezone consistency between forecast times and current time comparisons."""
+
+    def test_predictive_offset_uses_local_time(self):
+        """Test that predictive_offset uses local time for strategy expiration checks."""
+        mock_hass = Mock()
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Use local time for both current time and strategy end time
+        local_current_time = datetime(2025, 7, 13, 15, 0, 0)  # 3 PM local
+        local_end_time = datetime(2025, 7, 13, 18, 0, 0)      # 6 PM local
+        
+        # Set active strategy
+        engine._active_strategy = ActiveStrategy(
+            name="Test Strategy",
+            adjustment=-1.5,
+            end_time=local_end_time
+        )
+        
+        # Test with local time - strategy should be active
+        with patch('homeassistant.util.dt.now', return_value=local_current_time):
+            assert engine.predictive_offset == -1.5
+            assert engine._active_strategy is not None
+
+    def test_active_strategy_info_uses_local_time(self):
+        """Test that active_strategy_info uses local time for expiration checks."""
+        mock_hass = Mock()
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Use local time for both current time and strategy end time
+        local_current_time = datetime(2025, 7, 13, 15, 0, 0)  # 3 PM local
+        local_end_time = datetime(2025, 7, 13, 18, 0, 0)      # 6 PM local
+        
+        # Set active strategy
+        engine._active_strategy = ActiveStrategy(
+            name="Test Strategy",
+            adjustment=-1.5,
+            end_time=local_end_time
+        )
+        
+        # Test with local time - strategy should be active
+        with patch('homeassistant.util.dt.now', return_value=local_current_time):
+            strategy_info = engine.active_strategy_info
+            assert strategy_info is not None
+            assert strategy_info["name"] == "Test Strategy"
+            assert strategy_info["adjustment"] == -1.5
+
+    @pytest.mark.asyncio
+    @patch('custom_components.smart_climate.forecast_engine.dt_util.now')
+    async def test_async_update_uses_local_time_for_throttling(self, mock_now):
+        """Test that async_update uses local time for throttling calculations."""
+        mock_hass = Mock()
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Set up local time sequence
+        first_call_time = datetime(2025, 7, 13, 15, 0, 0)  # 3 PM local
+        second_call_time = datetime(2025, 7, 13, 15, 10, 0)  # 3:10 PM local (10 minutes later)
+        
+        # Mock _async_fetch_forecast to track calls
+        engine._async_fetch_forecast = AsyncMock(return_value=True)
+        engine._evaluate_strategies = Mock()
+        
+        # First call - should fetch
+        mock_now.return_value = first_call_time
+        await engine.async_update()
+        
+        assert engine._async_fetch_forecast.call_count == 1
+        assert engine._last_update == first_call_time
+        
+        # Second call within throttle window - should not fetch
+        mock_now.return_value = second_call_time
+        await engine.async_update()
+        
+        # Should still be 1 call since within throttle window
+        assert engine._async_fetch_forecast.call_count == 1
+        assert engine._last_update == first_call_time  # Not updated
+
+    def test_forecast_time_comparison_consistency(self):
+        """Test that forecast and current time use same timezone for comparisons."""
+        mock_hass = Mock()
+        config = {
+            "weather_entity": "weather.test", 
+            "strategies": [
+                {
+                    "name": "Heat Wave Test",
+                    "strategy_type": "heat_wave",
+                    "temp_threshold_c": 29.0,
+                    "min_duration_hours": 2,
+                    "lookahead_hours": 24,
+                    "pre_action_hours": 1,
+                    "adjustment_c": -1.5
+                }
+            ]
+        }
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Set up forecast data with local times (as would come from HA)
+        base_time = datetime(2025, 7, 13, 10, 0, 0)  # Local timezone
+        engine._forecast_data = [
+            Forecast(
+                datetime=base_time + timedelta(hours=8),  # 6 PM local
+                temperature=30.0,
+                condition="sunny"
+            ),
+            Forecast(
+                datetime=base_time + timedelta(hours=9),  # 7 PM local  
+                temperature=30.0,
+                condition="sunny"
+            ),
+            Forecast(
+                datetime=base_time + timedelta(hours=10),  # 8 PM local
+                temperature=30.0,
+                condition="sunny"
+            )
+        ]
+        
+        # Get the strategy config from the engine
+        strategy_config = engine._strategies[0]
+        
+        # Current time is 5 PM local (3 hours before heat wave, 2 hours before pre-action)
+        current_local_time = base_time + timedelta(hours=5)  # 3 PM local
+        
+        # Mock dt_util.now to return local time instead of utcnow
+        with patch('homeassistant.util.dt.now', return_value=current_local_time):
+            # Force the engine to use now() instead of utcnow() in strategy evaluation
+            with patch.object(engine, '_evaluate_heat_wave_strategy') as mock_eval:
+                engine._evaluate_strategies(current_local_time)
+                
+                # Verify the evaluator was called with local time
+                mock_eval.assert_called_once_with(strategy_config, current_local_time)

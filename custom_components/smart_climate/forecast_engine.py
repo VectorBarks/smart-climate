@@ -33,7 +33,7 @@ class ForecastEngine:
         Returns 0.0 if no strategy is active or if the active strategy has expired.
         """
         if self._active_strategy:
-            if dt_util.utcnow() < self._active_strategy.end_time:
+            if dt_util.now() < self._active_strategy.end_time:
                 _LOGGER.debug(
                     "Weather: Returning active predictive offset %.1f°C from '%s' strategy (expires at %s)",
                     self._active_strategy.adjustment, self._active_strategy.name, 
@@ -55,12 +55,12 @@ class ForecastEngine:
         Returns None if no strategy is active or if the active strategy has expired.
         """
         if self._active_strategy:
-            if dt_util.utcnow() < self._active_strategy.end_time:
+            if dt_util.now() < self._active_strategy.end_time:
                 return {
                     "name": self._active_strategy.name,
                     "adjustment": self._active_strategy.adjustment,
                     "end_time": self._active_strategy.end_time.isoformat(),
-                    "reason": self._active_strategy.reason
+                    "reason": getattr(self._active_strategy, 'reason', 'strategy conditions met')
                 }
             else:
                 _LOGGER.info("Predictive strategy '%s' has ended.", self._active_strategy.name)
@@ -77,7 +77,7 @@ class ForecastEngine:
             _LOGGER.debug("Weather: No weather entity configured, skipping forecast update")
             return
 
-        now = dt_util.utcnow()
+        now = dt_util.now()
         if self._last_update and (now - self._last_update < self._update_interval):
             time_remaining = (self._update_interval - (now - self._last_update)).total_seconds()
             _LOGGER.debug(

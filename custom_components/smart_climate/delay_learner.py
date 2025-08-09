@@ -251,7 +251,7 @@ class DelayLearner:
             power_consumption or "unknown"
         )
         
-        self._learning_start_time = dt_util.utcnow()
+        self._learning_start_time = dt_util.now()
         self._temp_history = [(self._learning_start_time, self._last_temp)]
         
         # Start periodic temperature monitoring
