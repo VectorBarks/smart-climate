@@ -291,6 +291,19 @@ class ForecastEngine:
         if event_start_time:
             pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
             hours_until_event = (event_start_time - now).total_seconds() / 3600
+            
+            # DEBUG: Timezone analysis for issue diagnosis
+            raw_seconds_diff = (event_start_time - now).total_seconds()
+            _LOGGER.debug(
+                "TIMEZONE_DEBUG: now=%s (tz=%s), event_start_time=%s (tz=%s)",
+                now.isoformat(), getattr(now, 'tzinfo', None), 
+                event_start_time.isoformat(), getattr(event_start_time, 'tzinfo', None)
+            )
+            _LOGGER.debug(
+                "TIMEZONE_DEBUG: raw_seconds_diff=%.1f, calculated_hours=%.3f", 
+                raw_seconds_diff, hours_until_event
+            )
+            
             consecutive_hours = min_duration  # Minimum hours found by _find_consecutive_event
             
             _LOGGER.debug(
