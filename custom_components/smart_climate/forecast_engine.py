@@ -210,7 +210,16 @@ class ForecastEngine:
         min_duration = config.get("min_duration_hours", 5)
         pre_action_hours = config.get("pre_action_hours", 4)
         
-        future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
+        # Check if we're ALREADY in a heat wave
+        current_forecast = next((f for f in self._forecast_data if f.datetime <= now < f.datetime + timedelta(hours=1)), None)
+        if current_forecast and current_forecast.temperature >= temp_threshold:
+            _LOGGER.info("Weather: Already in heat wave (%.1f°C >= %.1f°C) - skipping pre-cooling", 
+                         current_forecast.temperature, temp_threshold)
+            return
+        
+        # Include recent past to detect ongoing events that started earlier
+        all_relevant_forecasts = [f for f in self._forecast_data 
+                                  if now - timedelta(hours=2) < f.datetime <= now + lookahead]
         
         _LOGGER.debug(
             "Weather: Evaluating 'heat_wave' strategy - checking for temps >%.1f°C for %dh in next %dh",
@@ -218,18 +227,19 @@ class ForecastEngine:
         )
         
         # Find the maximum temperature in the forecast period for logging
+        future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
         if future_forecasts:
             max_temp = max(f.temperature for f in future_forecasts)
             _LOGGER.debug("Weather: Heat wave strategy - max forecast temp %.1f°C in next %.1fh", 
                          max_temp, lookahead.total_seconds() / 3600)
         
         event_start_time = self._find_consecutive_event(
-            future_forecasts,
+            all_relevant_forecasts,
             timedelta(hours=min_duration),
             lambda f: f.temperature >= temp_threshold
         )
         
-        if event_start_time:
+        if event_start_time and event_start_time > now:  # Only if event hasn't started yet
             pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
             hours_until_event = (event_start_time - now).total_seconds() / 3600
             
@@ -262,6 +272,9 @@ class ForecastEngine:
                     "Weather: Heat wave detected but pre-action not yet due (%.1fh remaining)",
                     hours_until_preaction
                 )
+        elif event_start_time:
+            # Event found but already started - don't activate strategy
+            _LOGGER.info("Weather: Heat wave already started - skipping pre-cooling")
         else:
             if future_forecasts:
                 max_temp = max(f.temperature for f in future_forecasts)
@@ -279,7 +292,15 @@ class ForecastEngine:
         min_duration = config.get("min_duration_hours", 6)
         pre_action_hours = config.get("pre_action_hours", 1)
         
-        future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
+        # Check if we're ALREADY in a clear sky period
+        current_forecast = next((f for f in self._forecast_data if f.datetime <= now < f.datetime + timedelta(hours=1)), None)
+        if current_forecast and current_forecast.condition == target_condition:
+            _LOGGER.info("Weather: Already in %s conditions - skipping pre-cooling", target_condition)
+            return
+        
+        # Include recent past to detect ongoing events that started earlier
+        all_relevant_forecasts = [f for f in self._forecast_data 
+                                  if now - timedelta(hours=2) < f.datetime <= now + lookahead]
         
         _LOGGER.debug(
             "Weather: Evaluating 'clear_sky' strategy - checking for '%s' conditions for %dh in next %dh",
@@ -287,6 +308,7 @@ class ForecastEngine:
         )
         
         # Count matching conditions for logging
+        future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
         if future_forecasts:
             matching_count = sum(1 for f in future_forecasts if f.condition == target_condition)
             total_count = len(future_forecasts)
@@ -296,12 +318,12 @@ class ForecastEngine:
             )
 
         event_start_time = self._find_consecutive_event(
-            future_forecasts,
+            all_relevant_forecasts,
             timedelta(hours=min_duration),
             lambda f: f.condition == target_condition
         )
 
-        if event_start_time:
+        if event_start_time and event_start_time > now:  # Only if event hasn't started yet
             pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
             hours_until_event = (event_start_time - now).total_seconds() / 3600
             
@@ -346,6 +368,9 @@ class ForecastEngine:
                     "Weather: Clear sky period detected but pre-action not yet due (%.1fh remaining)",
                     hours_until_preaction
                 )
+        elif event_start_time:
+            # Event found but already started - don't activate strategy
+            _LOGGER.info("Weather: Clear sky period already started - skipping pre-cooling")
         else:
             _LOGGER.debug(
                 "Weather: Clear sky strategy not activated - insufficient consecutive '%s' conditions (%dh required)",

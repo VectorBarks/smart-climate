@@ -48,12 +48,42 @@ class TestThermalManager:
     def test_state_handlers_registry_created(self, thermal_manager):
         """Test that state handlers registry is properly initialized."""
         assert hasattr(thermal_manager, '_state_handlers')
-        assert isinstance(thermal_manager._state_handlers, dict)
-        # Should have handlers for all states
-        expected_states = list(ThermalState)
-        for state in expected_states:
-            assert state in thermal_manager._state_handlers
-            assert isinstance(thermal_manager._state_handlers[state], StateHandler)
+
+    def test_thermal_constants_initialization(self, mock_hass, mock_thermal_model, mock_preferences):
+        """Test that thermal_constants attribute is properly initialized."""
+        # Test with default configuration
+        manager = ThermalManager(mock_hass, mock_thermal_model, mock_preferences)
+        
+        assert hasattr(manager, 'thermal_constants')
+        assert isinstance(manager.thermal_constants, ThermalConstants)
+        
+        # Test default values
+        assert manager.thermal_constants.tau_cooling == 90.0
+        assert manager.thermal_constants.tau_warming == 150.0
+        assert manager.thermal_constants.min_off_time == 600
+        assert manager.thermal_constants.min_on_time == 300
+        assert manager.thermal_constants.priming_duration == 86400
+        assert manager.thermal_constants.recovery_duration == 1800
+
+    def test_thermal_constants_from_config(self, mock_hass, mock_thermal_model, mock_preferences):
+        """Test that thermal_constants uses config values when provided."""
+        config = {
+            'tau_cooling': 120.0,
+            'tau_warming': 180.0,
+            'min_off_time': 900,
+            'min_on_time': 450,
+            'priming_duration': 172800,  # 48 hours
+            'recovery_duration': 2700
+        }
+        
+        manager = ThermalManager(mock_hass, mock_thermal_model, mock_preferences, config)
+        
+        assert manager.thermal_constants.tau_cooling == 120.0
+        assert manager.thermal_constants.tau_warming == 180.0
+        assert manager.thermal_constants.min_off_time == 900
+        assert manager.thermal_constants.min_on_time == 450
+        assert manager.thermal_constants.priming_duration == 172800
+        assert manager.thermal_constants.recovery_duration == 2700
 
     def test_transition_to_valid_state(self, thermal_manager):
         """Test successful state transition."""

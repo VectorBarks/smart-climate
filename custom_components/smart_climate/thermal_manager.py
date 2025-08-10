@@ -7,7 +7,7 @@ from typing import Dict, Tuple, Optional, Any
 from datetime import datetime
 from homeassistant.core import HomeAssistant
 
-from .thermal_models import ThermalState
+from .thermal_models import ThermalState, ThermalConstants
 from .thermal_preferences import UserPreferences
 from .thermal_model import PassiveThermalModel
 
@@ -94,6 +94,16 @@ class ThermalManager:
         self._thermal_state_restored: bool = False
         self._corruption_recovery_count: int = 0
         self._saves_count: int = 0
+        
+        # Initialize thermal constants from config or defaults
+        self.thermal_constants = ThermalConstants(
+            tau_cooling=self._config.get('tau_cooling', 90.0),
+            tau_warming=self._config.get('tau_warming', 150.0),
+            min_off_time=self._config.get('min_off_time', 600),
+            min_on_time=self._config.get('min_on_time', 300),
+            priming_duration=self._config.get('priming_duration', 86400),
+            recovery_duration=self._config.get('recovery_duration', 1800)
+        )
         
         # Initialize state handlers registry
         self._initialize_state_handlers()
@@ -560,11 +570,17 @@ class ThermalManager:
         Fixes the critical bug where thermal states never transition because
         no periodic check was happening.
         """
+        _LOGGER.debug("ThermalManager.update_state() called - current state: %s", self._current_state.value)
+        
         try:
-            # First check if it's calibration hour - this takes priority over other transitions
+            # Log current conditions for debugging
             current_time = datetime.now()
             calibration_hour = self.calibration_hour
+            _LOGGER.debug("Thermal state check - hour: %d, calibration_hour: %d, state: %s, last_transition: %s",
+                          current_time.hour, calibration_hour, self._current_state.value, 
+                          self._last_transition.isoformat() if self._last_transition else "Never")
             
+            # First check if it's calibration hour - this takes priority over other transitions
             if current_time.hour == calibration_hour:
                 # Transition to CALIBRATING if we're in calibration hour
                 # This allows calibration from any state
@@ -573,16 +589,23 @@ class ThermalManager:
                                calibration_hour, self._current_state.value)
                     self.transition_to(ThermalState.CALIBRATING)
                     return
+                else:
+                    _LOGGER.debug("Already in CALIBRATING state during calibration hour")
+            else:
+                _LOGGER.debug("Not calibration hour (current: %d, calibration: %d)", current_time.hour, calibration_hour)
             
             # Execute current state handler logic
             current_handler = self._state_handlers.get(self._current_state)
             if current_handler:
                 try:
+                    _LOGGER.debug("Executing state handler for %s", self._current_state.value)
                     next_state = current_handler.execute(self)
                     if next_state is not None and next_state != self._current_state:
-                        _LOGGER.debug("State handler requested transition: %s -> %s",
-                                    self._current_state.value, next_state.value)
+                        _LOGGER.info("Thermal state transition triggered: %s -> %s", 
+                                     self._current_state.value, next_state.value)
                         self.transition_to(next_state)
+                    else:
+                        _LOGGER.debug("No thermal state transition needed, staying in %s", self._current_state.value)
                 except Exception as e:
                     _LOGGER.error("Error executing state handler for %s: %s", 
                                 self._current_state.value, e)

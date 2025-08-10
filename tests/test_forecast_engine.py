@@ -814,6 +814,168 @@ class TestHeatWaveStrategy:
         assert engine._active_strategy is None
 
 
+class TestAlreadyInEventBugFix:
+    """Test bug fix for strategies activating when already in weather event."""
+
+    def test_heat_wave_already_active_should_not_precool(self):
+        """Test that heat wave strategy doesn't activate when we're already in a heat wave."""
+        mock_hass = Mock()
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Create scenario: Heat wave started at 08:00, continues until 16:00
+        # Current time: 10:39 (we're already IN the heat wave)
+        base_time = datetime(2025, 7, 13, 8, 0, 0)  # Heat wave starts at 08:00
+        current_time = datetime(2025, 7, 13, 10, 39, 0)  # Currently 10:39 - IN the heat wave
+        
+        # Set up forecast data including past, present, and future
+        # Heat wave from 08:00 to 16:00 (8 hours total)
+        engine._forecast_data = []
+        for i in range(24):
+            hour_time = base_time + timedelta(hours=i)
+            temp = 30.0 if 0 <= i <= 8 else 25.0  # Hours 8-16 (indices 0-8) are hot
+            engine._forecast_data.append(Forecast(
+                datetime=hour_time,
+                temperature=temp,
+                condition="sunny"
+            ))
+        
+        strategy_config = {
+            "name": "Heat Wave Pre-Cool",
+            "temp_threshold_c": 29.0,
+            "min_duration_hours": 5,
+            "lookahead_hours": 24,
+            "pre_action_hours": 2,
+            "adjustment_c": -1.5
+        }
+        
+        # Strategy should NOT activate because we're already in the heat wave
+        engine._evaluate_heat_wave_strategy(strategy_config, current_time)
+        
+        assert engine._active_strategy is None, "Strategy should not activate when already in heat wave"
+
+    def test_clear_sky_already_active_should_not_precool(self):
+        """Test that clear sky strategy doesn't activate when we're already in sunny conditions."""
+        mock_hass = Mock()
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Create scenario: Sunny period started at 08:00, continues until 16:00
+        # Current time: 10:39 (we're already IN the sunny period)
+        base_time = datetime(2025, 7, 13, 8, 0, 0)  # Sunny period starts at 08:00
+        current_time = datetime(2025, 7, 13, 10, 39, 0)  # Currently 10:39 - IN sunny period
+        
+        # Set up forecast data including past, present, and future
+        # Sunny from 08:00 to 16:00 (8 hours total)
+        engine._forecast_data = []
+        for i in range(24):
+            hour_time = base_time + timedelta(hours=i)
+            condition = "sunny" if 0 <= i <= 8 else "cloudy"  # Hours 8-16 (indices 0-8) are sunny
+            engine._forecast_data.append(Forecast(
+                datetime=hour_time,
+                temperature=25.0,
+                condition=condition
+            ))
+        
+        strategy_config = {
+            "name": "Sunny Day Thermal Gain", 
+            "condition": "sunny",
+            "min_duration_hours": 6,
+            "lookahead_hours": 24,
+            "pre_action_hours": 1,
+            "adjustment_c": 0.5
+        }
+        
+        # Strategy should NOT activate because we're already in the sunny period
+        engine._evaluate_clear_sky_strategy(strategy_config, current_time)
+        
+        assert engine._active_strategy is None, "Strategy should not activate when already in sunny conditions"
+
+    def test_heat_wave_future_event_should_activate(self):
+        """Test that heat wave strategy DOES activate for truly future events."""
+        mock_hass = Mock()
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Create scenario: Heat wave will start at 14:00 (in 3.5 hours)
+        # Current time: 10:30
+        base_time = datetime(2025, 7, 13, 10, 0, 0)
+        current_time = datetime(2025, 7, 13, 10, 30, 0)  # 10:30
+        
+        # Set up forecast data - heat wave starts at hour 4 (14:00) lasting 6 hours
+        engine._forecast_data = []
+        for i in range(24):
+            hour_time = base_time + timedelta(hours=i) 
+            temp = 30.0 if 4 <= i <= 9 else 25.0  # Hours 14-19 (indices 4-9) are hot
+            engine._forecast_data.append(Forecast(
+                datetime=hour_time,
+                temperature=temp,
+                condition="sunny"
+            ))
+        
+        strategy_config = {
+            "name": "Heat Wave Pre-Cool",
+            "temp_threshold_c": 29.0,
+            "min_duration_hours": 5,
+            "lookahead_hours": 24,
+            "pre_action_hours": 2,  # Pre-cooling starts 2 hours before (12:00)
+            "adjustment_c": -1.5
+        }
+        
+        # We're at 10:30, heat wave at 14:00, pre-action should start at 12:00
+        # Since we're before pre-action time, strategy should NOT activate yet
+        engine._evaluate_heat_wave_strategy(strategy_config, current_time)
+        assert engine._active_strategy is None, "Strategy should not activate before pre-action time"
+        
+        # Test at 12:30 (during pre-action period) - should activate
+        pre_action_time = datetime(2025, 7, 13, 12, 30, 0)
+        engine._evaluate_heat_wave_strategy(strategy_config, pre_action_time)
+        assert engine._active_strategy is not None, "Strategy should activate during pre-action period"
+        assert engine._active_strategy.adjustment == -1.5
+
+    def test_clear_sky_future_event_should_activate(self):
+        """Test that clear sky strategy DOES activate for truly future events."""
+        mock_hass = Mock()
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Create scenario: Sunny period will start at 12:00 (in 1.5 hours)
+        # Current time: 10:30
+        base_time = datetime(2025, 7, 13, 10, 0, 0)
+        current_time = datetime(2025, 7, 13, 10, 30, 0)  # 10:30
+        
+        # Set up forecast data - sunny period starts at hour 2 (12:00) lasting 8 hours
+        engine._forecast_data = []
+        for i in range(24):
+            hour_time = base_time + timedelta(hours=i)
+            condition = "sunny" if 2 <= i <= 9 else "cloudy"  # Hours 12-19 (indices 2-9) are sunny
+            engine._forecast_data.append(Forecast(
+                datetime=hour_time,
+                temperature=25.0,
+                condition=condition
+            ))
+        
+        strategy_config = {
+            "name": "Sunny Day Thermal Gain",
+            "condition": "sunny", 
+            "min_duration_hours": 6,
+            "lookahead_hours": 24,
+            "pre_action_hours": 1,  # Pre-action starts 1 hour before (11:00)
+            "adjustment_c": 0.5
+        }
+        
+        # We're at 10:30, sunny period at 12:00, pre-action should start at 11:00
+        # Since we're before pre-action time, strategy should NOT activate yet
+        engine._evaluate_clear_sky_strategy(strategy_config, current_time)
+        assert engine._active_strategy is None, "Strategy should not activate before pre-action time"
+        
+        # Test at 11:30 (during pre-action period) - should activate
+        pre_action_time = datetime(2025, 7, 13, 11, 30, 0)
+        engine._evaluate_clear_sky_strategy(strategy_config, pre_action_time) 
+        assert engine._active_strategy is not None, "Strategy should activate during pre-action period"
+        assert engine._active_strategy.adjustment == 0.5
+
+
 class TestClearSkyStrategy:
     """Test _evaluate_clear_sky_strategy method."""
 

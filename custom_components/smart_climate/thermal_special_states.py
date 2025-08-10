@@ -68,6 +68,11 @@ class PrimingState(StateHandler):
             elapsed_time = (current_time - self._start_time).total_seconds()
             priming_duration = context.thermal_constants.priming_duration
             
+            # Log detailed priming check for debugging
+            _LOGGER.debug("PrimingState check - elapsed: %.1fh of %.1fh, calibration_hour: %d, current_hour: %d",
+                          elapsed_time / 3600.0, priming_duration / 3600.0, 
+                          calibration_hour, current_time.hour)
+            
             # Handle system clock changes gracefully
             if elapsed_time < 0:
                 _LOGGER.warning("System clock moved backward during priming, resetting start time")
@@ -81,7 +86,8 @@ class PrimingState(StateHandler):
             
             # Stay in priming phase
             remaining_hours = (priming_duration - elapsed_time) / 3600.0
-            _LOGGER.debug("Priming phase continuing, %.1f hours remaining", remaining_hours)
+            _LOGGER.debug("Priming phase continuing, %.1f hours remaining (need %.1f total)", 
+                         remaining_hours, priming_duration / 3600.0)
             return None
             
         except (AttributeError, TypeError, ValueError) as e:

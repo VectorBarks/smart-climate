@@ -63,6 +63,9 @@ class SeasonalHysteresisLearner:
             start_temp: Temperature when AC started cooling
             stop_temp: Temperature when AC stopped cooling
         """
+        _LOGGER.debug("SeasonalLearner.learn_new_cycle() - start: %.1f, stop: %.1f, existing patterns: %d",
+                      start_temp, stop_temp, len(self._patterns))
+        
         outdoor_temp = self._get_current_outdoor_temp()
         
         if outdoor_temp is None:
@@ -145,6 +148,10 @@ class SeasonalHysteresisLearner:
         Returns:
             Most relevant hysteresis delta or None if no patterns available
         """
+        _LOGGER.debug("SeasonalLearner.get_relevant_hysteresis_delta() - patterns: %d, outdoor_temp: %s",
+                      len(self._patterns) if self._patterns else 0, 
+                      current_outdoor_temp if current_outdoor_temp is not None else "not provided")
+        
         if not self._patterns:
             _LOGGER.debug("No patterns available for hysteresis delta calculation")
             return None
@@ -484,3 +491,15 @@ class SeasonalHysteresisLearner:
                 exc
             )
             return 0.0
+    
+    def log_pattern_summary(self):
+        """Log summary of learned patterns for debugging."""
+        if not self._patterns:
+            _LOGGER.info("SeasonalLearner: No patterns learned yet")
+            return
+        
+        _LOGGER.info("SeasonalLearner: %d patterns learned", len(self._patterns))
+        for i, pattern in enumerate(self._patterns):
+            _LOGGER.debug("  Pattern %d: start=%.1f, stop=%.1f, outdoor=%.1f, delta=%.2f, age=%.1f days",
+                          i, pattern.start_temp, pattern.stop_temp, pattern.outdoor_temp, 
+                          pattern.hysteresis_delta, (time.time() - pattern.timestamp) / 86400.0)
