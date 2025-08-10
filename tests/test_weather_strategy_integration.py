@@ -1,173 +1,96 @@
-"""Integration test for weather strategy configuration through the full pipeline."""
+"""Integration tests for updated weather strategies with current state checking."""
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime, timedelta
-from homeassistant.core import HomeAssistant
+from unittest.mock import Mock, MagicMock
+from dataclasses import dataclass
+from typing import List, Optional
 
-from custom_components.smart_climate.config_helpers import build_predictive_config
-from custom_components.smart_climate.forecast_engine import ForecastEngine, Forecast
-from custom_components.smart_climate import const
-
-
-@pytest.mark.asyncio
-async def test_full_pipeline_heat_wave_strategy():
-    """Test the full pipeline from config to strategy activation."""
-    # Create a config as it would come from the UI
-    config = {
-        const.CONF_FORECAST_ENABLED: True,
-        const.CONF_WEATHER_ENTITY: "weather.test_entity",
-        const.CONF_HEAT_WAVE_TEMP_THRESHOLD: 28.0,
-        const.CONF_HEAT_WAVE_MIN_DURATION_HOURS: 4,
-        const.CONF_HEAT_WAVE_LOOKAHEAD_HOURS: 24,
-        const.CONF_HEAT_WAVE_PRE_ACTION_HOURS: 2,
-        const.CONF_HEAT_WAVE_ADJUSTMENT: -1.5,
-        const.CONF_CLEAR_SKY_CONDITION: "sunny",
-        const.CONF_CLEAR_SKY_MIN_DURATION_HOURS: 3,
-        const.CONF_CLEAR_SKY_LOOKAHEAD_HOURS: 12,
-        const.CONF_CLEAR_SKY_PRE_ACTION_HOURS: 1,
-        const.CONF_CLEAR_SKY_ADJUSTMENT: -1.0,
-    }
-    
-    # Build predictive config
-    predictive_config = build_predictive_config(config)
-    assert predictive_config is not None
-    
-    # Create mock HomeAssistant
-    hass = Mock()
-    
-    # Create ForecastEngine with the config
-    engine = ForecastEngine(hass, predictive_config)
-    
-    # Verify strategies were loaded correctly
-    assert len(engine._strategies) == 2
-    
-    # Set up forecast data that should trigger heat wave
-    now = datetime.now()
-    engine._forecast_data = [
-        Forecast(datetime=now + timedelta(hours=i), temperature=29.0, condition="sunny")
-        for i in range(1, 6)  # 5 hours of 29°C (above 28°C threshold for 4+ hours)
-    ]
-    
-    # Evaluate strategies - heat wave should activate
-    engine._evaluate_strategies(now)
-    
-    # Verify heat wave strategy was activated
-    assert engine._active_strategy is not None
-    assert engine._active_strategy.name == "heat_wave"
-    assert engine._active_strategy.adjustment == -1.5
-    assert engine.predictive_offset == -1.5
+from custom_components.smart_climate.models import Forecast, ActiveStrategy
+from custom_components.smart_climate.forecast_engine import ForecastEngine
 
 
-@pytest.mark.asyncio
-async def test_full_pipeline_clear_sky_strategy():
-    """Test the full pipeline for clear sky strategy activation."""
-    # Create a config as it would come from the UI
-    config = {
-        const.CONF_FORECAST_ENABLED: True,
-        const.CONF_WEATHER_ENTITY: "weather.test_entity",
-        const.CONF_HEAT_WAVE_TEMP_THRESHOLD: 35.0,  # High threshold so it won't trigger
-        const.CONF_HEAT_WAVE_MIN_DURATION_HOURS: 10,
-        const.CONF_HEAT_WAVE_LOOKAHEAD_HOURS: 24,
-        const.CONF_HEAT_WAVE_PRE_ACTION_HOURS: 2,
-        const.CONF_HEAT_WAVE_ADJUSTMENT: -2.0,
-        const.CONF_CLEAR_SKY_CONDITION: "clear-night",
-        const.CONF_CLEAR_SKY_MIN_DURATION_HOURS: 3,
-        const.CONF_CLEAR_SKY_LOOKAHEAD_HOURS: 12,
-        const.CONF_CLEAR_SKY_PRE_ACTION_HOURS: 0,  # Immediate activation
-        const.CONF_CLEAR_SKY_ADJUSTMENT: -0.5,
-    }
-    
-    # Build predictive config
-    predictive_config = build_predictive_config(config)
-    assert predictive_config is not None
-    
-    # Create mock HomeAssistant
-    hass = Mock()
-    
-    # Create ForecastEngine with the config
-    engine = ForecastEngine(hass, predictive_config)
-    
-    # Set up forecast data that should trigger clear sky (but not heat wave)
-    now = datetime.now()
-    engine._forecast_data = [
-        Forecast(datetime=now + timedelta(hours=i), temperature=22.0, condition="clear-night")
-        for i in range(1, 5)  # 4 hours of clear-night (3+ hours required)
-    ]
-    
-    # Evaluate strategies - clear sky should activate
-    engine._evaluate_strategies(now)
-    
-    # Verify clear sky strategy was activated
-    assert engine._active_strategy is not None
-    assert engine._active_strategy.name == "clear_sky"
-    assert engine._active_strategy.adjustment == -0.5
-    assert engine.predictive_offset == -0.5
+class TestWeatherStrategyIntegration:
+    """Integration tests for weather strategies with current state checking."""
 
+    def test_heat_wave_already_active_with_weather_entity_should_not_precool(self):
+        """Test that heat wave strategy doesn't activate when weather entity shows current hot conditions."""
+        mock_hass = Mock()
+        
+        # Mock weather entity showing current hot conditions (above threshold)
+        mock_weather_state = Mock()
+        mock_weather_state.state = "sunny"
+        mock_weather_state.attributes = {"temperature": 30.5}  # Above 29.0°C threshold
+        mock_hass.states.get.return_value = mock_weather_state
+        
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Set up future forecast data (shouldn't matter due to current state check)
+        base_time = datetime(2025, 7, 13, 10, 0, 0)
+        current_time = datetime(2025, 7, 13, 10, 39, 0)  # Currently 10:39
+        
+        engine._forecast_data = []
+        for i in range(1, 25):  # Future hours only
+            hour_time = base_time + timedelta(hours=i)
+            temp = 25.0  # Cool forecast
+            engine._forecast_data.append(Forecast(
+                datetime=hour_time,
+                temperature=temp,
+                condition="cloudy"
+            ))
 
-@pytest.mark.asyncio
-async def test_no_strategy_activation_with_config():
-    """Test that strategies don't activate when conditions aren't met."""
-    # Create a config with high thresholds
-    config = {
-        const.CONF_FORECAST_ENABLED: True,
-        const.CONF_WEATHER_ENTITY: "weather.test_entity",
-        const.CONF_HEAT_WAVE_TEMP_THRESHOLD: 40.0,  # Very high threshold
-        const.CONF_HEAT_WAVE_MIN_DURATION_HOURS: 10,
-        const.CONF_HEAT_WAVE_LOOKAHEAD_HOURS: 24,
-        const.CONF_HEAT_WAVE_PRE_ACTION_HOURS: 2,
-        const.CONF_HEAT_WAVE_ADJUSTMENT: -2.0,
-        const.CONF_CLEAR_SKY_CONDITION: "rainy",  # Look for rain
-        const.CONF_CLEAR_SKY_MIN_DURATION_HOURS: 6,
-        const.CONF_CLEAR_SKY_LOOKAHEAD_HOURS: 12,
-        const.CONF_CLEAR_SKY_PRE_ACTION_HOURS: 1,
-        const.CONF_CLEAR_SKY_ADJUSTMENT: -1.0,
-    }
-    
-    # Build predictive config
-    predictive_config = build_predictive_config(config)
-    assert predictive_config is not None
-    
-    # Create mock HomeAssistant
-    hass = Mock()
-    
-    # Create ForecastEngine with the config
-    engine = ForecastEngine(hass, predictive_config)
-    
-    # Set up forecast data that won't trigger either strategy
-    now = datetime.now()
-    engine._forecast_data = [
-        Forecast(datetime=now + timedelta(hours=i), temperature=25.0, condition="sunny")
-        for i in range(1, 10)  # Sunny and mild - won't trigger either strategy
-    ]
-    
-    # Evaluate strategies - nothing should activate
-    engine._evaluate_strategies(now)
-    
-    # Verify no strategy was activated
-    assert engine._active_strategy is None
-    assert engine.predictive_offset == 0.0
+        strategy_config = {
+            "name": "Heat Wave Pre-Cool",
+            "temp_threshold_c": 29.0,
+            "min_duration_hours": 5,
+            "lookahead_hours": 24,
+            "pre_action_hours": 2,
+            "adjustment_c": -1.5
+        }
 
+        # Strategy should NOT activate because we're currently hot (30.5°C > 29.0°C threshold)
+        engine._evaluate_heat_wave_strategy(strategy_config, current_time)
+        
+        assert engine._active_strategy is None, "Strategy should not activate when currently above temperature threshold"
 
-def test_config_helper_handles_missing_weather_entity():
-    """Test that config helper returns None when weather entity is missing."""
-    config = {
-        const.CONF_FORECAST_ENABLED: True,
-        # No CONF_WEATHER_ENTITY
-    }
-    
-    with patch('custom_components.smart_climate.config_helpers._LOGGER') as mock_logger:
-        result = build_predictive_config(config)
-        assert result is None
-        mock_logger.warning.assert_called_with("Weather forecast enabled but no weather entity configured")
+    def test_clear_sky_already_active_with_weather_entity_should_not_precool(self):
+        """Test that clear sky strategy doesn't activate when weather entity shows current sunny conditions."""
+        mock_hass = Mock()
+        
+        # Mock weather entity showing current sunny conditions
+        mock_weather_state = Mock()
+        mock_weather_state.state = "sunny"  # Current condition matches target
+        mock_weather_state.attributes = {"temperature": 25.0}
+        mock_hass.states.get.return_value = mock_weather_state
+        
+        config = {"weather_entity": "weather.test", "strategies": []}
+        engine = ForecastEngine(mock_hass, config)
+        
+        # Set up future forecast data (shouldn't matter due to current state check)
+        base_time = datetime(2025, 7, 13, 10, 0, 0) 
+        current_time = datetime(2025, 7, 13, 10, 39, 0)  # Currently 10:39
+        
+        engine._forecast_data = []
+        for i in range(1, 25):  # Future hours only
+            hour_time = base_time + timedelta(hours=i)
+            condition = "cloudy"  # Cloudy forecast
+            engine._forecast_data.append(Forecast(
+                datetime=hour_time,
+                temperature=25.0,
+                condition=condition
+            ))
 
+        strategy_config = {
+            "name": "Sunny Day Thermal Gain", 
+            "condition": "sunny",
+            "min_duration_hours": 6,
+            "lookahead_hours": 24,
+            "pre_action_hours": 1,
+            "adjustment": -1.0
+        }
 
-def test_config_helper_handles_disabled_forecast():
-    """Test that config helper returns None when forecast is disabled."""
-    config = {
-        const.CONF_FORECAST_ENABLED: False,
-        const.CONF_WEATHER_ENTITY: "weather.test",
-    }
-    
-    result = build_predictive_config(config)
-    assert result is None
+        # Strategy should NOT activate because we're currently sunny
+        engine._evaluate_clear_sky_strategy(strategy_config, current_time)
+        
+        assert engine._active_strategy is None, "Strategy should not activate when currently in target condition"

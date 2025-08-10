@@ -203,35 +203,42 @@ class ForecastEngine:
         return None
 
     def _evaluate_heat_wave_strategy(self, config: Dict[str, Any], now: datetime) -> None:
-        """Evaluator for heat_wave strategy - handles discrete forecast data correctly."""
+        """Evaluator for heat_wave strategy - checks current temperature first."""
         lookahead = timedelta(hours=config.get("lookahead_hours", 48))
         # Support both "temp_threshold_c" (new) and "temp_threshold" (legacy)
         temp_threshold = config.get("temp_threshold_c") or config.get("temp_threshold")
         min_duration = config.get("min_duration_hours", 5)
         pre_action_hours = config.get("pre_action_hours", 4)
         
-        # Step 1: Find the governing forecast for current time
-        past_and_current = [f for f in self._forecast_data if f.datetime <= now]
-        if not past_and_current:
-            _LOGGER.warning("Weather: No forecast data available for current time")
+        # CHECK CURRENT TEMPERATURE FROM WEATHER ENTITY ATTRIBUTES FIRST
+        if self._hass and self._weather_entity:
+            try:
+                weather_state = self._hass.states.get(self._weather_entity)
+                if weather_state and weather_state.attributes:
+                    current_temp = weather_state.attributes.get('temperature')
+                    if current_temp is not None and current_temp >= temp_threshold:
+                        _LOGGER.info("Weather: Currently %.1f°C (>= %.1f°C threshold) - skipping pre-cooling", 
+                                    current_temp, temp_threshold)
+                        return
+            except Exception as e:
+                _LOGGER.debug("Weather: Failed to check current weather temperature: %s", e)
+        
+        # Now check forecast for FUTURE heat waves only
+        # Get future forecasts only (exclude current/past)
+        future_forecasts = [f for f in self._forecast_data if f.datetime > now]
+        if not future_forecasts:
+            _LOGGER.warning("Weather: No future forecast data available")
             return
         
-        governing_forecast = max(past_and_current, key=lambda f: f.datetime)
-        _LOGGER.debug("Weather: Governing forecast for %s is at %s with temperature %.1f°C",
-                      dt_util.as_local(now).strftime('%H:%M'),
-                      dt_util.as_local(governing_forecast.datetime).strftime('%H:%M'),
-                      governing_forecast.temperature)
-        
-        # Step 2: Search from governing forecast forward (includes present)
-        relevant_forecasts = [f for f in self._forecast_data 
-                              if governing_forecast.datetime <= f.datetime <= now + lookahead]
+        relevant_forecasts = [f for f in future_forecasts 
+                              if f.datetime <= now + lookahead]
         
         _LOGGER.debug(
             "Weather: Evaluating 'heat_wave' strategy - checking for temps >%.1f°C for %dh in next %dh",
             temp_threshold, min_duration, lookahead.total_seconds() / 3600
         )
         
-        # Step 3: Find consecutive event
+        # Find consecutive event in FUTURE forecasts only
         event_start_time = self._find_consecutive_event(
             relevant_forecasts,
             timedelta(hours=min_duration),
@@ -240,24 +247,17 @@ class ForecastEngine:
         
         if not event_start_time:
             # Find the maximum temperature in the forecast period for logging
-            future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
-            if future_forecasts:
-                max_temp = max(f.temperature for f in future_forecasts)
+            if relevant_forecasts:
+                max_temp = max(f.temperature for f in relevant_forecasts)
                 _LOGGER.debug(
                     "Weather: Heat wave strategy not activated - max temp %.1f°C < %.1f°C threshold",
                     max_temp, temp_threshold
                 )
             else:
-                _LOGGER.debug("Weather: Heat wave strategy not activated - no forecast data available")
+                _LOGGER.debug("Weather: Heat wave strategy not activated - no future forecast data available")
             return
         
-        # Step 4: Check if we're already in the event
-        if event_start_time <= governing_forecast.datetime:
-            _LOGGER.info("Weather: Already in heat wave conditions (started at %s) - skipping pre-cooling",
-                        dt_util.as_local(event_start_time).strftime('%H:%M'))
-            return
-        
-        # Step 5: Check if pre-action time reached for FUTURE event
+        # Check if pre-action time reached for FUTURE event
         pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
         hours_until_event = (event_start_time - now).total_seconds() / 3600
         
@@ -295,34 +295,40 @@ class ForecastEngine:
             )
 
     def _evaluate_clear_sky_strategy(self, config: Dict[str, Any], now: datetime) -> None:
-        """Evaluator for clear_sky strategy - handles discrete forecast data correctly."""
+        """Evaluator for clear_sky strategy - checks current conditions first."""
         lookahead = timedelta(hours=config.get("lookahead_hours", 24))
         target_condition = config["condition"]
         min_duration = config.get("min_duration_hours", 6)
         pre_action_hours = config.get("pre_action_hours", 1)
         
-        # Step 1: Find the governing forecast for current time
-        past_and_current = [f for f in self._forecast_data if f.datetime <= now]
-        if not past_and_current:
-            _LOGGER.warning("Weather: No forecast data available for current time")
+        # CHECK CURRENT CONDITIONS FROM WEATHER ENTITY STATE FIRST
+        if self._hass and self._weather_entity:
+            try:
+                weather_state = self._hass.states.get(self._weather_entity)
+                if weather_state:
+                    current_condition = weather_state.state
+                    if current_condition == target_condition:
+                        _LOGGER.info("Weather: Currently %s - skipping pre-cooling", current_condition)
+                        return
+            except Exception as e:
+                _LOGGER.debug("Weather: Failed to check current weather state: %s", e)
+        
+        # Now check forecast for FUTURE events only
+        # Get future forecasts only (exclude current/past)
+        future_forecasts = [f for f in self._forecast_data if f.datetime > now]
+        if not future_forecasts:
+            _LOGGER.warning("Weather: No future forecast data available")
             return
         
-        governing_forecast = max(past_and_current, key=lambda f: f.datetime)
-        _LOGGER.debug("Weather: Governing forecast for %s is at %s with condition '%s'",
-                      dt_util.as_local(now).strftime('%H:%M'),
-                      dt_util.as_local(governing_forecast.datetime).strftime('%H:%M'),
-                      governing_forecast.condition)
-        
-        # Step 2: Search from governing forecast forward (includes present)
-        relevant_forecasts = [f for f in self._forecast_data 
-                              if governing_forecast.datetime <= f.datetime <= now + lookahead]
+        relevant_forecasts = [f for f in future_forecasts 
+                              if f.datetime <= now + lookahead]
         
         _LOGGER.debug(
             "Weather: Evaluating 'clear_sky' strategy - checking for '%s' conditions for %dh in next %dh",
             target_condition, min_duration, lookahead.total_seconds() / 3600
         )
         
-        # Step 3: Find consecutive event
+        # Find consecutive event in FUTURE forecasts only
         event_start_time = self._find_consecutive_event(
             relevant_forecasts,
             timedelta(hours=min_duration),
@@ -331,25 +337,18 @@ class ForecastEngine:
         
         if not event_start_time:
             # Count matching conditions for logging
-            future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
-            if future_forecasts:
-                matching_count = sum(1 for f in future_forecasts if f.condition == target_condition)
-                total_count = len(future_forecasts)
+            if relevant_forecasts:
+                matching_count = sum(1 for f in relevant_forecasts if f.condition == target_condition)
+                total_count = len(relevant_forecasts)
                 _LOGGER.debug(
                     "Weather: Clear sky strategy not activated - %d/%d forecast points match '%s' condition (%dh required)",
                     matching_count, total_count, target_condition, min_duration
                 )
             else:
-                _LOGGER.debug("Weather: Clear sky strategy not activated - no forecast data available")
+                _LOGGER.debug("Weather: Clear sky strategy not activated - no future forecast data available")
             return
         
-        # Step 4: Check if we're already in the event
-        if event_start_time <= governing_forecast.datetime:
-            _LOGGER.info("Weather: Already in %s conditions (started at %s) - skipping pre-cooling",
-                        target_condition, dt_util.as_local(event_start_time).strftime('%H:%M'))
-            return
-        
-        # Step 5: Check if pre-action time reached for FUTURE event
+        # Check if pre-action time reached for FUTURE event
         pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
         hours_until_event = (event_start_time - now).total_seconds() / 3600
         
