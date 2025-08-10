@@ -37,7 +37,7 @@ class PrimingState(StateHandler):
             context: ThermalManager instance providing system state
             
         Returns:
-            DRIFTING if priming duration complete, None to stay in PRIMING
+            CALIBRATING if calibration hour reached, DRIFTING if priming duration complete, None to stay in PRIMING
         """
         try:
             # Enable aggressive passive learning during priming phase
@@ -54,8 +54,17 @@ class PrimingState(StateHandler):
                 _LOGGER.warning("Missing start time in PrimingState, staying in priming")
                 return None
             
-            # Check if priming duration is complete
             current_time = datetime.now()
+            
+            # CRITICAL FIX: Check if it's calibration hour - this takes priority
+            # This allows calibration to happen even during priming phase
+            calibration_hour = getattr(context, 'calibration_hour', 2)  # Default to 2 AM
+            if current_time.hour == calibration_hour:
+                _LOGGER.info("Calibration hour (%d AM) reached during PRIMING, transitioning to CALIBRATING",
+                           calibration_hour)
+                return ThermalState.CALIBRATING
+            
+            # Check if priming duration is complete
             elapsed_time = (current_time - self._start_time).total_seconds()
             priming_duration = context.thermal_constants.priming_duration
             

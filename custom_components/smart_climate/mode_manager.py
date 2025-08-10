@@ -1,6 +1,9 @@
 """Mode management for Smart Climate Control integration."""
 
-from typing import Callable, List
+from typing import Callable, List, Optional
+from datetime import datetime, timedelta
+
+from homeassistant.util import dt as dt_util
 
 from .models import ModeAdjustments
 
@@ -13,6 +16,10 @@ class ModeManager:
         self._config = config
         self._current_mode = "none"
         self._mode_change_callbacks: List[Callable] = []
+        
+        # Mode change tracking for smart sleep wake-up
+        self._last_mode_change_time: Optional[datetime] = None
+        self._previous_mode = "none"
     
     @property
     def current_mode(self) -> str:
@@ -23,7 +30,13 @@ class ModeManager:
         """Set operating mode."""
         if mode not in ["none", "away", "sleep", "boost"]:
             raise ValueError(f"Invalid mode: {mode}")
-        self._current_mode = mode
+        
+        # Track mode change
+        if mode != self._current_mode:
+            self._previous_mode = self._current_mode
+            self._current_mode = mode
+            self._last_mode_change_time = dt_util.utcnow()
+            
         self._notify_callbacks()
     
     def get_adjustments(self) -> ModeAdjustments:
@@ -73,3 +86,33 @@ class ModeManager:
         """Notify all registered callbacks of mode change."""
         for callback in self._mode_change_callbacks:
             callback()
+    
+    def get_time_since_mode_change(self) -> Optional[timedelta]:
+        """Get time since last mode change.
+        
+        Returns:
+            timedelta since last mode change, or None if no changes recorded
+        """
+        if self._last_mode_change_time is None:
+            return None
+        
+        return dt_util.utcnow() - self._last_mode_change_time
+    
+    def was_recently_in_sleep_or_away(self, threshold_minutes: int = 30) -> bool:
+        """Check if recently changed from sleep or away mode.
+        
+        Args:
+            threshold_minutes: Maximum minutes to consider "recent"
+            
+        Returns:
+            True if recently changed from sleep or away mode
+        """
+        # Check if we changed from sleep or away mode recently
+        if self._previous_mode not in ["sleep", "away"]:
+            return False
+        
+        time_since_change = self.get_time_since_mode_change()
+        if time_since_change is None:
+            return False
+        
+        return time_since_change <= timedelta(minutes=threshold_minutes)

@@ -38,6 +38,17 @@ class ModeAdjustments:
 
 
 @dataclass
+class WeatherStrategy:
+    """Describes recommended action based on weather forecast."""
+    is_active: bool = False  # Event happening NOW?
+    pre_action_needed: bool = False  # Pre-cooling needed?
+    pre_action_start_time: Optional[datetime] = None  # When to start
+    event_start_time: Optional[datetime] = None  # When event starts
+    strategy_name: str = ""  # Which strategy (heat_wave, clear_sky)
+    adjustment: float = 0.0  # Temperature adjustment
+
+
+@dataclass
 class SmartClimateData:
     """Data structure for coordinator updates.
     

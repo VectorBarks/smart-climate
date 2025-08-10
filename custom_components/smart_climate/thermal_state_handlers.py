@@ -29,11 +29,20 @@ class DriftingState(StateHandler):
             context: ThermalManager instance providing system state
             
         Returns:
-            CORRECTING if temperature exceeds bounds, None to stay in DRIFTING
+            CALIBRATING if calibration hour reached, CORRECTING if temperature exceeds bounds, None to stay in DRIFTING
         """
         try:
             # Pause offset learning during drift phase (per architecture)
             context.offset_learning_paused = True
+            
+            # CRITICAL FIX: Check if it's calibration hour - this takes priority
+            from datetime import datetime
+            current_time = datetime.now()
+            calibration_hour = getattr(context, 'calibration_hour', 2)  # Default to 2 AM
+            if current_time.hour == calibration_hour:
+                _LOGGER.info("Calibration hour (%d AM) reached during DRIFTING, transitioning to CALIBRATING",
+                           calibration_hour)
+                return ThermalState.CALIBRATING
             
             current_temp = context.current_temp
             operating_window = context.operating_window

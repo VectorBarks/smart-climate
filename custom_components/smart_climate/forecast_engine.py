@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .models import Forecast, ActiveStrategy
+from .models import Forecast, ActiveStrategy, WeatherStrategy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +25,10 @@ class ForecastEngine:
         self._active_strategy: Optional[ActiveStrategy] = None
         self._last_update: Optional[datetime] = None
         self._update_interval = timedelta(minutes=30)
+        
+        # Mode change tracking for smart wake-up
+        self._last_mode_change_time: Optional[datetime] = None
+        self._mode_wake_suppressed: bool = False
 
     @property
     def predictive_offset(self) -> float:
@@ -33,11 +37,11 @@ class ForecastEngine:
         Returns 0.0 if no strategy is active or if the active strategy has expired.
         """
         if self._active_strategy:
-            if dt_util.now() < self._active_strategy.end_time:
+            if dt_util.utcnow() < self._active_strategy.end_time:
                 _LOGGER.debug(
                     "Weather: Returning active predictive offset %.1f°C from '%s' strategy (expires at %s)",
                     self._active_strategy.adjustment, self._active_strategy.name, 
-                    self._active_strategy.end_time.strftime('%H:%M')
+                    dt_util.as_local(self._active_strategy.end_time).strftime('%H:%M')
                 )
                 return self._active_strategy.adjustment
             else:
@@ -55,7 +59,7 @@ class ForecastEngine:
         Returns None if no strategy is active or if the active strategy has expired.
         """
         if self._active_strategy:
-            if dt_util.now() < self._active_strategy.end_time:
+            if dt_util.utcnow() < self._active_strategy.end_time:
                 return {
                     "name": self._active_strategy.name,
                     "adjustment": self._active_strategy.adjustment,
@@ -77,7 +81,7 @@ class ForecastEngine:
             _LOGGER.debug("Weather: No weather entity configured, skipping forecast update")
             return
 
-        now = dt_util.now()
+        now = dt_util.utcnow()
         if self._last_update and (now - self._last_update < self._update_interval):
             time_remaining = (self._update_interval - (now - self._last_update)).total_seconds()
             _LOGGER.debug(
@@ -104,13 +108,19 @@ class ForecastEngine:
             )
             
             raw_forecasts = response.get(self._weather_entity, {}).get("forecast", [])
-            self._forecast_data = [
-                Forecast(
-                    datetime=dt_util.parse_datetime(f["datetime"]),
-                    temperature=f["temperature"],
-                    condition=f.get("condition"),
-                ) for f in raw_forecasts
-            ]
+            self._forecast_data = []
+            for f in raw_forecasts:
+                parsed_dt = dt_util.parse_datetime(f["datetime"])
+                if parsed_dt:
+                    # Ensure it's UTC aware for consistent time calculations
+                    forecast_dt_utc = dt_util.as_utc(parsed_dt)
+                    self._forecast_data.append(
+                        Forecast(
+                            datetime=forecast_dt_utc,
+                            temperature=f["temperature"],
+                            condition=f.get("condition")
+                        )
+                    )
             
             _LOGGER.debug("Weather forecast: Retrieved %d hourly forecast points from %s", 
                          len(self._forecast_data), self._weather_entity)
@@ -223,10 +233,13 @@ class ForecastEngine:
             pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
             hours_until_event = (event_start_time - now).total_seconds() / 3600
             
+            # Show local times for user-friendly logging
+            event_start_time_local = dt_util.as_local(event_start_time)
+            pre_action_start_time_local = dt_util.as_local(pre_action_start_time)
             _LOGGER.debug(
                 "Weather: Heat wave detected starting at %s (%.1fh from now), pre-action time %s",
-                event_start_time.strftime('%H:%M'), hours_until_event, 
-                pre_action_start_time.strftime('%H:%M')
+                event_start_time_local.strftime('%H:%M'), hours_until_event, 
+                pre_action_start_time_local.strftime('%H:%M')
             )
             
             if now >= pre_action_start_time:
@@ -306,9 +319,11 @@ class ForecastEngine:
             
             consecutive_hours = min_duration  # Minimum hours found by _find_consecutive_event
             
+            # Show local time for user-friendly logging
+            event_start_time_local = dt_util.as_local(event_start_time)
             _LOGGER.debug(
                 "Weather: Clear sky period detected starting at %s (%.1fh from now), %dh consecutive '%s'",
-                event_start_time.strftime('%H:%M'), hours_until_event, consecutive_hours, target_condition
+                event_start_time_local.strftime('%H:%M'), hours_until_event, consecutive_hours, target_condition
             )
             
             if now >= pre_action_start_time:
@@ -336,3 +351,67 @@ class ForecastEngine:
                 "Weather: Clear sky strategy not activated - insufficient consecutive '%s' conditions (%dh required)",
                 target_condition, min_duration
             )
+
+    def get_weather_strategy(self) -> WeatherStrategy:
+        """
+        Get current weather strategy information for smart sleep mode wake-up.
+        
+        Returns:
+            WeatherStrategy object with current state and timing information
+        """
+        now = dt_util.utcnow()
+        
+        # No active strategy - return default
+        if not self._active_strategy:
+            return WeatherStrategy()
+        
+        # Check if strategy has expired - but don't clear it yet for wake-up logic
+        # The existing predictive_offset property handles strategy expiration for pre-cooling
+        strategy_expired = now >= self._active_strategy.end_time
+        
+        strategy_name = self._active_strategy.name
+        adjustment = self._active_strategy.adjustment
+        event_start_time = self._active_strategy.end_time  # ActiveStrategy.end_time is when event starts
+        
+        # Determine if event is currently active (happening now)
+        is_active = strategy_expired  # Event is active when pre-cooling period has ended
+        
+        # Check for recent mode change during active event (suppression logic)
+        if is_active and self._last_mode_change_time:
+            # If mode changed within last 30 minutes during active event, suppress pre-cooling
+            time_since_change = now - self._last_mode_change_time
+            if time_since_change <= timedelta(minutes=30):
+                self._mode_wake_suppressed = True
+                _LOGGER.debug(
+                    "Weather: Pre-cooling suppressed - mode changed %.1f minutes ago during active %s event",
+                    time_since_change.total_seconds() / 60, strategy_name
+                )
+        
+        if is_active:
+            # Event is happening now
+            return WeatherStrategy(
+                is_active=True,
+                pre_action_needed=False,  # Too late for pre-action
+                pre_action_start_time=None,
+                event_start_time=event_start_time,
+                strategy_name=strategy_name,
+                adjustment=adjustment
+            )
+        else:
+            # Event will happen later - check if pre-action is needed
+            # For now, assume pre-action starts immediately when strategy becomes active
+            # (this matches the existing behavior where active strategy means pre-action period)
+            return WeatherStrategy(
+                is_active=False,
+                pre_action_needed=True,
+                pre_action_start_time=now,  # Pre-action starts now
+                event_start_time=event_start_time,
+                strategy_name=strategy_name,
+                adjustment=adjustment
+            )
+    
+    def _record_mode_change(self) -> None:
+        """Record when mode changes occur for suppression logic."""
+        self._last_mode_change_time = dt_util.utcnow()
+        self._mode_wake_suppressed = False  # Reset suppression flag
+        _LOGGER.debug("Weather: Mode change recorded at %s", self._last_mode_change_time.isoformat())

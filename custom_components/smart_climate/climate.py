@@ -2761,6 +2761,40 @@ class SmartClimateEntity(ClimateEntity):
             _LOGGER.debug("Error calculating R²: %s", exc)
             return 0.0
     
+    def check_weather_wake_up(self) -> bool:
+        """
+        Check if smart sleep mode wake-up is requested and handle it.
+        
+        Returns:
+            True if wake-up occurred, False otherwise
+        """
+        try:
+            # Check if coordinator has requested wake-up
+            if not hasattr(self._coordinator, '_wake_up_requested') or not self._coordinator._wake_up_requested:
+                return False
+            
+            # Only wake from sleep mode, not from away mode
+            current_mode = self._mode_manager.current_mode if self._mode_manager else "none"
+            if current_mode != "sleep":
+                return False
+            
+            # Wake up by setting mode to normal operation
+            _LOGGER.info("Smart Climate: Waking up from sleep mode for weather pre-cooling")
+            self._mode_manager.set_mode("none")
+            
+            # Clear the wake-up request
+            self._coordinator._wake_up_requested = False
+            
+            # Record mode change in forecast engine for suppression tracking
+            if self._forecast_engine and hasattr(self._forecast_engine, '_record_mode_change'):
+                self._forecast_engine._record_mode_change()
+            
+            return True
+            
+        except Exception as exc:
+            _LOGGER.error("Error handling weather wake-up: %s", exc)
+            return False
+    
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator to apply periodic adjustments."""
@@ -2769,6 +2803,9 @@ class SmartClimateEntity(ClimateEntity):
         if not self._coordinator.data:
             _LOGGER.debug("Coordinator update skipped: no data available.")
             return
+
+        # Check for smart sleep mode wake-up requests
+        self.check_weather_wake_up()
 
         # Only apply automatic adjustments if the climate entity is active (not OFF)
         if self.hvac_mode == HVACMode.OFF:

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util import dt as dt_util
 
 from .models import SmartClimateData, OffsetInput, ModeAdjustments, HvacCycleState, HvacCycleData
 from .errors import SmartClimateError
@@ -102,6 +103,9 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         self._post_cool_start_time = None
         self._seasonal_learner = None  # Will be set by entity setup
         self._seasonal_save_interval_canceller = None
+        
+        # Initialize smart sleep mode wake-up
+        self._wake_up_requested = False
         
         _LOGGER.debug("Seasonal learning cycle detection initialized in IDLE state")
     
@@ -452,6 +456,9 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 try:
                     await self._forecast_engine.async_update()
                     _LOGGER.debug("ForecastEngine updated successfully")
+                    
+                    # Check for smart sleep mode wake-up after forecast update
+                    self._check_weather_wake_up()
                 except Exception as exc:
                     _LOGGER.warning("Error updating ForecastEngine: %s", exc)
             # Gather sensor data
@@ -490,6 +497,10 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             # Phase 2: ThermalManager state-aware protocol
             if self.thermal_efficiency_enabled and self._thermal_manager and room_temp is not None:
                 try:
+                    # CRITICAL FIX: Update thermal state and check for transitions
+                    # This is the periodic check that was missing
+                    self._thermal_manager.update_state()
+                    
                     # Get current setpoint (approximate from room temp for now)
                     setpoint = room_temp  # TODO: Get actual setpoint from wrapped entity
                     
@@ -840,3 +851,43 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         except Exception as exc:
             _LOGGER.warning("Error getting offset engine for entity %s: %s", entity_id, exc)
             return None
+    
+    def _check_weather_wake_up(self) -> None:
+        """Check if smart sleep mode wake-up is needed based on weather strategies."""
+        if not self._forecast_engine:
+            return
+        
+        try:
+            # Get current weather strategy and mode
+            weather_strategy = self._forecast_engine.get_weather_strategy()
+            current_mode = self._mode_manager.current_mode if self._mode_manager else "none"
+            
+            # Auto-wake logic: sleep mode + pre-action needed = wake up
+            if weather_strategy.pre_action_needed and current_mode == "sleep":
+                hours_until_event = 0.0
+                if weather_strategy.event_start_time:
+                    hours_until_event = (weather_strategy.event_start_time - dt_util.utcnow()).total_seconds() / 3600
+                
+                _LOGGER.info(
+                    "Weather: Auto-waking from sleep mode for pre-cooling (%.1f hours until %s)",
+                    hours_until_event, weather_strategy.strategy_name
+                )
+                # Request mode change
+                self._wake_up_requested = True
+            
+            # No wake-up for away mode (user not home)
+            elif weather_strategy.pre_action_needed and current_mode == "away":
+                _LOGGER.debug(
+                    "Weather: Pre-action needed for %s but staying in away mode (user not home)",
+                    weather_strategy.strategy_name
+                )
+            
+            # Log strategy state for debugging
+            elif weather_strategy.pre_action_needed:
+                _LOGGER.debug(
+                    "Weather: Pre-action needed for %s but current mode is %s (no wake needed)",
+                    weather_strategy.strategy_name, current_mode
+                )
+            
+        except Exception as exc:
+            _LOGGER.error("Error checking weather wake-up: %s", exc)

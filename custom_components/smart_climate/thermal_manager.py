@@ -101,11 +101,27 @@ class ThermalManager:
         _LOGGER.debug("ThermalManager initialized in %s state", self._current_state.value)
 
     def _initialize_state_handlers(self) -> None:
-        """Initialize state handlers registry with default handlers."""
-        # Create default handlers for all states
-        # Individual state handlers will be replaced when thermal_state_handlers.py is available
-        for state in ThermalState:
-            self._state_handlers[state] = DefaultStateHandler()
+        """Initialize state handlers registry with actual implementations."""
+        # Import and register actual state handlers
+        try:
+            from .thermal_special_states import PrimingState, CalibratingState, RecoveryState, ProbeState
+            from .thermal_state_handlers import DriftingState, CorrectingState
+            
+            # Register concrete state handlers
+            self._state_handlers[ThermalState.PRIMING] = PrimingState()
+            self._state_handlers[ThermalState.DRIFTING] = DriftingState()
+            self._state_handlers[ThermalState.CORRECTING] = CorrectingState()
+            self._state_handlers[ThermalState.RECOVERY] = RecoveryState()
+            self._state_handlers[ThermalState.PROBING] = ProbeState()
+            self._state_handlers[ThermalState.CALIBRATING] = CalibratingState()
+            
+            _LOGGER.debug("Initialized concrete state handlers for all thermal states")
+            
+        except ImportError as e:
+            _LOGGER.warning("Could not import state handlers, using defaults: %s", e)
+            # Fallback to default handlers
+            for state in ThermalState:
+                self._state_handlers[state] = DefaultStateHandler()
 
     @property
     def current_state(self) -> ThermalState:
@@ -532,6 +548,49 @@ class ThermalManager:
         if recoveries_this_session > 0:
             _LOGGER.warning("Thermal data restoration completed with %d field recoveries", 
                           recoveries_this_session)
+
+    def update_state(self) -> None:
+        """Update thermal state and check for transitions.
+        
+        This method should be called periodically by the coordinator to:
+        1. Execute current state handler logic
+        2. Check for calibration hour transitions regardless of current state
+        3. Handle state transitions returned by handlers
+        
+        Fixes the critical bug where thermal states never transition because
+        no periodic check was happening.
+        """
+        try:
+            # First check if it's calibration hour - this takes priority over other transitions
+            current_time = datetime.now()
+            calibration_hour = self.calibration_hour
+            
+            if current_time.hour == calibration_hour:
+                # Transition to CALIBRATING if we're in calibration hour
+                # This allows calibration from any state
+                if self._current_state != ThermalState.CALIBRATING:
+                    _LOGGER.info("Calibration hour reached (%d AM), transitioning from %s to CALIBRATING",
+                               calibration_hour, self._current_state.value)
+                    self.transition_to(ThermalState.CALIBRATING)
+                    return
+            
+            # Execute current state handler logic
+            current_handler = self._state_handlers.get(self._current_state)
+            if current_handler:
+                try:
+                    next_state = current_handler.execute(self)
+                    if next_state is not None and next_state != self._current_state:
+                        _LOGGER.debug("State handler requested transition: %s -> %s",
+                                    self._current_state.value, next_state.value)
+                        self.transition_to(next_state)
+                except Exception as e:
+                    _LOGGER.error("Error executing state handler for %s: %s", 
+                                self._current_state.value, e)
+            else:
+                _LOGGER.warning("No state handler found for state %s", self._current_state.value)
+                
+        except Exception as e:
+            _LOGGER.error("Error in thermal state update: %s", e)
 
     def reset(self) -> None:
         """Reset thermal manager to default state.
