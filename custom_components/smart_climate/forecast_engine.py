@@ -203,79 +203,44 @@ class ForecastEngine:
         return None
 
     def _evaluate_heat_wave_strategy(self, config: Dict[str, Any], now: datetime) -> None:
-        """Evaluator for the 'heat_wave' strategy type."""
+        """Evaluator for heat_wave strategy - handles discrete forecast data correctly."""
         lookahead = timedelta(hours=config.get("lookahead_hours", 48))
         # Support both "temp_threshold_c" (new) and "temp_threshold" (legacy)
         temp_threshold = config.get("temp_threshold_c") or config.get("temp_threshold")
         min_duration = config.get("min_duration_hours", 5)
         pre_action_hours = config.get("pre_action_hours", 4)
         
-        # Check if we're ALREADY in a heat wave
-        current_forecast = next((f for f in self._forecast_data if f.datetime <= now < f.datetime + timedelta(hours=1)), None)
-        if current_forecast and current_forecast.temperature >= temp_threshold:
-            _LOGGER.info("Weather: Already in heat wave (%.1f°C >= %.1f°C) - skipping pre-cooling", 
-                         current_forecast.temperature, temp_threshold)
+        # Step 1: Find the governing forecast for current time
+        past_and_current = [f for f in self._forecast_data if f.datetime <= now]
+        if not past_and_current:
+            _LOGGER.warning("Weather: No forecast data available for current time")
             return
         
-        # Include recent past to detect ongoing events that started earlier
-        all_relevant_forecasts = [f for f in self._forecast_data 
-                                  if now - timedelta(hours=2) < f.datetime <= now + lookahead]
+        governing_forecast = max(past_and_current, key=lambda f: f.datetime)
+        _LOGGER.debug("Weather: Governing forecast for %s is at %s with temperature %.1f°C",
+                      dt_util.as_local(now).strftime('%H:%M'),
+                      dt_util.as_local(governing_forecast.datetime).strftime('%H:%M'),
+                      governing_forecast.temperature)
+        
+        # Step 2: Search from governing forecast forward (includes present)
+        relevant_forecasts = [f for f in self._forecast_data 
+                              if governing_forecast.datetime <= f.datetime <= now + lookahead]
         
         _LOGGER.debug(
             "Weather: Evaluating 'heat_wave' strategy - checking for temps >%.1f°C for %dh in next %dh",
             temp_threshold, min_duration, lookahead.total_seconds() / 3600
         )
         
-        # Find the maximum temperature in the forecast period for logging
-        future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
-        if future_forecasts:
-            max_temp = max(f.temperature for f in future_forecasts)
-            _LOGGER.debug("Weather: Heat wave strategy - max forecast temp %.1f°C in next %.1fh", 
-                         max_temp, lookahead.total_seconds() / 3600)
-        
+        # Step 3: Find consecutive event
         event_start_time = self._find_consecutive_event(
-            all_relevant_forecasts,
+            relevant_forecasts,
             timedelta(hours=min_duration),
             lambda f: f.temperature >= temp_threshold
         )
         
-        if event_start_time and event_start_time > now:  # Only if event hasn't started yet
-            pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
-            hours_until_event = (event_start_time - now).total_seconds() / 3600
-            
-            # Show local times for user-friendly logging
-            event_start_time_local = dt_util.as_local(event_start_time)
-            pre_action_start_time_local = dt_util.as_local(pre_action_start_time)
-            _LOGGER.debug(
-                "Weather: Heat wave detected starting at %s (%.1fh from now), pre-action time %s",
-                event_start_time_local.strftime('%H:%M'), hours_until_event, 
-                pre_action_start_time_local.strftime('%H:%M')
-            )
-            
-            if now >= pre_action_start_time:
-                # Support both adjustment and adjustment_c for backward compatibility
-                adjustment = config.get("adjustment", config.get("adjustment_c", 0.0))
-                self._active_strategy = ActiveStrategy(
-                    name=config["name"],
-                    adjustment=adjustment,
-                    end_time=event_start_time,
-                )
-                # Add reason for logging
-                self._active_strategy.reason = f"heat wave >={temp_threshold}°C detected in {hours_until_event:.1f}h"
-                _LOGGER.debug(
-                    "Weather: Heat wave strategy activated - pre-cooling with %+.1f°C until event starts",
-                    adjustment
-                )
-            else:
-                hours_until_preaction = (pre_action_start_time - now).total_seconds() / 3600
-                _LOGGER.debug(
-                    "Weather: Heat wave detected but pre-action not yet due (%.1fh remaining)",
-                    hours_until_preaction
-                )
-        elif event_start_time:
-            # Event found but already started - don't activate strategy
-            _LOGGER.info("Weather: Heat wave already started - skipping pre-cooling")
-        else:
+        if not event_start_time:
+            # Find the maximum temperature in the forecast period for logging
+            future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
             if future_forecasts:
                 max_temp = max(f.temperature for f in future_forecasts)
                 _LOGGER.debug(
@@ -284,97 +249,153 @@ class ForecastEngine:
                 )
             else:
                 _LOGGER.debug("Weather: Heat wave strategy not activated - no forecast data available")
+            return
+        
+        # Step 4: Check if we're already in the event
+        if event_start_time <= governing_forecast.datetime:
+            _LOGGER.info("Weather: Already in heat wave conditions (started at %s) - skipping pre-cooling",
+                        dt_util.as_local(event_start_time).strftime('%H:%M'))
+            return
+        
+        # Step 5: Check if pre-action time reached for FUTURE event
+        pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
+        hours_until_event = (event_start_time - now).total_seconds() / 3600
+        
+        # Show local times for user-friendly logging
+        event_start_time_local = dt_util.as_local(event_start_time)
+        pre_action_start_time_local = dt_util.as_local(pre_action_start_time)
+        _LOGGER.debug(
+            "Weather: Heat wave detected starting at %s (%.1fh from now), pre-action time %s",
+            event_start_time_local.strftime('%H:%M'), hours_until_event, 
+            pre_action_start_time_local.strftime('%H:%M')
+        )
+        
+        if now >= pre_action_start_time:
+            # Event is in future and pre-action time reached
+            # Support both adjustment and adjustment_c for backward compatibility
+            adjustment = config.get("adjustment", config.get("adjustment_c", 0.0))
+            self._active_strategy = ActiveStrategy(
+                name=config["name"],
+                adjustment=adjustment,
+                end_time=event_start_time,
+            )
+            # Add reason for logging
+            self._active_strategy.reason = f"heat wave >={temp_threshold}°C detected in {hours_until_event:.1f}h"
+            _LOGGER.info("Weather: Heat wave starting at %s (%.1fh away) - activating pre-cooling",
+                        event_start_time_local.strftime('%H:%M'), hours_until_event)
+            _LOGGER.debug(
+                "Weather: Heat wave strategy activated - pre-cooling with %+.1f°C until event starts",
+                adjustment
+            )
+        else:
+            hours_until_preaction = (pre_action_start_time - now).total_seconds() / 3600
+            _LOGGER.debug(
+                "Weather: Heat wave detected but pre-action not yet due (%.1fh remaining)",
+                hours_until_preaction
+            )
 
     def _evaluate_clear_sky_strategy(self, config: Dict[str, Any], now: datetime) -> None:
-        """Evaluator for the 'clear_sky' strategy type."""
+        """Evaluator for clear_sky strategy - handles discrete forecast data correctly."""
         lookahead = timedelta(hours=config.get("lookahead_hours", 24))
         target_condition = config["condition"]
         min_duration = config.get("min_duration_hours", 6)
         pre_action_hours = config.get("pre_action_hours", 1)
         
-        # Check if we're ALREADY in a clear sky period
-        current_forecast = next((f for f in self._forecast_data if f.datetime <= now < f.datetime + timedelta(hours=1)), None)
-        if current_forecast and current_forecast.condition == target_condition:
-            _LOGGER.info("Weather: Already in %s conditions - skipping pre-cooling", target_condition)
+        # Step 1: Find the governing forecast for current time
+        past_and_current = [f for f in self._forecast_data if f.datetime <= now]
+        if not past_and_current:
+            _LOGGER.warning("Weather: No forecast data available for current time")
             return
         
-        # Include recent past to detect ongoing events that started earlier
-        all_relevant_forecasts = [f for f in self._forecast_data 
-                                  if now - timedelta(hours=2) < f.datetime <= now + lookahead]
+        governing_forecast = max(past_and_current, key=lambda f: f.datetime)
+        _LOGGER.debug("Weather: Governing forecast for %s is at %s with condition '%s'",
+                      dt_util.as_local(now).strftime('%H:%M'),
+                      dt_util.as_local(governing_forecast.datetime).strftime('%H:%M'),
+                      governing_forecast.condition)
+        
+        # Step 2: Search from governing forecast forward (includes present)
+        relevant_forecasts = [f for f in self._forecast_data 
+                              if governing_forecast.datetime <= f.datetime <= now + lookahead]
         
         _LOGGER.debug(
             "Weather: Evaluating 'clear_sky' strategy - checking for '%s' conditions for %dh in next %dh",
             target_condition, min_duration, lookahead.total_seconds() / 3600
         )
         
-        # Count matching conditions for logging
-        future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
-        if future_forecasts:
-            matching_count = sum(1 for f in future_forecasts if f.condition == target_condition)
-            total_count = len(future_forecasts)
-            _LOGGER.debug(
-                "Weather: Clear sky check - %d/%d forecast points match '%s' condition",
-                matching_count, total_count, target_condition
-            )
-
+        # Step 3: Find consecutive event
         event_start_time = self._find_consecutive_event(
-            all_relevant_forecasts,
+            relevant_forecasts,
             timedelta(hours=min_duration),
             lambda f: f.condition == target_condition
         )
-
-        if event_start_time and event_start_time > now:  # Only if event hasn't started yet
-            pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
-            hours_until_event = (event_start_time - now).total_seconds() / 3600
-            
-            # DEBUG: Timezone analysis for issue diagnosis
-            raw_seconds_diff = (event_start_time - now).total_seconds()
-            _LOGGER.debug(
-                "TIMEZONE_DEBUG: now=%s (tz=%s), event_start_time=%s (tz=%s)",
-                now.isoformat(), getattr(now, 'tzinfo', None), 
-                event_start_time.isoformat(), getattr(event_start_time, 'tzinfo', None)
-            )
-            _LOGGER.debug(
-                "TIMEZONE_DEBUG: raw_seconds_diff=%.1f, calculated_hours=%.3f", 
-                raw_seconds_diff, hours_until_event
-            )
-            
-            consecutive_hours = min_duration  # Minimum hours found by _find_consecutive_event
-            
-            # Show local time for user-friendly logging
-            event_start_time_local = dt_util.as_local(event_start_time)
-            _LOGGER.debug(
-                "Weather: Clear sky period detected starting at %s (%.1fh from now), %dh consecutive '%s'",
-                event_start_time_local.strftime('%H:%M'), hours_until_event, consecutive_hours, target_condition
-            )
-            
-            if now >= pre_action_start_time:
-                # Support both adjustment and adjustment_c for backward compatibility
-                adjustment = config.get("adjustment", config.get("adjustment_c", 0.0))
-                self._active_strategy = ActiveStrategy(
-                    name=config["name"],
-                    adjustment=adjustment,
-                    end_time=event_start_time,
-                )
-                # Add reason for logging
-                self._active_strategy.reason = f"{consecutive_hours} consecutive {target_condition} hours"
+        
+        if not event_start_time:
+            # Count matching conditions for logging
+            future_forecasts = [f for f in self._forecast_data if now < f.datetime <= now + lookahead]
+            if future_forecasts:
+                matching_count = sum(1 for f in future_forecasts if f.condition == target_condition)
+                total_count = len(future_forecasts)
                 _LOGGER.debug(
-                    "Weather: Clear sky strategy activated - applying %+.1f°C offset until clear period starts",
-                    adjustment
+                    "Weather: Clear sky strategy not activated - %d/%d forecast points match '%s' condition (%dh required)",
+                    matching_count, total_count, target_condition, min_duration
                 )
             else:
-                hours_until_preaction = (pre_action_start_time - now).total_seconds() / 3600
-                _LOGGER.debug(
-                    "Weather: Clear sky period detected but pre-action not yet due (%.1fh remaining)",
-                    hours_until_preaction
-                )
-        elif event_start_time:
-            # Event found but already started - don't activate strategy
-            _LOGGER.info("Weather: Clear sky period already started - skipping pre-cooling")
-        else:
+                _LOGGER.debug("Weather: Clear sky strategy not activated - no forecast data available")
+            return
+        
+        # Step 4: Check if we're already in the event
+        if event_start_time <= governing_forecast.datetime:
+            _LOGGER.info("Weather: Already in %s conditions (started at %s) - skipping pre-cooling",
+                        target_condition, dt_util.as_local(event_start_time).strftime('%H:%M'))
+            return
+        
+        # Step 5: Check if pre-action time reached for FUTURE event
+        pre_action_start_time = event_start_time - timedelta(hours=pre_action_hours)
+        hours_until_event = (event_start_time - now).total_seconds() / 3600
+        
+        # DEBUG: Timezone analysis for issue diagnosis
+        raw_seconds_diff = (event_start_time - now).total_seconds()
+        _LOGGER.debug(
+            "TIMEZONE_DEBUG: now=%s (tz=%s), event_start_time=%s (tz=%s)",
+            now.isoformat(), getattr(now, 'tzinfo', None), 
+            event_start_time.isoformat(), getattr(event_start_time, 'tzinfo', None)
+        )
+        _LOGGER.debug(
+            "TIMEZONE_DEBUG: raw_seconds_diff=%.1f, calculated_hours=%.3f", 
+            raw_seconds_diff, hours_until_event
+        )
+        
+        consecutive_hours = min_duration  # Minimum hours found by _find_consecutive_event
+        
+        # Show local time for user-friendly logging
+        event_start_time_local = dt_util.as_local(event_start_time)
+        _LOGGER.debug(
+            "Weather: Clear sky period detected starting at %s (%.1fh from now), %dh consecutive '%s'",
+            event_start_time_local.strftime('%H:%M'), hours_until_event, consecutive_hours, target_condition
+        )
+        
+        if now >= pre_action_start_time:
+            # Event is in future and pre-action time reached
+            # Support both adjustment and adjustment_c for backward compatibility
+            adjustment = config.get("adjustment", config.get("adjustment_c", 0.0))
+            self._active_strategy = ActiveStrategy(
+                name=config["name"],
+                adjustment=adjustment,
+                end_time=event_start_time,
+            )
+            # Add reason for logging
+            self._active_strategy.reason = f"{consecutive_hours} consecutive {target_condition} hours"
+            _LOGGER.info("Weather: Clear sky period starting at %s (%.1fh away) - activating pre-cooling",
+                        event_start_time_local.strftime('%H:%M'), hours_until_event)
             _LOGGER.debug(
-                "Weather: Clear sky strategy not activated - insufficient consecutive '%s' conditions (%dh required)",
-                target_condition, min_duration
+                "Weather: Clear sky strategy activated - applying %+.1f°C offset until clear period starts",
+                adjustment
+            )
+        else:
+            hours_until_preaction = (pre_action_start_time - now).total_seconds() / 3600
+            _LOGGER.debug(
+                "Weather: Clear sky period detected but pre-action not yet due (%.1fh remaining)",
+                hours_until_preaction
             )
 
     def get_weather_strategy(self) -> WeatherStrategy:
