@@ -416,11 +416,20 @@ class ThermalManager:
                 "temperature_history_count": len(self.stability_detector._temperature_history)
             }
 
+        # Get priming start time if in PRIMING state
+        priming_start_time = None
+        if self._current_state == ThermalState.PRIMING:
+            handler = self._state_handlers.get(ThermalState.PRIMING)
+            if handler and hasattr(handler, '_start_time') and handler._start_time:
+                priming_start_time = handler._start_time.isoformat()
+                _LOGGER.debug("Serializing priming start time: %s", priming_start_time)
+
         return {
             "version": "1.0",
             "state": {
                 "current_state": self._current_state.value,
-                "last_transition": self._last_transition.isoformat() if self._last_transition else datetime.now().isoformat()
+                "last_transition": self._last_transition.isoformat() if self._last_transition else datetime.now().isoformat(),
+                "priming_start_time": priming_start_time  # Add priming start time to state
             },
             "model": {
                 "tau_cooling": getattr(self._model, '_tau_cooling', 90.0),
@@ -487,6 +496,20 @@ class ThermalManager:
                         _LOGGER.debug("Invalid last_transition timestamp, using current time: %s", e)
                         self._last_transition = datetime.now()
                         self._corruption_recovery_count += 1
+                
+                # Restore priming start time if present and in PRIMING state
+                if "priming_start_time" in state_data and self._current_state == ThermalState.PRIMING:
+                    try:
+                        priming_time_str = state_data["priming_start_time"]
+                        if priming_time_str:  # Check it's not None
+                            priming_start = datetime.fromisoformat(priming_time_str)
+                            # Set the start time in the PrimingState handler
+                            handler = self._state_handlers.get(ThermalState.PRIMING)
+                            if handler:
+                                handler._start_time = priming_start
+                                _LOGGER.info("Restored priming start time: %s", priming_time_str)
+                    except (ValueError, TypeError, AttributeError) as e:
+                        _LOGGER.debug("Could not restore priming start time: %s", e)
 
             # Restore model section with validation
             if "model" in data:

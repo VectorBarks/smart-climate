@@ -62,10 +62,16 @@ class PrimingState(StateHandler):
                 _LOGGER.warning("Missing thermal constants in PrimingState")
                 return None
             
-            # Handle missing start time (should be set in on_enter)
+            # Handle missing start time (should be set in on_enter or restored from persistence)
             if self._start_time is None:
-                _LOGGER.warning("Missing start time in PrimingState, staying in priming")
-                return None
+                _LOGGER.warning("Missing start time in PrimingState, initializing to current time")
+                self._start_time = datetime.now()
+                # Also trigger persistence to save this start time
+                if hasattr(context, '_persistence_callback') and context._persistence_callback:
+                    try:
+                        context._persistence_callback()
+                    except Exception as e:
+                        _LOGGER.debug("Could not trigger persistence callback: %s", e)
             
             current_time = datetime.now()
             
