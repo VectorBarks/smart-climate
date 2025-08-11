@@ -1137,8 +1137,8 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                     default=current_options.get(CONF_CALIBRATION_DRIFT_THRESHOLD, current_config.get(CONF_CALIBRATION_DRIFT_THRESHOLD, DEFAULT_CALIBRATION_DRIFT_THRESHOLD))
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
-                        min=0.05,
-                        max=0.5,
+                        min=0.1,
+                        max=1.0,
                         step=0.01,
                         unit_of_measurement="°C",
                         mode=selector.NumberSelectorMode.BOX,

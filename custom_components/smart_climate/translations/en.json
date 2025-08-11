@@ -184,7 +184,7 @@
           "recovery_duration_minutes": "Time to recover after mode changes (30-60 minutes)",
           "probe_drift_limit": "Maximum temperature drift during active learning (1.0-3.0°C)",
           "calibration_idle_minutes": "Minutes AC must be idle before opportunistic calibration triggers (15-120)",
-          "calibration_drift_threshold": "Maximum temperature drift to consider conditions stable for calibration (0.05-0.5°C)"
+          "calibration_drift_threshold": "Maximum temperature drift to consider conditions stable for calibration. 0.2-0.3°C for modern homes, 0.4-0.5°C for standard homes, 0.6-1.0°C for older/drafty buildings (0.1-1.0°C)"
         }
       }
     }

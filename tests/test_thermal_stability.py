@@ -202,7 +202,7 @@ class TestStabilityDetector:
             assert detector_45min.is_stable_for_calibration(), "Should be stable after 50 minutes"
         
         # Test custom drift threshold
-        detector_strict = StabilityDetector(idle_threshold_minutes=30, drift_threshold=0.05)
+        detector_strict = StabilityDetector(idle_threshold_minutes=30, drift_threshold=0.1)
         
         with patch('custom_components.smart_climate.thermal_stability.datetime') as mock_dt:
             base_time = datetime(2025, 8, 11, 10, 0, 0)
@@ -218,7 +218,7 @@ class TestStabilityDetector:
             # Let's add a bigger drift in the 10-minute window
             
             # Add more samples with bigger drift in last 10 minutes
-            detector_strict = StabilityDetector(idle_threshold_minutes=30, drift_threshold=0.05)
+            detector_strict = StabilityDetector(idle_threshold_minutes=30, drift_threshold=0.1)
             for i in range(4):  # First 4 samples - establish idle time
                 mock_dt.now.return_value = base_time + timedelta(minutes=i * 5)
                 detector_strict.update("idle", 24.0)

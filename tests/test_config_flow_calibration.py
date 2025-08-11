@@ -120,25 +120,24 @@ class TestConfigFlowOpportunisticCalibration:
 
     def test_drift_threshold_validation_range(self):
         """Test that calibration_drift_threshold validates range correctly."""
-        # Test cases for range validation (0.05-0.5°C)
+        # Test cases for range validation (0.1-1.0°C) - updated ranges
         test_cases = [
-            (0.04, False),   # Below minimum
-            (0.05, True),    # At minimum
-            (0.1, True),     # Default value
-            (0.25, True),    # Valid middle value
-            (0.5, True),     # At maximum
-            (0.51, False),   # Above maximum
+            (0.09, False),   # Below minimum
+            (0.1, True),     # At minimum
+            (0.3, True),     # New default value
+            (0.5, True),     # Valid middle value
+            (1.0, True),     # At maximum
+            (1.01, False),   # Above maximum
         ]
         
         for value, should_be_valid in test_cases:
             user_input = {"calibration_drift_threshold": value}
             
-            # This test will verify range validation works  
-            # Initially will fail until we implement validation
+            # This test will verify range validation works with new range
             if should_be_valid:
-                assert 0.05 <= value <= 0.5, f"Value {value} should be valid"
+                assert 0.1 <= value <= 1.0, f"Value {value} should be valid"
             else:
-                assert not (0.05 <= value <= 0.5), f"Value {value} should be invalid"
+                assert not (0.1 <= value <= 1.0), f"Value {value} should be invalid"
 
     def test_migration_from_old_config_with_calibration_hour(self):
         """Test migration from old configs that have calibration_hour set."""
@@ -178,7 +177,7 @@ class TestConfigFlowOpportunisticCalibration:
             
             # Migration should provide proper defaults
             assert idle_minutes_default == 30  # Should get default since old config doesn't have this
-            assert drift_threshold_default == 0.1  # Should get default since old config doesn't have this
+            assert drift_threshold_default == 0.3  # Should get default since old config doesn't have this
             
             # Old calibration_hour should still be accessible but not used
             assert current_options.get("calibration_hour") == 3
@@ -222,6 +221,6 @@ class TestOpportunisticCalibrationConstants:
             
             # Verify default values match architecture spec
             assert DEFAULT_CALIBRATION_IDLE_MINUTES == 30, "Default idle minutes should be 30"
-            assert DEFAULT_CALIBRATION_DRIFT_THRESHOLD == 0.1, "Default drift threshold should be 0.1"
+            assert DEFAULT_CALIBRATION_DRIFT_THRESHOLD == 0.3, "Default drift threshold should be 0.3"
         except ImportError:
             pytest.skip("Constants not yet implemented")

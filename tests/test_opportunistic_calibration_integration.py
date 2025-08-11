@@ -171,7 +171,7 @@ class TestOpportunisticCalibrationIntegration:
         """Test that configuration changes properly affect stability detection thresholds."""
         # Test different configuration scenarios
         configs = [
-            {"calibration_idle_minutes": 15, "calibration_drift_threshold": 0.05},
+            {"calibration_idle_minutes": 15, "calibration_drift_threshold": 0.1},
             {"calibration_idle_minutes": 60, "calibration_drift_threshold": 0.2},
             {"calibration_idle_minutes": 45, "calibration_drift_threshold": 0.15}
         ]
@@ -420,6 +420,6 @@ class TestOpportunisticCalibrationIntegration:
         
         # Verify values are reasonable
         assert stability_data["idle_threshold_minutes"] == 30  # Default from config
-        assert stability_data["drift_threshold"] == 0.1  # Default from config
+        assert stability_data["drift_threshold"] == 0.1  # Default from explicit config in test
         assert stability_data["last_ac_state"] == "idle"
         assert stability_data["temperature_history_count"] == 2  # We added 2 readings

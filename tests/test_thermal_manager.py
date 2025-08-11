@@ -416,7 +416,7 @@ class TestThermalManager:
         """Test ThermalManager initializes StabilityDetector with config values."""
         config = {
             "calibration_idle_minutes": 45,
-            "calibration_drift_threshold": 0.05
+            "calibration_drift_threshold": 0.1
         }
         
         thermal_manager = ThermalManager(
@@ -426,7 +426,7 @@ class TestThermalManager:
         assert hasattr(thermal_manager, 'stability_detector')
         assert thermal_manager.stability_detector is not None
         assert thermal_manager.stability_detector._idle_threshold.total_seconds() == 45 * 60  # 45 minutes
-        assert thermal_manager.stability_detector._drift_threshold == 0.05
+        assert thermal_manager.stability_detector._drift_threshold == 0.1
 
     def test_thermal_manager_initializes_default_stability_detector(self, mock_hass, mock_thermal_model, mock_preferences):
         """Test ThermalManager initializes StabilityDetector with default values when no config."""
@@ -435,7 +435,7 @@ class TestThermalManager:
         assert hasattr(thermal_manager, 'stability_detector')
         assert thermal_manager.stability_detector is not None
         assert thermal_manager.stability_detector._idle_threshold.total_seconds() == 30 * 60  # 30 minutes default
-        assert thermal_manager.stability_detector._drift_threshold == 0.1  # 0.1°C default
+        assert thermal_manager.stability_detector._drift_threshold == 0.3  # 0.3°C default
 
     def test_thermal_manager_updates_detector_on_temperature_change(self, thermal_manager):
         """Test ThermalManager updates stability detector when temperature changes."""
@@ -482,7 +482,7 @@ class TestThermalManager:
         # Mock the stability detector with some state
         mock_detector = Mock()
         mock_detector._idle_threshold = timedelta(minutes=35)  # Return actual timedelta
-        mock_detector._drift_threshold = 0.05
+        mock_detector._drift_threshold = 0.1
         mock_detector._last_ac_state = "idle"
         mock_detector._temperature_history = [(datetime.now(), 24.0), (datetime.now(), 24.1)]
         
@@ -501,6 +501,6 @@ class TestThermalManager:
         
         # Verify actual values
         assert stability_data["idle_threshold_minutes"] == 35
-        assert stability_data["drift_threshold"] == 0.05
+        assert stability_data["drift_threshold"] == 0.1
         assert stability_data["last_ac_state"] == "idle"
         assert stability_data["temperature_history_count"] == 2

@@ -113,7 +113,7 @@ class ThermalManager:
         from .thermal_stability import StabilityDetector
         self.stability_detector = StabilityDetector(
             idle_threshold_minutes=self._config.get('calibration_idle_minutes', 30),
-            drift_threshold=self._config.get('calibration_drift_threshold', 0.1)
+            drift_threshold=self._config.get('calibration_drift_threshold', 0.3)
         )
         
         # Initialize state handlers registry

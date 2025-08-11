@@ -21,7 +21,7 @@ class StabilityDetector:
         drift_threshold: Maximum temperature drift (°C) over 10 minutes
     """
 
-    def __init__(self, idle_threshold_minutes: int = 30, drift_threshold: float = 0.1):
+    def __init__(self, idle_threshold_minutes: int = 30, drift_threshold: float = 0.3):
         """Initialize StabilityDetector with configurable thresholds."""
         self._idle_threshold = timedelta(minutes=idle_threshold_minutes)
         self._drift_threshold = drift_threshold
