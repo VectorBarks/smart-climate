@@ -30,11 +30,13 @@ class PrimingState(StateHandler):
         """Initialize PrimingState handler."""
         self._start_time: Optional[datetime] = None
 
-    def execute(self, context: "ThermalManager") -> Optional[ThermalState]:
+    def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute priming state logic and check for transitions.
         
         Args:
             context: ThermalManager instance providing system state
+            current_temp: Current room temperature in Celsius
+            operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
             CALIBRATING if calibration hour reached, DRIFTING if priming duration complete, None to stay in PRIMING
@@ -151,11 +153,13 @@ class RecoveryState(StateHandler):
         self._final_target: Optional[float] = None
         self._gradual_adjustment: bool = False
 
-    def execute(self, context: "ThermalManager") -> Optional[ThermalState]:
+    def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute recovery state logic and check for transitions.
         
         Args:
             context: ThermalManager instance providing system state
+            current_temp: Current room temperature in Celsius
+            operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
             Target state if recovery complete, None to stay in RECOVERY
@@ -299,11 +303,13 @@ class ProbeState(StateHandler):
         self._probe_start_temp: Optional[float] = None
         self._previous_state: ThermalState = ThermalState.DRIFTING
 
-    def execute(self, context: "ThermalManager") -> Optional[ThermalState]:
+    def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute probing state logic and check for transitions.
         
         Args:
             context: ThermalManager instance providing system state
+            current_temp: Current room temperature in Celsius
+            operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
             CALIBRATING on completion, previous state on abort, None to continue probing
@@ -481,11 +487,13 @@ class CalibratingState(StateHandler):
         """Initialize CalibratingState handler."""
         self._start_time: Optional[datetime] = None
 
-    def execute(self, context: "ThermalManager") -> Optional[ThermalState]:
+    def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute calibrating state logic and check for transitions.
         
         Args:
             context: ThermalManager instance providing system state
+            current_temp: Current room temperature in Celsius
+            operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
             DRIFTING if calibration window complete, None to stay in CALIBRATING

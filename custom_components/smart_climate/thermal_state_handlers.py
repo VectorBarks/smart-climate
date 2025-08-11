@@ -22,13 +22,13 @@ class DriftingState(StateHandler):
     Transitions to CORRECTING when temperature exceeds operating window bounds.
     """
 
-    def execute(self, context: "ThermalManager", current_temp: Optional[float] = None, operating_window: Optional[tuple] = None) -> Optional[ThermalState]:
+    def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute drifting state logic and check for transitions.
         
         Args:
             context: ThermalManager instance providing system state
-            current_temp: Current room temperature
-            operating_window: Operating window (lower_bound, upper_bound) tuple
+            current_temp: Current room temperature in Celsius
+            operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
             CALIBRATING if calibration hour reached, CORRECTING if temperature exceeds bounds, None to stay in DRIFTING
@@ -46,10 +46,9 @@ class DriftingState(StateHandler):
             # Use parameters instead of trying to access context attributes
             # current_temp and operating_window are now passed as parameters
             
-            # Handle missing attributes gracefully
-            if current_temp is None or operating_window is None:
-                _LOGGER.warning("Missing context attributes in DriftingState: current_temp=%s, operating_window=%s",
-                               current_temp, operating_window)
+            # Validate required parameters
+            if operating_window is None or len(operating_window) != 2:
+                _LOGGER.warning("Invalid operating_window in DriftingState: %s", operating_window)
                 return None
             
             lower_bound, upper_bound = operating_window
@@ -101,13 +100,13 @@ class CorrectingState(StateHandler):
     Transitions to DRIFTING when temperature returns within operating window (with hysteresis buffer).
     """
 
-    def execute(self, context: "ThermalManager", current_temp: Optional[float] = None, operating_window: Optional[tuple] = None) -> Optional[ThermalState]:
+    def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute correcting state logic and check for transitions.
         
         Args:
             context: ThermalManager instance providing system state
-            current_temp: Current room temperature
-            operating_window: Operating window (lower_bound, upper_bound) tuple
+            current_temp: Current room temperature in Celsius
+            operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
             DRIFTING if temperature within bounds + buffer, None to stay in CORRECTING
@@ -119,10 +118,9 @@ class CorrectingState(StateHandler):
             # Use parameters instead of trying to access context attributes
             # current_temp and operating_window are now passed as parameters
             
-            # Handle missing attributes gracefully
-            if current_temp is None or operating_window is None:
-                _LOGGER.warning("Missing context attributes in CorrectingState: current_temp=%s, operating_window=%s",
-                               current_temp, operating_window)
+            # Validate required parameters
+            if operating_window is None or len(operating_window) != 2:
+                _LOGGER.warning("Invalid operating_window in CorrectingState: %s", operating_window)
                 return None
             
             lower_bound, upper_bound = operating_window

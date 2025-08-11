@@ -33,11 +33,13 @@ class StateHandler(ABC):
     """
 
     @abstractmethod
-    def execute(self, context: "ThermalManager") -> Optional[ThermalState]:
+    def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute state-specific logic and determine next state.
         
         Args:
             context: ThermalManager instance providing system state and methods
+            current_temp: Current room temperature in Celsius
+            operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
             Next ThermalState to transition to, or None to stay in current state
