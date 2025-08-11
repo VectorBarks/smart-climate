@@ -14,17 +14,3 @@ generate_dashboard:
           filter:
             - integration: smart_climate
               domain: climate
-
-persist_thermal_data:
-  name: Persist Thermal Data
-  description: Force immediate persistence of in-memory thermal calibration data to disk. Use this to save calibration data that hasn't been persisted yet.
-  fields:
-    entity_id:
-      name: Climate Entity
-      description: The Smart Climate entity to persist data for (optional, all if not specified)
-      required: false
-      selector:
-        entity:
-          filter:
-            - integration: smart_climate
-              domain: climate
