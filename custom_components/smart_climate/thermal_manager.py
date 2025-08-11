@@ -3,7 +3,7 @@ Coordinates thermal states, operating window calculations, and AC control decisi
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple, Optional, Any
+from typing import Dict, Tuple, Optional, Any, Callable
 from datetime import datetime
 from homeassistant.core import HomeAssistant
 
@@ -22,11 +22,13 @@ class StateHandler(ABC):
     """
 
     @abstractmethod
-    def execute(self, context: 'ThermalManager') -> Optional[ThermalState]:
+    def execute(self, context: 'ThermalManager', current_temp: Optional[float] = None, operating_window: Optional[tuple] = None) -> Optional[ThermalState]:
         """Execute state-specific logic and return next state if transition needed.
         
         Args:
             context: ThermalManager instance for access to models and data
+            current_temp: Current room temperature
+            operating_window: Operating window (lower_bound, upper_bound) tuple
             
         Returns:
             Next ThermalState to transition to, or None to stay in current state
@@ -53,7 +55,7 @@ class StateHandler(ABC):
 class DefaultStateHandler(StateHandler):
     """Default state handler implementation for states without specific handlers."""
 
-    def execute(self, context: 'ThermalManager') -> Optional[ThermalState]:
+    def execute(self, context: 'ThermalManager', current_temp: Optional[float] = None, operating_window: Optional[tuple] = None) -> Optional[ThermalState]:
         """Default execute - no state transitions."""
         return None
 
@@ -76,13 +78,15 @@ class ThermalManager:
         hass: HomeAssistant,
         thermal_model: PassiveThermalModel,
         preferences: UserPreferences,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        persistence_callback: Optional[Callable[[], None]] = None
     ):
         """Initialize ThermalManager."""
         self._hass = hass
         self._model = thermal_model
         self._preferences = preferences
         self._config = config or {}
+        self._persistence_callback = persistence_callback
         self._current_state = ThermalState.PRIMING  # Default to PRIMING for new users
         self._state_handlers: Dict[ThermalState, StateHandler] = {}
         self._last_hvac_mode = "cool"  # Default assumption
@@ -180,6 +184,14 @@ class ThermalManager:
         except Exception as e:
             _LOGGER.error("Error in enter handler for state %s: %s", new_state.value, e)
             raise
+        
+        # CRITICAL FIX: Trigger persistence after state change
+        if self._persistence_callback:
+            try:
+                _LOGGER.debug("Triggering persistence after state transition to %s", new_state.value)
+                self._persistence_callback()
+            except Exception as e:
+                _LOGGER.warning("Error triggering persistence after state transition: %s", e)
         
         _LOGGER.debug("Successfully transitioned to state %s", new_state.value)
 
@@ -559,13 +571,18 @@ class ThermalManager:
             _LOGGER.warning("Thermal data restoration completed with %d field recoveries", 
                           recoveries_this_session)
 
-    def update_state(self) -> None:
+    def update_state(self, current_temp: Optional[float] = None, outdoor_temp: Optional[float] = None, hvac_mode: Optional[str] = None) -> None:
         """Update thermal state and check for transitions.
         
         This method should be called periodically by the coordinator to:
         1. Execute current state handler logic
         2. Check for calibration hour transitions regardless of current state
         3. Handle state transitions returned by handlers
+        
+        Args:
+            current_temp: Current room temperature
+            outdoor_temp: Current outdoor temperature 
+            hvac_mode: Current HVAC mode (cool/heat/auto)
         
         Fixes the critical bug where thermal states never transition because
         no periodic check was happening.
@@ -599,7 +616,20 @@ class ThermalManager:
             if current_handler:
                 try:
                     _LOGGER.debug("Executing state handler for %s", self._current_state.value)
-                    next_state = current_handler.execute(self)
+                    
+                    # Calculate operating window if we have the necessary parameters
+                    operating_window = None
+                    if current_temp is not None and outdoor_temp is not None and hvac_mode is not None:
+                        # Use current room temperature as setpoint approximation
+                        setpoint = current_temp
+                        operating_window = self.get_operating_window(setpoint, outdoor_temp, hvac_mode)
+                        _LOGGER.debug("Calculated operating window: %s for temp=%.1f", operating_window, current_temp)
+                    else:
+                        _LOGGER.debug("Missing parameters for operating window calculation: temp=%s, outdoor=%s, hvac_mode=%s",
+                                    current_temp, outdoor_temp, hvac_mode)
+                    
+                    # Call state handler with temperature and operating window parameters
+                    next_state = current_handler.execute(self, current_temp, operating_window)
                     if next_state is not None and next_state != self._current_state:
                         _LOGGER.info("Thermal state transition triggered: %s -> %s", 
                                      self._current_state.value, next_state.value)

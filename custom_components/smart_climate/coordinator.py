@@ -74,8 +74,23 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             # Initialize ThermalManager (Phase 2)
             if thermal_model and user_preferences:
                 from .thermal_manager import ThermalManager
-                self._thermal_manager = ThermalManager(hass, thermal_model, user_preferences)
-                _LOGGER.debug("ThermalManager initialized in %s state", self._thermal_manager.current_state.value)
+                
+                # Create persistence callback that triggers OffsetEngine save
+                def persistence_callback():
+                    """Callback to trigger thermal data persistence through OffsetEngine."""
+                    if self._offset_engine:
+                        try:
+                            # Schedule async save in event loop
+                            import asyncio
+                            asyncio.create_task(self._offset_engine.async_save_learning_data())
+                            _LOGGER.debug("Scheduled thermal persistence via OffsetEngine")
+                        except Exception as exc:
+                            _LOGGER.warning("Error scheduling thermal persistence: %s", exc)
+                
+                self._thermal_manager = ThermalManager(hass, thermal_model, user_preferences, 
+                                                     persistence_callback=persistence_callback)
+                _LOGGER.debug("ThermalManager initialized in %s state with persistence callback", 
+                            self._thermal_manager.current_state.value)
             else:
                 self._thermal_manager = None
                 _LOGGER.warning("ThermalManager not initialized - missing thermal_model or user_preferences")
@@ -499,7 +514,11 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 try:
                     # CRITICAL FIX: Update thermal state and check for transitions
                     # This is the periodic check that was missing
-                    self._thermal_manager.update_state()
+                    self._thermal_manager.update_state(
+                        current_temp=room_temp,
+                        outdoor_temp=outdoor_temp,
+                        hvac_mode=hvac_mode
+                    )
                     
                     # Get current setpoint (approximate from room temp for now)
                     setpoint = room_temp  # TODO: Get actual setpoint from wrapped entity
