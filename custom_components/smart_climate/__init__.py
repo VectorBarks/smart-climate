@@ -917,6 +917,89 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         _LOGGER.info("Smart Climate service 'generate_dashboard' registered successfully")
     except Exception as exc:
         _LOGGER.error("Failed to register Smart Climate service: %s", exc, exc_info=True)
+    
+    # Register persist_thermal_data service
+    async def handle_persist_thermal_data(call: ServiceCall) -> None:
+        """Handle the persist_thermal_data service call to save calibration data."""
+        entity_id = call.data.get("entity_id")
+        _LOGGER.info("Persist thermal data service called for entity: %s", entity_id or "all")
+        
+        results = []
+        saved_count = 0
+        
+        # Iterate through all entries to find thermal components
+        for entry_id, entry_data in hass.data.get(DOMAIN, {}).items():
+            thermal_components = entry_data.get("thermal_components", {})
+            offset_engines = entry_data.get("offset_engines", {})
+            
+            for ent_id, components in thermal_components.items():
+                # Skip if specific entity requested and this isn't it
+                if entity_id and ent_id != entity_id:
+                    continue
+                    
+                thermal_manager = components.get("thermal_manager")
+                offset_engine = offset_engines.get(ent_id)
+                
+                if thermal_manager and offset_engine:
+                    try:
+                        # Get current state info for logging
+                        current_state = thermal_manager.current_state.value if hasattr(thermal_manager, 'current_state') else "unknown"
+                        _LOGGER.info("Persisting data for %s (state: %s)", ent_id, current_state)
+                        
+                        # Trigger immediate save via OffsetEngine
+                        await offset_engine.async_save_learning_data()
+                        saved_count += 1
+                        
+                        results.append({
+                            "entity_id": ent_id,
+                            "state": current_state,
+                            "saved": True
+                        })
+                        _LOGGER.info("Successfully persisted thermal data for %s", ent_id)
+                        
+                    except Exception as e:
+                        _LOGGER.error("Error persisting data for %s: %s", ent_id, e)
+                        results.append({
+                            "entity_id": ent_id,
+                            "error": str(e)
+                        })
+        
+        # Send notification with results
+        if saved_count > 0:
+            message = f"Successfully persisted thermal calibration data for {saved_count} entities."
+            if results:
+                details = "\n".join([f"- {r['entity_id']}: {r.get('state', 'unknown')}" for r in results if r.get('saved')])
+                message += f"\n\nEntities saved:\n{details}"
+        else:
+            message = "No thermal data to persist or no entities found."
+            
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": "Thermal Data Persistence",
+                "message": message,
+                "notification_id": "smart_climate_persist_thermal"
+            }
+        )
+        
+        _LOGGER.info("Persist thermal data completed: %d entities saved", saved_count)
+    
+    # Register the persist service
+    persist_schema = vol.Schema({
+        vol.Optional("entity_id"): cv.entity_id,
+    })
+    
+    try:
+        hass.services.async_register(
+            DOMAIN,
+            "persist_thermal_data",
+            handle_persist_thermal_data,
+            schema=persist_schema,
+        )
+        _LOGGER.info("Smart Climate service 'persist_thermal_data' registered successfully")
+    except Exception as exc:
+        _LOGGER.error("Failed to register persist_thermal_data service: %s", exc, exc_info=True)
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

@@ -1,0 +1,28 @@
+# Template to check current thermal state in Developer Tools > Template
+# Copy and paste this into the Template editor to see current thermal state
+
+{% set ns = namespace(found=false) %}
+{% for state in states.climate %}
+  {% if state.entity_id.endswith('_climate') %}
+    {% set thermal_state = states('sensor.' + state.object_id.replace('_climate', '') + '_thermal_state') %}
+    {% set calibration_status = state_attr('sensor.' + state.object_id.replace('_climate', '') + '_calibration_status', 'thermal_data_last_saved') %}
+    {% set current_state = state_attr('sensor.' + state.object_id.replace('_climate', '') + '_thermal_state', 'current_state') %}
+    
+Climate Entity: {{ state.entity_id }}
+Thermal State: {{ thermal_state }}
+Last Saved: {{ calibration_status }}
+Current Time: {{ now() }}
+
+To persist the calibration data from 2am, call this service:
+service: smart_climate.persist_thermal_data
+data:
+  entity_id: {{ state.entity_id }}
+
+    {% set ns.found = true %}
+  {% endif %}
+{% endfor %}
+
+{% if not ns.found %}
+No Smart Climate entities found with thermal state sensors.
+Check that the integration is loaded and thermal efficiency is enabled.
+{% endif %}
