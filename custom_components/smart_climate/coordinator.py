@@ -47,7 +47,8 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         cycle_monitor: Optional["CycleMonitor"] = None,
         comfort_band_controller: Optional["ComfortBandController"] = None,
         thermal_efficiency_enabled: bool = False,
-        wrapped_entity_id: Optional[str] = None
+        wrapped_entity_id: Optional[str] = None,
+        entity_id: Optional[str] = None  # Smart Climate entity ID for looking up ThermalManager
     ):
         """Initialize the coordinator."""
         super().__init__(
@@ -61,6 +62,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         self._mode_manager = mode_manager
         self._forecast_engine = forecast_engine
         self._wrapped_entity_id = wrapped_entity_id
+        self._entity_id = entity_id  # Store Smart Climate entity ID for ThermalManager lookup
         self._is_startup = True  # Flag for startup calculation
         
         # Initialize thermal efficiency components (Phase 1)
@@ -71,29 +73,18 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             self._cycle_monitor = cycle_monitor
             self._comfort_band_controller = comfort_band_controller
             
-            # Initialize ThermalManager (Phase 2)
+            # Store reference to ThermalManager from hass.data instead of creating a new one
+            # This ensures sensors and coordinator use the same instance
+            self._thermal_manager = None
+            self._thermal_components_dict = None  # Store reference to the dict for updates
+            
+            # Look up existing ThermalManager from hass.data
             if thermal_model and user_preferences:
-                from .thermal_manager import ThermalManager
-                
-                # Create persistence callback that triggers OffsetEngine save
-                def persistence_callback():
-                    """Callback to trigger thermal data persistence through OffsetEngine."""
-                    if self._offset_engine:
-                        try:
-                            # Schedule async save in event loop
-                            import asyncio
-                            asyncio.create_task(self._offset_engine.async_save_learning_data())
-                            _LOGGER.debug("Scheduled thermal persistence via OffsetEngine")
-                        except Exception as exc:
-                            _LOGGER.warning("Error scheduling thermal persistence: %s", exc)
-                
-                self._thermal_manager = ThermalManager(hass, thermal_model, user_preferences, 
-                                                     persistence_callback=persistence_callback)
-                _LOGGER.debug("ThermalManager initialized in %s state with persistence callback", 
-                            self._thermal_manager.current_state.value)
+                # Wait for hass.data to be populated - this happens after entity creation
+                # For now, just store None and we'll get it dynamically
+                _LOGGER.debug("ThermalManager will be retrieved from hass.data dynamically")
             else:
-                self._thermal_manager = None
-                _LOGGER.warning("ThermalManager not initialized - missing thermal_model or user_preferences")
+                _LOGGER.warning("ThermalManager not available - missing thermal_model or user_preferences")
             
             _LOGGER.debug("Thermal efficiency enabled with components: model=%s, prefs=%s, monitor=%s, controller=%s, manager=%s",
                          thermal_model is not None, user_preferences is not None,
@@ -510,11 +501,13 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             learning_target = None
             
             # Phase 2: ThermalManager state-aware protocol
-            if self.thermal_efficiency_enabled and self._thermal_manager and room_temp is not None:
+            # Get ThermalManager from hass.data for the correct entity
+            thermal_manager = self.get_thermal_manager(self._entity_id) if self._entity_id else None
+            if self.thermal_efficiency_enabled and thermal_manager and room_temp is not None:
                 try:
                     # CRITICAL FIX: Update thermal state and check for transitions
                     # This is the periodic check that was missing
-                    self._thermal_manager.update_state(
+                    thermal_manager.update_state(
                         current_temp=room_temp,
                         outdoor_temp=outdoor_temp,
                         hvac_mode=hvac_mode
@@ -524,14 +517,14 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                     setpoint = room_temp  # TODO: Get actual setpoint from wrapped entity
                     
                     # Calculate operating window using ThermalManager
-                    thermal_window = self._thermal_manager.get_operating_window(
+                    thermal_window = thermal_manager.get_operating_window(
                         setpoint=setpoint,
                         outdoor_temp=outdoor_temp or 25.0,  # Default outdoor temp
                         hvac_mode=hvac_mode or "cool"
                     )
                     
                     # Control OffsetEngine learning based on current state
-                    current_state = self._thermal_manager.current_state
+                    current_state = thermal_manager.current_state
                     if current_state == ThermalState.DRIFTING:
                         self._offset_engine.pause_learning()
                         _LOGGER.debug("Learning paused for DRIFTING state")
@@ -540,7 +533,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                         _LOGGER.debug("Learning resumed for CORRECTING state")
                     
                     # Get learning target for state-aware training
-                    learning_target = self._thermal_manager.get_learning_target(
+                    learning_target = thermal_manager.get_learning_target(
                         current=room_temp,
                         window=thermal_window
                     )
@@ -676,8 +669,9 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             thermal_state = None
             learning_active = False
             
-            if self.thermal_efficiency_enabled and self._thermal_manager:
-                thermal_state = self._thermal_manager.current_state.value
+            thermal_manager = self.get_thermal_manager(self._entity_id) if self._entity_id else None
+            if self.thermal_efficiency_enabled and thermal_manager:
+                thermal_state = thermal_manager.current_state.value
                 learning_active = not getattr(self._offset_engine, '_learning_paused', False)
             
             return SmartClimateData(
@@ -843,7 +837,30 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             for entry_id, entry_data in self.hass.data.get(DOMAIN, {}).items():
                 thermal_components = entry_data.get("thermal_components", {})
                 if entity_id in thermal_components:
-                    return thermal_components[entity_id].get("thermal_manager")
+                    thermal_manager = thermal_components[entity_id].get("thermal_manager")
+                    
+                    # Store reference for coordinator to use the same instance
+                    if thermal_manager and not self._thermal_manager:
+                        self._thermal_manager = thermal_manager
+                        self._thermal_components_dict = thermal_components[entity_id]
+                        
+                        # Add persistence callback if not already set
+                        if not hasattr(thermal_manager, '_persistence_callback') or not thermal_manager._persistence_callback:
+                            def persistence_callback():
+                                """Callback to trigger thermal data persistence through OffsetEngine."""
+                                if self._offset_engine:
+                                    try:
+                                        # Schedule async save in event loop
+                                        import asyncio
+                                        asyncio.create_task(self._offset_engine.async_save_learning_data())
+                                        _LOGGER.debug("Scheduled thermal persistence via OffsetEngine")
+                                    except Exception as exc:
+                                        _LOGGER.warning("Error scheduling thermal persistence: %s", exc)
+                            
+                            thermal_manager._persistence_callback = persistence_callback
+                            _LOGGER.debug("Added persistence callback to existing ThermalManager in hass.data")
+                    
+                    return thermal_manager
             return None
         except Exception as exc:
             _LOGGER.warning("Error getting thermal manager for entity %s: %s", entity_id, exc)

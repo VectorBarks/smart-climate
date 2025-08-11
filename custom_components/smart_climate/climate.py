@@ -3048,7 +3048,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             thermal_model=thermal_components.get("thermal_model"),
             user_preferences=thermal_components.get("user_preferences"),
             cycle_monitor=thermal_components.get("cycle_monitor"),
-            comfort_band_controller=thermal_components.get("comfort_band_controller")
+            comfort_band_controller=thermal_components.get("comfort_band_controller"),
+            wrapped_entity_id=config["climate_entity"],
+            entity_id=climate_entity_id  # Pass the actual Smart Climate entity ID
         )
         
         # Wire the forecast engine to the offset engine for dashboard data
