@@ -42,9 +42,20 @@ class PrimingState(StateHandler):
             CALIBRATING if calibration hour reached, DRIFTING if priming duration complete, None to stay in PRIMING
         """
         try:
-            # Enable aggressive passive learning during priming phase
-            if hasattr(context, 'passive_learning_enabled'):
+            # Check if passive learning is enabled (default to True if not set)
+            passive_learning_enabled = getattr(context, 'passive_learning_enabled', True)
+            
+            # Enable aggressive passive learning during priming phase (if not explicitly disabled)
+            if passive_learning_enabled:
+                # Set the attribute if it doesn't exist or enable if True
                 context.passive_learning_enabled = True
+                
+                # Trigger passive learning if handler available
+                if hasattr(context, '_handle_passive_learning'):
+                    try:
+                        context._handle_passive_learning()
+                    except Exception as e:
+                        _LOGGER.warning("Error in passive learning during priming: %s", e)
             
             # Handle missing thermal constants
             if not hasattr(context, 'thermal_constants') or context.thermal_constants is None:

@@ -475,7 +475,7 @@ class TestThermalManager:
         )
         
         assert thermal_manager2.stability_detector._idle_threshold.total_seconds() == 20 * 60
-        assert thermal_manager2.stability_detector._drift_threshold == 0.1  # default
+        assert thermal_manager2.stability_detector._drift_threshold == 0.3  # default (updated per opportunistic calibration)
 
     def test_detector_state_included_in_serialization(self, thermal_manager):
         """Test StabilityDetector state is included in ThermalManager serialization."""

@@ -108,6 +108,8 @@ class TestPrimingState:
         mock_context = Mock()
         mock_context.thermal_constants = Mock()
         mock_context.thermal_constants.priming_duration = 86400  # 24 hours
+        mock_context.stability_detector = Mock()
+        mock_context.stability_detector.is_stable_for_calibration.return_value = False
         
         # Test after 12 hours (should stay in priming)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
@@ -133,16 +135,26 @@ class TestPrimingState:
         assert result is None or isinstance(result, ThermalState)
 
     def test_priming_state_aggressive_passive_learning_enabled(self):
-        """Test PrimingState enables aggressive passive learning."""
+        """Test PrimingState enables aggressive passive learning when not explicitly disabled."""
         from custom_components.smart_climate.thermal_special_states import PrimingState
         
         handler = PrimingState()
-        mock_context = Mock()
-        mock_context.passive_learning_enabled = False
+        handler._start_time = datetime(2025, 1, 1, 12, 0, 0)
         
-        handler.execute(mock_context, 23.5, (22.0, 25.0))
+        mock_context = Mock()
+        mock_context.thermal_constants = Mock()
+        mock_context.thermal_constants.priming_duration = 86400  # 24 hours
+        mock_context.stability_detector = Mock()
+        mock_context.stability_detector.is_stable_for_calibration.return_value = False
+        # Start with passive learning not set (should default to enabled)
+        # del mock_context.passive_learning_enabled  # Attribute doesn't exist initially
+        
+        with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
+            mock_dt.now.return_value = datetime(2025, 1, 1, 18, 0, 0)  # 6 hours later
+            handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         # Should enable aggressive passive learning
+        assert hasattr(mock_context, 'passive_learning_enabled')
         assert mock_context.passive_learning_enabled is True
 
     def test_priming_state_on_enter_logs_state_entry(self):

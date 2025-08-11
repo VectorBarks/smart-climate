@@ -4,7 +4,7 @@ Tracks AC idle duration and temperature drift to identify stable conditions."""
 import logging
 from datetime import datetime, timedelta
 from collections import deque
-from typing import Tuple, Optional, Deque
+from typing import Tuple, Optional, Deque, List, Dict, Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,7 +21,8 @@ class StabilityDetector:
         drift_threshold: Maximum temperature drift (°C) over 10 minutes
     """
 
-    def __init__(self, idle_threshold_minutes: int = 30, drift_threshold: float = 0.3):
+    def __init__(self, idle_threshold_minutes: int = 30, drift_threshold: float = 0.3, 
+                 passive_min_drift_minutes: int = 15):
         """Initialize StabilityDetector with configurable thresholds."""
         self._idle_threshold = timedelta(minutes=idle_threshold_minutes)
         self._drift_threshold = drift_threshold
@@ -32,6 +33,11 @@ class StabilityDetector:
         
         # Temperature history: (timestamp, temperature) tuples
         self._temperature_history: Deque[Tuple[datetime, float]] = deque(maxlen=20)
+        
+        # Passive learning extensions
+        self._history: Deque[Dict[str, Any]] = deque(maxlen=240)  # 4 hours of data
+        self._MIN_DRIFT_DURATION_S = passive_min_drift_minutes * 60  # Convert minutes to seconds
+        self._last_event_ts = 0.0
         
         _LOGGER.debug("StabilityDetector initialized: idle_threshold=%d min, drift_threshold=%.2f°C",
                      idle_threshold_minutes, drift_threshold)
@@ -56,6 +62,24 @@ class StabilityDetector:
         
         _LOGGER.debug("Updated stability detector: state=%s, temp=%.1f°C, history_len=%d",
                      ac_state, room_temp, len(self._temperature_history))
+
+    def add_reading(self, timestamp: float, temp: float, hvac_state: str) -> None:
+        """Add timestamped temperature and HVAC state reading for passive learning.
+        
+        Args:
+            timestamp: Unix timestamp (seconds)
+            temp: Temperature reading (°C) 
+            hvac_state: HVAC state ("off", "cooling", "heating", "idle")
+        """
+        entry = {
+            'ts': timestamp,
+            'temp': temp,
+            'hvac': hvac_state
+        }
+        self._history.append(entry)
+        
+        _LOGGER.debug("Added reading: ts=%.1f, temp=%.1f°C, hvac=%s, history_len=%d",
+                     timestamp, temp, hvac_state, len(self._history))
 
     def is_stable_for_calibration(self) -> bool:
         """Check if conditions are stable enough for calibration.
@@ -151,3 +175,63 @@ class StabilityDetector:
                      len(recent_temps), drift, max_temp, min_temp)
         
         return drift
+
+    def find_natural_drift_event(self) -> Optional[List[Tuple[float, float]]]:
+        """Search history for valid natural drift events (HVAC off transitions).
+        
+        Looks for cooling->off or heating->off transitions with sufficient data
+        and duration (>= 15 minutes) for thermal analysis.
+        
+        Returns:
+            List of (timestamp, temperature) tuples for the off period, or None
+            if no valid drift event is found or event already analyzed.
+        """
+        if len(self._history) < 10:
+            _LOGGER.debug("Insufficient history for drift detection: %d entries", len(self._history))
+            return None
+        
+        # Search backwards through history to find transitions
+        for i in range(len(self._history) - 1, 0, -1):
+            current = self._history[i]
+            previous = self._history[i-1]
+            
+            # Look for cooling->off or heating->off transitions
+            if (previous['hvac'] in ['cooling', 'heating'] and 
+                current['hvac'] == 'off'):
+                
+                transition_ts = current['ts']
+                
+                # Skip if we already analyzed this event
+                if transition_ts <= self._last_event_ts:
+                    continue
+                
+                # Collect all consecutive 'off' readings after this transition
+                off_data = []
+                for j in range(i, len(self._history)):
+                    if self._history[j]['hvac'] == 'off':
+                        entry = self._history[j]
+                        off_data.append((entry['ts'], entry['temp']))
+                    else:
+                        break
+                
+                # Check if we have enough data and duration
+                if len(off_data) < 10:
+                    _LOGGER.debug("Insufficient off data points: %d < 10", len(off_data))
+                    continue
+                
+                # Check duration (last - first timestamp)
+                duration = off_data[-1][0] - off_data[0][0]
+                if duration < self._MIN_DRIFT_DURATION_S:
+                    _LOGGER.debug("Insufficient drift duration: %.1fs < %ds", 
+                                 duration, self._MIN_DRIFT_DURATION_S)
+                    continue
+                
+                # Valid drift event found
+                self._last_event_ts = transition_ts
+                _LOGGER.debug("Found natural drift event: %s->off at ts=%.1f, duration=%.1fs, points=%d",
+                             previous['hvac'], transition_ts, duration, len(off_data))
+                return off_data
+        
+        # No valid drift event found
+        _LOGGER.debug("No valid natural drift event found")
+        return None

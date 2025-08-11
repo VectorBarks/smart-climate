@@ -113,7 +113,8 @@ class ThermalManager:
         from .thermal_stability import StabilityDetector
         self.stability_detector = StabilityDetector(
             idle_threshold_minutes=self._config.get('calibration_idle_minutes', 30),
-            drift_threshold=self._config.get('calibration_drift_threshold', 0.3)
+            drift_threshold=self._config.get('calibration_drift_threshold', 0.3),
+            passive_min_drift_minutes=self._config.get('passive_min_drift_minutes', 15)
         )
         
         # Initialize state handlers registry
@@ -713,6 +714,63 @@ class ThermalManager:
         
         _LOGGER.debug("Thermal manager reset complete: state=%s, tau_cooling=90.0, tau_warming=150.0",
                      self._current_state.value)
+
+    def _handle_passive_learning(self) -> None:
+        """Handle passive learning during PRIMING state.
+        
+        Orchestrates passive learning by:
+        1. Checking for natural drift events via stability detector
+        2. Analyzing drift data using thermal_utils.analyze_drift_data
+        3. Accepting results with confidence > configured threshold
+        4. Updating thermal model via existing update_tau method
+        
+        Uses configuration parameters:
+        - passive_confidence_threshold: Minimum confidence to accept results (default 0.3)
+        - passive_min_drift_minutes: Minimum drift duration (default 15)
+        """
+        try:
+            # Check for natural drift event
+            if not hasattr(self, 'stability_detector') or not self.stability_detector:
+                _LOGGER.debug("No stability detector available for passive learning")
+                return
+                
+            drift_data = self.stability_detector.find_natural_drift_event()
+            if not drift_data:
+                _LOGGER.debug("No natural drift event found for passive learning")
+                return
+                
+            _LOGGER.debug("Found drift event with %d data points for passive analysis", len(drift_data))
+            
+            # Analyze drift data using thermal_utils
+            from .thermal_utils import analyze_drift_data
+            probe_result = analyze_drift_data(drift_data, is_passive=True)
+            
+            if not probe_result:
+                _LOGGER.debug("Passive learning analysis failed - insufficient data or curve fitting error")
+                return
+                
+            # Check confidence threshold from config
+            confidence_threshold = self._config.get('passive_confidence_threshold', 0.3)
+            if probe_result.confidence < confidence_threshold:
+                _LOGGER.debug("Passive learning rejected: confidence %.3f < threshold %.3f", 
+                             probe_result.confidence, confidence_threshold)
+                return
+                
+            # Determine cooling/heating mode for update_tau
+            is_cooling = self._last_hvac_mode == "cool" or (
+                self._last_hvac_mode == "auto" and hasattr(self, '_setpoint') and 
+                hasattr(self, 'current_temp') and getattr(self, 'current_temp', 0) > self._setpoint
+            )
+            
+            # Update thermal model with passive learning result
+            self._model.update_tau(probe_result, is_cooling)
+            
+            _LOGGER.info("Passive learning successful: tau=%.1f, confidence=%.3f, duration=%ds, fit_quality=%.3f",
+                        probe_result.tau_value, probe_result.confidence, 
+                        probe_result.duration, probe_result.fit_quality)
+                        
+        except Exception as e:
+            _LOGGER.error("Error in passive learning handler: %s", e)
 
     def update_temperature(self, temperature: float, ac_state: str) -> None:
         """Update stability detector with current temperature and AC state.

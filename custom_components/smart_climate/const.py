@@ -78,6 +78,11 @@ CONF_PROBE_DRIFT_LIMIT = "probe_drift_limit"
 CONF_CALIBRATION_IDLE_MINUTES = "calibration_idle_minutes"
 CONF_CALIBRATION_DRIFT_THRESHOLD = "calibration_drift_threshold"
 
+# Passive learning configuration keys (v1.4.3+)
+CONF_PASSIVE_LEARNING_ENABLED = "passive_learning_enabled"
+CONF_PASSIVE_MIN_DRIFT_MINUTES = "passive_min_drift_minutes"
+CONF_PASSIVE_CONFIDENCE_THRESHOLD = "passive_confidence_threshold"
+
 # Default values
 DEFAULT_MAX_OFFSET = 5.0
 DEFAULT_MIN_TEMPERATURE = 16.0
@@ -171,6 +176,11 @@ DEFAULT_RECOVERY_DURATION_MINUTES = 45
 DEFAULT_PROBE_DRIFT_LIMIT = 2.0
 DEFAULT_CALIBRATION_IDLE_MINUTES = 30
 DEFAULT_CALIBRATION_DRIFT_THRESHOLD = 0.3
+
+# Passive learning default values (v1.4.3+)
+DEFAULT_PASSIVE_LEARNING_ENABLED = True  # Enabled by default for new passive learning feature
+DEFAULT_PASSIVE_MIN_DRIFT_MINUTES = 15  # Minimum 15 minutes of off time for valid drift
+DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD = 0.3  # Accept passive measurements with 30% confidence or higher
 
 # Preference level options
 PREFERENCE_LEVELS = [

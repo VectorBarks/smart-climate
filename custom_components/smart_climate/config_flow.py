@@ -100,6 +100,10 @@ from .const import (
     CONF_PROBE_DRIFT_LIMIT,
     CONF_CALIBRATION_IDLE_MINUTES,
     CONF_CALIBRATION_DRIFT_THRESHOLD,
+    # Passive learning imports
+    CONF_PASSIVE_LEARNING_ENABLED,
+    CONF_PASSIVE_MIN_DRIFT_MINUTES,
+    CONF_PASSIVE_CONFIDENCE_THRESHOLD,
     DEFAULT_THERMAL_EFFICIENCY_ENABLED,
     DEFAULT_PREFERENCE_LEVEL,
     DEFAULT_SHADOW_MODE,
@@ -108,6 +112,10 @@ from .const import (
     DEFAULT_PROBE_DRIFT_LIMIT,
     DEFAULT_CALIBRATION_IDLE_MINUTES,
     DEFAULT_CALIBRATION_DRIFT_THRESHOLD,
+    # Passive learning defaults
+    DEFAULT_PASSIVE_LEARNING_ENABLED,
+    DEFAULT_PASSIVE_MIN_DRIFT_MINUTES,
+    DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD,
     PREFERENCE_LEVELS,
 )
 
@@ -1141,6 +1149,35 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                         max=1.0,
                         step=0.01,
                         unit_of_measurement="°C",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                
+                # Passive learning configuration (v1.4.3+)
+                vol.Optional(
+                    CONF_PASSIVE_LEARNING_ENABLED,
+                    default=current_options.get(CONF_PASSIVE_LEARNING_ENABLED, current_config.get(CONF_PASSIVE_LEARNING_ENABLED, DEFAULT_PASSIVE_LEARNING_ENABLED))
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONF_PASSIVE_MIN_DRIFT_MINUTES,
+                    default=current_options.get(CONF_PASSIVE_MIN_DRIFT_MINUTES, current_config.get(CONF_PASSIVE_MIN_DRIFT_MINUTES, DEFAULT_PASSIVE_MIN_DRIFT_MINUTES))
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=10,
+                        max=30,
+                        step=1,
+                        unit_of_measurement="minutes",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_PASSIVE_CONFIDENCE_THRESHOLD,
+                    default=current_options.get(CONF_PASSIVE_CONFIDENCE_THRESHOLD, current_config.get(CONF_PASSIVE_CONFIDENCE_THRESHOLD, DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD))
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0.2,
+                        max=0.5,
+                        step=0.01,
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),

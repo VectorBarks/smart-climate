@@ -115,6 +115,34 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         
         _LOGGER.debug("Seasonal learning cycle detection initialized in IDLE state")
     
+    def _map_hvac_action_to_state(self, hvac_action: Optional[str], power: Optional[float]) -> str:
+        """Map HVAC action to passive learning state format.
+        
+        Maps hvac_action values to the format expected by StabilityDetector.add_reading():
+        "off", "cooling", "heating", "idle"
+        
+        Args:
+            hvac_action: HVAC action from wrapped entity
+            power: Power consumption for fallback inference
+            
+        Returns:
+            HVAC state string for passive learning
+        """
+        # Direct mapping for known states
+        if hvac_action in ["off", "cooling", "heating", "idle"]:
+            return hvac_action
+        
+        # Power-based inference when hvac_action is not available or unknown
+        if power is not None:
+            # Use same threshold logic as existing power inference
+            if power > 100:  # AC actively cooling/heating
+                return "cooling"  # Assume cooling for climate systems
+            else:
+                return "idle"  # Low power = idle/off
+        
+        # Default fallback
+        return "idle"
+    
     def set_seasonal_learner(self, seasonal_learner):
         """Set the seasonal learner instance for cycle detection.
         
@@ -521,6 +549,14 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                         ac_state = hvac_action if hvac_action else self._infer_ac_state_from_power(power)
                         thermal_manager.stability_detector.update(ac_state, room_temp)
                         _LOGGER.debug("Updated stability detector: ac_state=%s, temp=%.1f", ac_state, room_temp)
+                        
+                        # Feed HVAC state data for passive learning (Section 2.4)
+                        # Map hvac_action to HVAC state format expected by passive learning
+                        hvac_state = self._map_hvac_action_to_state(hvac_action, power)
+                        current_timestamp = dt_util.utcnow().timestamp()
+                        thermal_manager.stability_detector.add_reading(current_timestamp, room_temp, hvac_state)
+                        _LOGGER.debug("Fed HVAC state for passive learning: ts=%.1f, temp=%.1f°C, hvac=%s", 
+                                    current_timestamp, room_temp, hvac_state)
                     
                     # CRITICAL FIX: Update thermal state and check for transitions
                     # This is the periodic check that was missing
