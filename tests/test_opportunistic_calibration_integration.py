@@ -130,7 +130,7 @@ class TestOpportunisticCalibrationIntegration:
             current_handler = thermal_manager._state_handlers.get(thermal_manager.current_state)
             if current_handler:
                 # Execute the state handler which should detect stability and return CALIBRATING
-                next_state = current_handler.execute(thermal_manager)
+                next_state = current_handler.execute(thermal_manager, 23.0, (22.0, 24.0))
                 if next_state:
                     thermal_manager.transition_to(next_state)
             

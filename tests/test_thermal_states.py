@@ -44,10 +44,12 @@ class MockStateHandler(StateHandler):
         self.on_exit_called = False
         self.context_received = None
     
-    def execute(self, context) -> Optional[ThermalState]:
+    def execute(self, context, current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Mock execute method."""
         self.execute_called = True
         self.context_received = context
+        self.current_temp = current_temp
+        self.operating_window = operating_window
         return self.next_state
     
     def on_enter(self, context) -> None:
@@ -74,7 +76,7 @@ class TestStateHandlerImplementation:
         handler = MockStateHandler(ThermalState.CORRECTING)
         mock_context = Mock()
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, 23.0, (22.0, 24.0))
         
         assert handler.execute_called
         assert handler.context_received is mock_context
@@ -85,7 +87,7 @@ class TestStateHandlerImplementation:
         handler = MockStateHandler(None)
         mock_context = Mock()
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, 23.0, (22.0, 24.0))
         
         assert result is None
 
@@ -135,7 +137,7 @@ class TestThermalManagerIntegration:
         mock_thermal_manager.current_state = ThermalState.PRIMING
         
         # Should accept ThermalManager without error
-        result = handler.execute(mock_thermal_manager)
+        result = handler.execute(mock_thermal_manager, 23.0, (22.0, 24.0))
         handler.on_enter(mock_thermal_manager)
         handler.on_exit(mock_thermal_manager)
         
@@ -146,7 +148,7 @@ class TestThermalManagerIntegration:
         # Test all valid states can be returned
         for state in ThermalState:
             handler = MockStateHandler(state)
-            result = handler.execute(Mock())
+            result = handler.execute(Mock(), 23.0, (22.0, 24.0))
             assert result in ThermalState or result is None
 
     def test_execute_method_accepts_thermal_manager_interface(self):
@@ -158,7 +160,7 @@ class TestThermalManagerIntegration:
         mock_manager.current_state = ThermalState.PRIMING
         mock_manager.get_operating_window.return_value = (20.0, 24.0)
         
-        result = handler.execute(mock_manager)
+        result = handler.execute(mock_manager, 23.0, (22.0, 24.0))
         
         assert result == ThermalState.DRIFTING
         assert handler.context_received is mock_manager
@@ -184,7 +186,7 @@ class TestStateTransitionValidation:
             mock_context = Mock()
             mock_context.current_state = from_state
             
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.0, (22.0, 24.0))
             assert result == to_state
 
     def test_state_handler_base_provides_no_validation(self):
@@ -192,11 +194,11 @@ class TestStateTransitionValidation:
         # The base StateHandler should allow any transition
         # Validation should be in ThermalManager or specific handlers
         handler = MockStateHandler(ThermalState.PROBING)
-        result = handler.execute(Mock())
+        result = handler.execute(Mock(), 23.0, (22.0, 24.0))
         assert result == ThermalState.PROBING
 
     def test_none_return_means_no_state_change(self):
         """Test that returning None from execute means no state transition."""
         handler = MockStateHandler(None)
-        result = handler.execute(Mock())
+        result = handler.execute(Mock(), 23.0, (22.0, 24.0))
         assert result is None

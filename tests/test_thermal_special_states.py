@@ -74,7 +74,7 @@ class TestPrimingState:
         # Test - should transition to calibrating when stable, not based on time
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 14, 0, 0)  # Just 2 hours later
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         assert result == ThermalState.CALIBRATING
 
@@ -94,7 +94,7 @@ class TestPrimingState:
         # Test after 25 hours (should transition to drifting, not calibrating)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 2, 13, 0, 0)  # 25 hours later
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         assert result == ThermalState.DRIFTING
 
@@ -112,7 +112,7 @@ class TestPrimingState:
         # Test after 12 hours (should stay in priming)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 2, 0, 0, 0)  # 12 hours later
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         assert result is None
 
@@ -127,7 +127,7 @@ class TestPrimingState:
         mock_context.thermal_constants = Mock()
         mock_context.thermal_constants.priming_duration = 86400
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         # Should handle gracefully (either stay or transition safely)
         assert result is None or isinstance(result, ThermalState)
@@ -140,7 +140,7 @@ class TestPrimingState:
         mock_context = Mock()
         mock_context.passive_learning_enabled = False
         
-        handler.execute(mock_context)
+        handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         # Should enable aggressive passive learning
         assert mock_context.passive_learning_enabled is True
@@ -187,7 +187,7 @@ class TestPrimingState:
         mock_context.stability_detector.is_stable_for_calibration.return_value = False
         # No calibration_hour attribute should be accessed
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         # Should transition based on duration/stability, not calibration_hour
         assert result == ThermalState.DRIFTING
@@ -204,7 +204,7 @@ class TestPrimingState:
         mock_context.thermal_constants.calibrating_duration = 3600
         
         # Should still enable precise measurement mode
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         # Should still enable precise measurement mode for clean offset readings
         assert mock_context.precise_measurement_mode is True
@@ -257,7 +257,7 @@ class TestRecoveryState:
         # Test after 31 minutes (should transition)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 12, 31, 0)
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         assert result == ThermalState.DRIFTING
 
@@ -275,7 +275,7 @@ class TestRecoveryState:
         # Test after 15 minutes (should stay in recovery)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 12, 15, 0)
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         assert result is None
 
@@ -409,7 +409,7 @@ class TestProbeState:
         mock_context = Mock()
         mock_context.probe_aborted = True
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         # Should return to previous state when aborted
         assert result == ThermalState.DRIFTING
@@ -431,7 +431,7 @@ class TestProbeState:
         # Test after sufficient time with good data
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 12, 35, 0)  # 35 minutes later
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 25.0, (22.0, 25.0))
         
         assert result == ThermalState.CALIBRATING
 
@@ -533,7 +533,7 @@ class TestCalibratingState:
         # Test after 61 minutes (should transition)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 13, 1, 0)  # 61 minutes later
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         assert result == ThermalState.DRIFTING
 
@@ -551,7 +551,7 @@ class TestCalibratingState:
         # Test after 30 minutes (should stay)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 12, 30, 0)
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         assert result is None
 
@@ -582,7 +582,7 @@ class TestCalibratingState:
         mock_context.ac_internal_temp = 20.5
         
         # Should enable precise offset measurement mode
-        handler.execute(mock_context)
+        handler.execute(mock_context, 23.0, (22.5, 23.5))
         
         assert mock_context.precise_measurement_mode is True
 
@@ -663,7 +663,7 @@ class TestSpecialStateEdgeCases:
             mock_context.thermal_constants = None
             
             try:
-                result = handler.execute(mock_context)
+                result = handler.execute(mock_context, 23.5, (22.0, 25.0))
                 assert result is None or isinstance(result, ThermalState)
             except (AttributeError, ValueError, TypeError):
                 # Expected behavior for missing constants
@@ -683,7 +683,7 @@ class TestSpecialStateEdgeCases:
         # Test with clock moved backward
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 10, 0, 0)  # 2 hours before start
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         # Should handle gracefully without crashing
         assert result is None or isinstance(result, ThermalState)
@@ -701,7 +701,7 @@ class TestSpecialStateEdgeCases:
         mock_context.probe_aborted = False
         
         try:
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, None, (22.0, 25.0))
             assert result is None or isinstance(result, ThermalState)
         except (AttributeError, ValueError, TypeError):
             # Expected behavior for invalid readings
@@ -720,7 +720,7 @@ class TestSpecialStateEdgeCases:
         
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 1, 12, 0, 1)  # 1 second later
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, 23.5, (22.0, 25.0))
         
         # Should handle gracefully (likely immediate transition)
         assert result is None or isinstance(result, ThermalState)
@@ -767,7 +767,7 @@ class TestSpecialStateIntegration:
         for handler in handlers:
             # All should be able to execute with ThermalManager interface
             try:
-                result = handler.execute(mock_manager)
+                result = handler.execute(mock_manager, 23.0, (22.0, 24.0))
                 assert result is None or isinstance(result, ThermalState)
             except (AttributeError, ValueError, TypeError):
                 # Some may need additional setup, which is acceptable
@@ -826,7 +826,7 @@ class TestSpecialStateIntegration:
             mock_context.thermal_constants.calibrating_duration = 0
             
             try:
-                result = handler.execute(mock_context)
+                result = handler.execute(mock_context, 23.5, (22.0, 25.0))
                 if result is not None:
                     assert result in expected_states, f"{handler_class} returned unexpected state: {result}"
             except (AttributeError, ValueError, TypeError):

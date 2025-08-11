@@ -37,7 +37,7 @@ class TestDriftingState:
         mock_context.current_temp = 22.5
         mock_context.operating_window = (20.0, 24.0)
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert result is None  # No state transition
 
@@ -50,7 +50,7 @@ class TestDriftingState:
         mock_context.current_temp = 24.5  # Above upper bound
         mock_context.operating_window = (20.0, 24.0)
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert result == ThermalState.CORRECTING
 
@@ -63,7 +63,7 @@ class TestDriftingState:
         mock_context.current_temp = 19.5  # Below lower bound
         mock_context.operating_window = (20.0, 24.0)
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert result == ThermalState.CORRECTING
 
@@ -76,7 +76,7 @@ class TestDriftingState:
         mock_context.current_temp = 24.0  # Exactly at upper bound
         mock_context.operating_window = (20.0, 24.0)
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert result == ThermalState.CORRECTING
 
@@ -89,7 +89,7 @@ class TestDriftingState:
         mock_context.current_temp = 20.0  # Exactly at lower bound
         mock_context.operating_window = (20.0, 24.0)
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert result == ThermalState.CORRECTING
 
@@ -103,7 +103,7 @@ class TestDriftingState:
         mock_context.operating_window = (20.0, 24.0)
         mock_context.offset_learning_paused = False
         
-        handler.execute(mock_context)
+        handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert mock_context.offset_learning_paused is True
 
@@ -137,10 +137,10 @@ class TestDriftingState:
         
         # Should not crash, might return None or raise appropriate exception
         try:
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, None, None)  # Test with None values
             # Either returns None or raises AttributeError/ValueError
             assert result is None or isinstance(result, ThermalState)
-        except (AttributeError, ValueError):
+        except (AttributeError, ValueError, TypeError):
             # Expected behavior for missing attributes
             pass
 
@@ -168,7 +168,7 @@ class TestCorrectingState:
         mock_context.current_temp = 22.0  # Well within bounds
         mock_context.operating_window = (20.0, 24.0)
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert result == ThermalState.DRIFTING
 
@@ -181,7 +181,7 @@ class TestCorrectingState:
         mock_context.current_temp = 24.1  # Just outside upper bound (within 0.2°C buffer)
         mock_context.operating_window = (20.0, 24.0)
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert result is None  # Stay in correcting
 
@@ -195,7 +195,7 @@ class TestCorrectingState:
         mock_context.operating_window = (20.0, 24.0)
         mock_context._setpoint = 22.0  # Set real number for setpoint
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         # Should transition to DRIFTING as it's within buffer zone
         assert result == ThermalState.DRIFTING
@@ -210,7 +210,7 @@ class TestCorrectingState:
         mock_context.operating_window = (20.0, 24.0)
         mock_context._setpoint = 22.0  # Set real number for setpoint
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         # Should transition to DRIFTING as it's within buffer zone
         assert result == ThermalState.DRIFTING
@@ -225,7 +225,7 @@ class TestCorrectingState:
         mock_context.operating_window = (20.0, 24.0)
         mock_context.offset_learning_paused = True
         
-        handler.execute(mock_context)
+        handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         assert mock_context.offset_learning_paused is False
 
@@ -238,7 +238,7 @@ class TestCorrectingState:
         mock_context.current_temp = 25.0  # Above upper bound
         mock_context.operating_window = (20.0, 24.0)
         
-        handler.execute(mock_context)
+        handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         # Should set learning target to upper boundary (24.0)
         assert mock_context.learning_target == 24.0
@@ -252,7 +252,7 @@ class TestCorrectingState:
         mock_context.current_temp = 19.0  # Below lower bound
         mock_context.operating_window = (20.0, 24.0)
         
-        handler.execute(mock_context)
+        handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         # Should set learning target to lower boundary (20.0)
         assert mock_context.learning_target == 20.0
@@ -267,7 +267,7 @@ class TestCorrectingState:
         mock_context.operating_window = (20.0, 24.0)
         mock_context._setpoint = 22.0  # Mock setpoint
         
-        handler.execute(mock_context)
+        handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         # Should set learning target to setpoint (22.0)
         assert mock_context.learning_target == 22.0
@@ -306,7 +306,7 @@ class TestStateHandlerEdgeCases:
         mock_context.operating_window = (20.0, 24.0)
         
         try:
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
             # Should either return None or raise appropriate exception
             assert result is None or isinstance(result, ThermalState)
         except (AttributeError, ValueError, TypeError):
@@ -323,7 +323,7 @@ class TestStateHandlerEdgeCases:
         mock_context.operating_window = None
         
         try:
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
             # Should either return None or raise appropriate exception
             assert result is None or isinstance(result, ThermalState)
         except (AttributeError, ValueError, TypeError):
@@ -340,7 +340,7 @@ class TestStateHandlerEdgeCases:
         mock_context.operating_window = (24.0, 20.0)  # Inverted
         
         try:
-            result = handler.execute(mock_context)
+            result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
             # Should handle gracefully or raise appropriate exception
             assert result is None or isinstance(result, ThermalState)
         except (ValueError, TypeError):
@@ -357,7 +357,7 @@ class TestStateHandlerEdgeCases:
         mock_context.operating_window = (21.9, 22.1)  # Very small window
         mock_context._setpoint = 22.0
         
-        result = handler.execute(mock_context)
+        result = handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
         
         # Should handle small windows without crashing
         assert result is None or isinstance(result, ThermalState)
@@ -373,7 +373,7 @@ class TestStateHandlerEdgeCases:
         # Mock doesn't have _setpoint attribute
         
         try:
-            handler.execute(mock_context)
+            handler.execute(mock_context, mock_context.current_temp, mock_context.operating_window)
             # Should either work with fallback or raise appropriate exception
         except AttributeError:
             # Expected behavior when setpoint is missing
@@ -398,8 +398,8 @@ class TestStateHandlerIntegration:
         correcting_handler = CorrectingState()
         
         # Both should be able to execute with ThermalManager interface
-        drifting_result = drifting_handler.execute(mock_manager)
-        correcting_result = correcting_handler.execute(mock_manager)
+        drifting_result = drifting_handler.execute(mock_manager, 22.0, (20.0, 24.0))
+        correcting_result = correcting_handler.execute(mock_manager, 22.0, (20.0, 24.0))
         
         assert drifting_result is None or isinstance(drifting_result, ThermalState)
         assert correcting_result is None or isinstance(correcting_result, ThermalState)
