@@ -109,6 +109,13 @@ class ThermalManager:
             recovery_duration=self._config.get('recovery_duration', 1800)
         )
         
+        # Initialize stability detector for opportunistic calibration
+        from .thermal_stability import StabilityDetector
+        self.stability_detector = StabilityDetector(
+            idle_threshold_minutes=self._config.get('calibration_idle_minutes', 30),
+            drift_threshold=self._config.get('calibration_drift_threshold', 0.1)
+        )
+        
         # Initialize state handlers registry
         self._initialize_state_handlers()
         
@@ -142,11 +149,25 @@ class ThermalManager:
         """Get current thermal state."""
         return self._current_state
 
-    @property
-    def calibration_hour(self) -> int:
-        """Get configured calibration hour."""
-        from .const import CONF_CALIBRATION_HOUR, DEFAULT_CALIBRATION_HOUR
-        return self._config.get(CONF_CALIBRATION_HOUR, DEFAULT_CALIBRATION_HOUR)
+
+    def _get_current_conditions(self) -> tuple[str, Optional[float]]:
+        """Get current AC state and temperature for stability detection.
+        
+        Returns:
+            Tuple of (ac_state, temperature) where ac_state is one of:
+            "cooling", "heating", "idle", "off"
+        """
+        try:
+            # This would normally get the actual AC state from the climate entity
+            # For now, return a simple idle state as fallback
+            # TODO: Implement proper AC state detection from climate entity
+            ac_state = "idle"  # Placeholder implementation
+            temperature = None  # Will be provided by coordinator
+            
+            return ac_state, temperature
+        except Exception as exc:
+            _LOGGER.debug("Error getting current conditions: %s", exc)
+            return "idle", None
 
     def transition_to(self, new_state: ThermalState) -> None:
         """Transition to a new thermal state.
@@ -194,6 +215,23 @@ class ThermalManager:
                 _LOGGER.warning("Error triggering persistence after state transition: %s", e)
         
         _LOGGER.debug("Successfully transitioned to state %s", new_state.value)
+
+    def force_calibration(self) -> None:
+        """Force immediate transition to CALIBRATING state.
+        
+        This method allows manual triggering of calibration regardless of
+        normal transition conditions. Blocked during PROBING state to
+        prevent conflicts.
+        """
+        if self._current_state == ThermalState.PROBING:
+            _LOGGER.warning("Cannot force calibration during probing")
+            return
+        
+        if self._current_state != ThermalState.CALIBRATING:
+            _LOGGER.info("Manual calibration triggered from %s state", self._current_state.value)
+            self.transition_to(ThermalState.CALIBRATING)
+        else:
+            _LOGGER.debug("Already in CALIBRATING state, no transition needed")
 
     def get_operating_window(
         self,
@@ -367,6 +405,16 @@ class ThermalManager:
                 }
                 probe_history.append(probe_data)
 
+        # Serialize stability detector state if available
+        stability_data = None
+        if hasattr(self, 'stability_detector') and self.stability_detector:
+            stability_data = {
+                "idle_threshold_minutes": int(self.stability_detector._idle_threshold.total_seconds() // 60),
+                "drift_threshold": self.stability_detector._drift_threshold,
+                "last_ac_state": getattr(self.stability_detector, '_last_ac_state', None),
+                "temperature_history_count": len(self.stability_detector._temperature_history)
+            }
+
         return {
             "version": "1.0",
             "state": {
@@ -384,6 +432,7 @@ class ThermalManager:
             },
             "probe_history": probe_history,
             "confidence": self._model.get_confidence() if hasattr(self._model, 'get_confidence') else 0.0,
+            "stability_detector": stability_data,
             "metadata": {
                 "saves_count": self._saves_count,
                 "corruption_recoveries": self._corruption_recovery_count,
@@ -592,24 +641,16 @@ class ThermalManager:
         try:
             # Log current conditions for debugging
             current_time = datetime.now()
-            calibration_hour = self.calibration_hour
-            _LOGGER.debug("Thermal state check - hour: %d, calibration_hour: %d, state: %s, last_transition: %s",
-                          current_time.hour, calibration_hour, self._current_state.value, 
+            _LOGGER.debug("Thermal state check - state: %s, last_transition: %s",
+                          self._current_state.value, 
                           self._last_transition.isoformat() if self._last_transition else "Never")
             
-            # First check if it's calibration hour - this takes priority over other transitions
-            if current_time.hour == calibration_hour:
-                # Transition to CALIBRATING if we're in calibration hour
-                # This allows calibration from any state
-                if self._current_state != ThermalState.CALIBRATING:
-                    _LOGGER.info("Calibration hour reached (%d AM), transitioning from %s to CALIBRATING",
-                               calibration_hour, self._current_state.value)
-                    self.transition_to(ThermalState.CALIBRATING)
-                    return
-                else:
-                    _LOGGER.debug("Already in CALIBRATING state during calibration hour")
-            else:
-                _LOGGER.debug("Not calibration hour (current: %d, calibration: %d)", current_time.hour, calibration_hour)
+            # Update stability detector with current conditions
+            if hasattr(self, 'stability_detector') and self.stability_detector:
+                ac_state, temperature = self._get_current_conditions()
+                if ac_state and temperature is not None:
+                    self.stability_detector.update(ac_state, temperature)
+                    _LOGGER.debug("Updated stability detector: ac_state=%s, temp=%.1f°C", ac_state, temperature)
             
             # Execute current state handler logic
             current_handler = self._state_handlers.get(self._current_state)
@@ -672,3 +713,23 @@ class ThermalManager:
         
         _LOGGER.debug("Thermal manager reset complete: state=%s, tau_cooling=90.0, tau_warming=150.0",
                      self._current_state.value)
+
+    def update_temperature(self, temperature: float, ac_state: str) -> None:
+        """Update stability detector with current temperature and AC state.
+        
+        Args:
+            temperature: Current room temperature
+            ac_state: Current AC state (cooling/heating/idle/off)
+        """
+        if hasattr(self, 'stability_detector') and self.stability_detector:
+            self.stability_detector.update(ac_state, temperature)
+            _LOGGER.debug("Updated stability detector: temp=%.1f°C, state=%s", temperature, ac_state)
+
+    def force_calibration(self) -> None:
+        """Force immediate transition to CALIBRATING state."""
+        if self._current_state == ThermalState.PROBING:
+            _LOGGER.warning("Cannot force calibration during probing")
+            return
+        if self._current_state != ThermalState.CALIBRATING:
+            self.transition_to(ThermalState.CALIBRATING)
+            _LOGGER.info("Manual calibration triggered from %s state", self._current_state)

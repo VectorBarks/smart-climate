@@ -37,14 +37,11 @@ class DriftingState(StateHandler):
             # Pause offset learning during drift phase (per architecture)
             context.offset_learning_paused = True
             
-            # CRITICAL FIX: Check if it's calibration hour - this takes priority
-            from datetime import datetime
-            current_time = datetime.now()
-            calibration_hour = getattr(context, 'calibration_hour', 2)  # Default to 2 AM
-            if current_time.hour == calibration_hour:
-                _LOGGER.info("Calibration hour (%d AM) reached during DRIFTING, transitioning to CALIBRATING",
-                           calibration_hour)
-                return ThermalState.CALIBRATING
+            # Check if stable conditions detected for opportunistic calibration
+            if hasattr(context, 'stability_detector') and context.stability_detector:
+                if context.stability_detector.is_stable_for_calibration():
+                    _LOGGER.info("Stable conditions detected during DRIFTING, transitioning to CALIBRATING")
+                    return ThermalState.CALIBRATING
             
             # Use parameters instead of trying to access context attributes
             # current_temp and operating_window are now passed as parameters

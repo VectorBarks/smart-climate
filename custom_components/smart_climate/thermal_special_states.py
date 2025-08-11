@@ -56,22 +56,22 @@ class PrimingState(StateHandler):
             
             current_time = datetime.now()
             
-            # CRITICAL FIX: Check if it's calibration hour - this takes priority
-            # This allows calibration to happen even during priming phase
-            calibration_hour = getattr(context, 'calibration_hour', 2)  # Default to 2 AM
-            if current_time.hour == calibration_hour:
-                _LOGGER.info("Calibration hour (%d AM) reached during PRIMING, transitioning to CALIBRATING",
-                           calibration_hour)
-                return ThermalState.CALIBRATING
+            # Check if stable conditions detected for opportunistic calibration
+            if hasattr(context, 'stability_detector') and context.stability_detector:
+                if context.stability_detector.is_stable_for_calibration():
+                    _LOGGER.info("Stable conditions detected during PRIMING, transitioning to CALIBRATING")
+                    return ThermalState.CALIBRATING
             
             # Check if priming duration is complete
             elapsed_time = (current_time - self._start_time).total_seconds()
             priming_duration = context.thermal_constants.priming_duration
             
-            # Log detailed priming check for debugging
-            _LOGGER.debug("PrimingState check - elapsed: %.1fh of %.1fh, calibration_hour: %d, current_hour: %d",
-                          elapsed_time / 3600.0, priming_duration / 3600.0, 
-                          calibration_hour, current_time.hour)
+            # Log detailed priming check for debugging  
+            stability_ready = False
+            if hasattr(context, 'stability_detector') and context.stability_detector:
+                stability_ready = context.stability_detector.is_stable_for_calibration()
+            _LOGGER.debug("PrimingState check - elapsed: %.1fh of %.1fh, stability_ready: %s",
+                          elapsed_time / 3600.0, priming_duration / 3600.0, stability_ready)
             
             # Handle system clock changes gracefully
             if elapsed_time < 0:
@@ -578,27 +578,25 @@ class CalibratingState(StateHandler):
             return {'stability': 0.0, 'precision': 0.0, 'duration': 0.0}
 
     def is_optimal_calibration_time(self, context: "ThermalManager") -> bool:
-        """Check if current time is within optimal calibration window.
+        """Check if current time is optimal for calibration.
         
         Args:
             context: ThermalManager instance
             
         Returns:
-            True if within configured calibration window (calibration_hour to calibration_hour+1), False otherwise
+            True if conditions are good for calibration (now uses stability detection)
         """
         try:
-            current_time = datetime.now()
-            hour = current_time.hour
+            # With opportunistic calibration, we rely on stability detection
+            # rather than fixed time windows
+            if hasattr(context, 'stability_detector') and context.stability_detector:
+                return context.stability_detector.is_stable_for_calibration()
             
-            # Get configured calibration hour from context, fallback to 2 AM default
-            calibration_hour = getattr(context, 'calibration_hour', 2)
-            
-            # Calibration window: configured hour to configured hour + 1
-            # e.g., calibration_hour=2 means 2-3 AM window
-            return calibration_hour <= hour < calibration_hour + 1
+            # Fallback: assume any time is acceptable if no stability detector
+            return True
             
         except (AttributeError, TypeError, ValueError):
-            return False  # Not optimal if we can't determine time
+            return False  # Not optimal if we can't determine stability
 
     def on_enter(self, context: "ThermalManager") -> None:
         """Called when entering CALIBRATING state.

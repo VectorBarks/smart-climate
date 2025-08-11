@@ -2,8 +2,9 @@
 Tests state transitions, operating window calculations, and AC control decisions."""
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Tuple, Optional
+from datetime import datetime, timedelta
 
 from custom_components.smart_climate.thermal_models import ThermalState, ThermalConstants
 from custom_components.smart_climate.thermal_preferences import UserPreferences, PreferenceLevel
@@ -342,3 +343,164 @@ class TestThermalManager:
         thermal_manager._last_hvac_mode = "heat"
         target = thermal_manager.get_learning_target(5.0, window)
         assert target == 20.0
+
+    def test_force_calibration_triggers_transition(self, thermal_manager):
+        """Test force_calibration triggers immediate transition to CALIBRATING state."""
+        # Start in DRIFTING state
+        thermal_manager._current_state = ThermalState.DRIFTING
+        
+        # Mock transition_to method to verify it's called
+        thermal_manager.transition_to = Mock()
+        
+        thermal_manager.force_calibration()
+        
+        # Should call transition_to with CALIBRATING state
+        thermal_manager.transition_to.assert_called_once_with(ThermalState.CALIBRATING)
+
+    def test_force_calibration_blocked_during_probing(self, thermal_manager):
+        """Test force_calibration is blocked during PROBING state."""
+        # Set state to PROBING
+        thermal_manager._current_state = ThermalState.PROBING
+        
+        # Mock transition_to to ensure it's not called
+        thermal_manager.transition_to = Mock()
+        
+        thermal_manager.force_calibration()
+        
+        # Should NOT call transition_to when in PROBING state
+        thermal_manager.transition_to.assert_not_called()
+
+    def test_force_calibration_logs_manual_trigger(self, thermal_manager):
+        """Test force_calibration logs manual calibration trigger."""
+        # Start in DRIFTING state
+        thermal_manager._current_state = ThermalState.DRIFTING
+        thermal_manager.transition_to = Mock()
+        
+        # Use patch to capture log output
+        with patch('custom_components.smart_climate.thermal_manager._LOGGER') as mock_logger:
+            thermal_manager.force_calibration()
+            
+            # Should log the manual calibration trigger
+            mock_logger.info.assert_called()
+            # Verify log message contains expected content
+            args = mock_logger.info.call_args[0]
+            assert "Manual calibration triggered" in args[0]
+
+    def test_force_calibration_from_various_states(self, thermal_manager):
+        """Test force_calibration works from various valid states."""
+        thermal_manager.transition_to = Mock()
+        
+        # Test from different states (all except PROBING should work)
+        valid_states = [
+            ThermalState.PRIMING,
+            ThermalState.DRIFTING,
+            ThermalState.CORRECTING,
+            ThermalState.RECOVERY,
+            ThermalState.CALIBRATING  # Should still allow (idempotent)
+        ]
+        
+        for state in valid_states:
+            thermal_manager.transition_to.reset_mock()
+            thermal_manager._current_state = state
+            
+            thermal_manager.force_calibration()
+            
+            if state == ThermalState.CALIBRATING:
+                # Already in CALIBRATING, should not transition
+                thermal_manager.transition_to.assert_not_called()
+            else:
+                # Should transition to CALIBRATING
+                thermal_manager.transition_to.assert_called_once_with(ThermalState.CALIBRATING)
+
+    def test_thermal_manager_initializes_stability_detector(self, mock_hass, mock_thermal_model, mock_preferences):
+        """Test ThermalManager initializes StabilityDetector with config values."""
+        config = {
+            "calibration_idle_minutes": 45,
+            "calibration_drift_threshold": 0.05
+        }
+        
+        thermal_manager = ThermalManager(
+            mock_hass, mock_thermal_model, mock_preferences, config=config
+        )
+        
+        assert hasattr(thermal_manager, 'stability_detector')
+        assert thermal_manager.stability_detector is not None
+        assert thermal_manager.stability_detector._idle_threshold.total_seconds() == 45 * 60  # 45 minutes
+        assert thermal_manager.stability_detector._drift_threshold == 0.05
+
+    def test_thermal_manager_initializes_default_stability_detector(self, mock_hass, mock_thermal_model, mock_preferences):
+        """Test ThermalManager initializes StabilityDetector with default values when no config."""
+        thermal_manager = ThermalManager(mock_hass, mock_thermal_model, mock_preferences)
+        
+        assert hasattr(thermal_manager, 'stability_detector')
+        assert thermal_manager.stability_detector is not None
+        assert thermal_manager.stability_detector._idle_threshold.total_seconds() == 30 * 60  # 30 minutes default
+        assert thermal_manager.stability_detector._drift_threshold == 0.1  # 0.1°C default
+
+    def test_thermal_manager_updates_detector_on_temperature_change(self, thermal_manager):
+        """Test ThermalManager updates stability detector when temperature changes."""
+        # Mock the stability detector
+        mock_detector = Mock()
+        thermal_manager.stability_detector = mock_detector
+        
+        # Simulate temperature update
+        thermal_manager._last_hvac_mode = "cool"
+        thermal_manager.update_temperature(24.5, "idle")
+        
+        # Verify detector was updated with AC state and temperature
+        mock_detector.update.assert_called_once_with("idle", 24.5)
+
+    def test_detector_configuration_from_options(self, mock_hass, mock_thermal_model, mock_preferences):
+        """Test StabilityDetector configuration from config options."""
+        # Test with custom configuration
+        config_custom = {
+            "calibration_idle_minutes": 60,
+            "calibration_drift_threshold": 0.2
+        }
+        
+        thermal_manager = ThermalManager(
+            mock_hass, mock_thermal_model, mock_preferences, config=config_custom
+        )
+        
+        assert thermal_manager.stability_detector._idle_threshold.total_seconds() == 60 * 60
+        assert thermal_manager.stability_detector._drift_threshold == 0.2
+        
+        # Test with minimal configuration (should use defaults for missing values)
+        config_minimal = {
+            "calibration_idle_minutes": 20
+        }
+        
+        thermal_manager2 = ThermalManager(
+            mock_hass, mock_thermal_model, mock_preferences, config=config_minimal
+        )
+        
+        assert thermal_manager2.stability_detector._idle_threshold.total_seconds() == 20 * 60
+        assert thermal_manager2.stability_detector._drift_threshold == 0.1  # default
+
+    def test_detector_state_included_in_serialization(self, thermal_manager):
+        """Test StabilityDetector state is included in ThermalManager serialization."""
+        # Mock the stability detector with some state
+        mock_detector = Mock()
+        mock_detector._idle_threshold = timedelta(minutes=35)  # Return actual timedelta
+        mock_detector._drift_threshold = 0.05
+        mock_detector._last_ac_state = "idle"
+        mock_detector._temperature_history = [(datetime.now(), 24.0), (datetime.now(), 24.1)]
+        
+        thermal_manager.stability_detector = mock_detector
+        
+        # Serialize the thermal manager
+        data = thermal_manager.serialize()
+        
+        # Check that stability detector data is included
+        assert "stability_detector" in data
+        stability_data = data["stability_detector"]
+        assert "idle_threshold_minutes" in stability_data
+        assert "drift_threshold" in stability_data
+        assert "last_ac_state" in stability_data
+        assert "temperature_history_count" in stability_data
+        
+        # Verify actual values
+        assert stability_data["idle_threshold_minutes"] == 35
+        assert stability_data["drift_threshold"] == 0.05
+        assert stability_data["last_ac_state"] == "idle"
+        assert stability_data["temperature_history_count"] == 2

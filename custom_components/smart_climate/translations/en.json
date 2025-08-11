@@ -134,7 +134,15 @@
           "clear_sky_min_duration_hours": "Clear Sky Minimum Duration (hours)",
           "clear_sky_lookahead_hours": "Clear Sky Lookahead Period (hours)",
           "clear_sky_pre_action_hours": "Clear Sky Pre-Action Time (hours)",
-          "clear_sky_adjustment": "Clear Sky Pre-Cool Adjustment (°C)"
+          "clear_sky_adjustment": "Clear Sky Pre-Cool Adjustment (°C)",
+          "thermal_efficiency_enabled": "Enable Thermal Efficiency",
+          "preference_level": "Comfort vs Savings Preference", 
+          "shadow_mode": "Shadow Mode (observe only)",
+          "priming_duration_hours": "Priming Duration (hours)",
+          "recovery_duration_minutes": "Recovery Duration (minutes)",
+          "probe_drift_limit": "Probe Drift Limit (°C)",
+          "calibration_idle_minutes": "Calibration Idle Threshold (minutes)",
+          "calibration_drift_threshold": "Calibration Temperature Stability (°C)"
         },
         "data_description": {
           "max_offset": "Maximum temperature offset to apply (safety limit)",
@@ -168,7 +176,15 @@
           "clear_sky_min_duration_hours": "Minimum duration of clear conditions to trigger strategy (1-24 hours)",
           "clear_sky_lookahead_hours": "How far ahead to check forecast for clear conditions (1-48 hours)",
           "clear_sky_pre_action_hours": "How many hours before clear conditions to start pre-cooling (1-6 hours)",
-          "clear_sky_adjustment": "Temperature adjustment for clear sky pre-cooling (negative values for cooling, -3.0 to 0.0°C)"
+          "clear_sky_adjustment": "Temperature adjustment for clear sky pre-cooling (negative values for cooling, -3.0 to 0.0°C)",
+          "thermal_efficiency_enabled": "Enable advanced thermal efficiency optimization for energy savings",
+          "preference_level": "Choose your balance between comfort and energy savings", 
+          "shadow_mode": "Enable to monitor thermal patterns without controlling the AC",
+          "priming_duration_hours": "Duration for initial thermal learning (24-48 hours recommended)",
+          "recovery_duration_minutes": "Time to recover after mode changes (30-60 minutes)",
+          "probe_drift_limit": "Maximum temperature drift during active learning (1.0-3.0°C)",
+          "calibration_idle_minutes": "Minutes AC must be idle before opportunistic calibration triggers (15-120)",
+          "calibration_drift_threshold": "Maximum temperature drift to consider conditions stable for calibration (0.05-0.5°C)"
         }
       }
     }

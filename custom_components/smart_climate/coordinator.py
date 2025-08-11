@@ -379,6 +379,14 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 self._current_cycle_data = {}
                 self._post_cool_start_time = None
     
+    def _infer_ac_state_from_power(self, power_consumption: Optional[float]) -> str:
+        """Infer AC state from power consumption when hvac_action is unavailable."""
+        if power_consumption is None:
+            return "idle"  # Default assumption
+        
+        # Use threshold similar to migration logic - above 100W indicates cooling
+        return "cooling" if power_consumption > 100 else "idle"
+    
     async def async_force_startup_refresh(self) -> None:
         """Force immediate refresh for startup scenario."""
         _LOGGER.debug("Forcing startup refresh for coordinator")
@@ -488,12 +496,14 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             # Get mode adjustments
             mode_adjustments = self._mode_manager.get_adjustments()
             
-            # Get HVAC mode from wrapped entity
+            # Get HVAC mode and action from wrapped entity
             hvac_mode = None
+            hvac_action = None
             if hasattr(self, '_wrapped_entity_id') and self._wrapped_entity_id:
                 wrapped_state = self.hass.states.get(self._wrapped_entity_id)
                 if wrapped_state:
                     hvac_mode = wrapped_state.state
+                    hvac_action = wrapped_state.attributes.get("hvac_action") if wrapped_state.attributes else None
             
             # Calculate offset if we have room temperature
             calculated_offset = 0.0
@@ -505,6 +515,13 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             thermal_manager = self.get_thermal_manager(self._entity_id) if self._entity_id else None
             if self.thermal_efficiency_enabled and thermal_manager and room_temp is not None:
                 try:
+                    # Update stability detector with current AC state and temperature
+                    if hasattr(thermal_manager, 'stability_detector') and thermal_manager.stability_detector:
+                        # Infer AC state if hvac_action not available
+                        ac_state = hvac_action if hvac_action else self._infer_ac_state_from_power(power)
+                        thermal_manager.stability_detector.update(ac_state, room_temp)
+                        _LOGGER.debug("Updated stability detector: ac_state=%s, temp=%.1f", ac_state, room_temp)
+                    
                     # CRITICAL FIX: Update thermal state and check for transitions
                     # This is the periodic check that was missing
                     thermal_manager.update_state(

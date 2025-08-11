@@ -98,14 +98,16 @@ from .const import (
     CONF_PRIMING_DURATION_HOURS,
     CONF_RECOVERY_DURATION_MINUTES,
     CONF_PROBE_DRIFT_LIMIT,
-    CONF_CALIBRATION_HOUR,
+    CONF_CALIBRATION_IDLE_MINUTES,
+    CONF_CALIBRATION_DRIFT_THRESHOLD,
     DEFAULT_THERMAL_EFFICIENCY_ENABLED,
     DEFAULT_PREFERENCE_LEVEL,
     DEFAULT_SHADOW_MODE,
     DEFAULT_PRIMING_DURATION_HOURS,
     DEFAULT_RECOVERY_DURATION_MINUTES,
     DEFAULT_PROBE_DRIFT_LIMIT,
-    DEFAULT_CALIBRATION_HOUR,
+    DEFAULT_CALIBRATION_IDLE_MINUTES,
+    DEFAULT_CALIBRATION_DRIFT_THRESHOLD,
     PREFERENCE_LEVELS,
 )
 
@@ -1119,14 +1121,26 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                     )
                 ),
                 vol.Optional(
-                    CONF_CALIBRATION_HOUR,
-                    default=current_options.get(CONF_CALIBRATION_HOUR, current_config.get(CONF_CALIBRATION_HOUR, DEFAULT_CALIBRATION_HOUR))
+                    CONF_CALIBRATION_IDLE_MINUTES,
+                    default=current_options.get(CONF_CALIBRATION_IDLE_MINUTES, current_config.get(CONF_CALIBRATION_IDLE_MINUTES, DEFAULT_CALIBRATION_IDLE_MINUTES))
                 ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
-                        min=0,
-                        max=23,
+                        min=15,
+                        max=120,
                         step=1,
-                        unit_of_measurement="hour",
+                        unit_of_measurement="minutes",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_CALIBRATION_DRIFT_THRESHOLD,
+                    default=current_options.get(CONF_CALIBRATION_DRIFT_THRESHOLD, current_config.get(CONF_CALIBRATION_DRIFT_THRESHOLD, DEFAULT_CALIBRATION_DRIFT_THRESHOLD))
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0.05,
+                        max=0.5,
+                        step=0.01,
+                        unit_of_measurement="°C",
                         mode=selector.NumberSelectorMode.BOX,
                     )
                 ),

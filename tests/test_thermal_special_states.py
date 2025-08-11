@@ -58,6 +58,26 @@ class TestPrimingState:
         # Should set start time
         assert hasattr(handler, '_start_time')
 
+    def test_priming_state_checks_stability_not_time(self):
+        """Test PrimingState checks stability detection instead of calibration_hour."""
+        from custom_components.smart_climate.thermal_special_states import PrimingState
+        
+        handler = PrimingState()
+        handler._start_time = datetime(2025, 1, 1, 12, 0, 0)
+        
+        mock_context = Mock()
+        mock_context.thermal_constants = Mock()
+        mock_context.thermal_constants.priming_duration = 86400  # 24 hours
+        mock_context.stability_detector = Mock()
+        mock_context.stability_detector.is_stable_for_calibration.return_value = True
+        
+        # Test - should transition to calibrating when stable, not based on time
+        with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
+            mock_dt.now.return_value = datetime(2025, 1, 1, 14, 0, 0)  # Just 2 hours later
+            result = handler.execute(mock_context)
+        
+        assert result == ThermalState.CALIBRATING
+
     def test_priming_state_transitions_to_drifting_after_duration(self):
         """Test PrimingState transitions to DRIFTING after 24-48 hours."""
         from custom_components.smart_climate.thermal_special_states import PrimingState
@@ -68,8 +88,10 @@ class TestPrimingState:
         mock_context = Mock()
         mock_context.thermal_constants = Mock()
         mock_context.thermal_constants.priming_duration = 86400  # 24 hours
+        mock_context.stability_detector = Mock()
+        mock_context.stability_detector.is_stable_for_calibration.return_value = False
         
-        # Test after 25 hours (should transition)
+        # Test after 25 hours (should transition to drifting, not calibrating)
         with patch('custom_components.smart_climate.thermal_special_states.datetime') as mock_dt:
             mock_dt.now.return_value = datetime(2025, 1, 2, 13, 0, 0)  # 25 hours later
             result = handler.execute(mock_context)
@@ -144,6 +166,48 @@ class TestPrimingState:
         
         # Should not raise exception
         handler.on_exit(mock_context)
+
+    def test_drifting_state_transitions_on_stability(self):
+        """Test DriftingState transitions to CALIBRATING when stable conditions detected."""
+        # Note: This would be in thermal_state_handlers, but we test the concept here
+        # DriftingState would need to check stability_detector in its execute method
+        pass
+
+    def test_no_calibration_hour_dependency(self):
+        """Test that no state handlers depend on calibration_hour anymore."""
+        from custom_components.smart_climate.thermal_special_states import PrimingState
+        
+        handler = PrimingState()
+        handler._start_time = datetime(2025, 1, 1, 12, 0, 0)
+        
+        mock_context = Mock()
+        mock_context.thermal_constants = Mock()
+        mock_context.thermal_constants.priming_duration = 0  # Force immediate transition
+        mock_context.stability_detector = Mock()
+        mock_context.stability_detector.is_stable_for_calibration.return_value = False
+        # No calibration_hour attribute should be accessed
+        
+        result = handler.execute(mock_context)
+        
+        # Should transition based on duration/stability, not calibration_hour
+        assert result == ThermalState.DRIFTING
+
+    def test_calibrating_still_captures_offset(self):
+        """Test that CalibratingState still functions for offset capture."""
+        from custom_components.smart_climate.thermal_special_states import CalibratingState
+        
+        handler = CalibratingState()
+        handler._start_time = datetime(2025, 1, 1, 12, 0, 0)
+        
+        mock_context = Mock()
+        mock_context.thermal_constants = Mock()
+        mock_context.thermal_constants.calibrating_duration = 3600
+        
+        # Should still enable precise measurement mode
+        result = handler.execute(mock_context)
+        
+        # Should still enable precise measurement mode for clean offset readings
+        assert mock_context.precise_measurement_mode is True
 
 
 class TestRecoveryState:

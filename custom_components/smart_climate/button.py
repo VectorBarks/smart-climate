@@ -58,6 +58,13 @@ async def async_setup_entry(
             )
             buttons.append(thermal_button)
             _LOGGER.debug("Created thermal reset button for %s", entity_id)
+            
+            # Create calibration button for manual calibration trigger
+            calibration_button = SmartClimateCalibrationButton(
+                hass, config_entry, entity_id
+            )
+            buttons.append(calibration_button)
+            _LOGGER.debug("Created calibration button for %s", entity_id)
     
     if buttons:
         async_add_entities(buttons)
@@ -218,5 +225,86 @@ class SmartClimateThermalResetButton(ButtonEntity):
         except Exception as exc:
             _LOGGER.error(
                 "Failed to reset thermal data for %s: %s",
+                self._entity_id, exc, exc_info=True
+            )
+
+
+class SmartClimateCalibrationButton(ButtonEntity):
+    """Button to force thermal calibration."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        entity_id: str,
+    ) -> None:
+        """Initialize the calibration button."""
+        self.hass = hass
+        self._config_entry = config_entry
+        self._entity_id = entity_id
+        
+        self._attr_name = "Force Calibration"
+        # Create unique_id per architecture spec: {entity_id}_force_calibration
+        safe_entity_id = entity_id.replace(".", "_")
+        self._attr_unique_id = f"{safe_entity_id}_force_calibration"
+        self._attr_icon = "mdi:target"
+        
+        # Link to parent climate entity device for proper grouping
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, safe_entity_id)},
+        )
+
+    def _get_thermal_manager(self):
+        """Get thermal manager for this entity from hass.data."""
+        try:
+            entry_data = self.hass.data[DOMAIN][self._config_entry.entry_id]
+            thermal_components = entry_data.get("thermal_components", {})
+            components = thermal_components.get(self._entity_id, {})
+            return components.get("thermal_manager")
+        except (KeyError, AttributeError) as exc:
+            _LOGGER.debug("Error getting thermal manager for %s: %s", self._entity_id, exc)
+            return None
+
+    def _get_coordinator(self):
+        """Get coordinator for this entity from hass.data."""
+        try:
+            entry_data = self.hass.data[DOMAIN][self._config_entry.entry_id]
+            coordinators = entry_data.get("coordinators", {})
+            return coordinators.get(self._entity_id)
+        except (KeyError, AttributeError) as exc:
+            _LOGGER.debug("Error getting coordinator for %s: %s", self._entity_id, exc)
+            return None
+
+    async def async_press(self) -> None:
+        """Handle button press to force calibration."""
+        try:
+            _LOGGER.info("Force calibration button pressed for %s", self._entity_id)
+            
+            # Get thermal manager and force calibration
+            thermal_manager = self._get_thermal_manager()
+            if not thermal_manager:
+                _LOGGER.warning("No thermal manager found for entity %s", self._entity_id)
+                return
+            
+            # Force immediate calibration
+            thermal_manager.force_calibration()
+            _LOGGER.debug("Manual calibration triggered for %s", self._entity_id)
+            
+            # Request coordinator refresh to update states
+            coordinator = self._get_coordinator()
+            if coordinator:
+                await coordinator.async_request_refresh()
+                _LOGGER.debug("Coordinator refresh requested for %s", self._entity_id)
+            else:
+                _LOGGER.warning("No coordinator found for entity %s", self._entity_id)
+            
+            _LOGGER.info("Force calibration completed for %s", self._entity_id)
+            
+        except Exception as exc:
+            _LOGGER.error(
+                "Failed to force calibration for %s: %s",
                 self._entity_id, exc, exc_info=True
             )

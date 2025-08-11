@@ -20,7 +20,8 @@
           "priming_duration_hours": "Priming Duration (hours)",
           "recovery_duration_minutes": "Recovery Duration (minutes)",
           "probe_drift_limit": "Probe Drift Limit (°C)",
-          "calibration_hour": "Daily Calibration Hour"
+          "calibration_idle_minutes": "Calibration Idle Threshold (minutes)",
+          "calibration_drift_threshold": "Calibration Temperature Stability (°C)"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -38,7 +39,8 @@
           "priming_duration_hours": "Initial learning period duration (24-48 hours)",
           "recovery_duration_minutes": "Recovery time after mode changes (30-60 minutes)",
           "probe_drift_limit": "Maximum temperature drift during probing (1.0-3.0°C)",
-          "calibration_hour": "Hour of day for daily calibration cycle (0-23)"
+          "calibration_idle_minutes": "Minutes AC must be idle for opportunistic calibration (15-120)",
+          "calibration_drift_threshold": "Maximum temperature drift for calibration stability (0.05-0.5°C)"
         }
       }
     },
@@ -65,7 +67,8 @@
           "priming_duration_hours": "Priming Duration (hours)",
           "recovery_duration_minutes": "Recovery Duration (minutes)",
           "probe_drift_limit": "Probe Drift Limit (°C)",
-          "calibration_hour": "Daily Calibration Hour"
+          "calibration_idle_minutes": "Calibration Idle Threshold (minutes)",
+          "calibration_drift_threshold": "Calibration Temperature Stability (°C)"
         },
         "data_description": {
           "thermal_efficiency_enabled": "Enable advanced thermal efficiency optimization for energy savings",
@@ -74,7 +77,8 @@
           "priming_duration_hours": "Duration for initial thermal learning (24-48 hours recommended)",
           "recovery_duration_minutes": "Time to recover after mode changes (30-60 minutes)",
           "probe_drift_limit": "Maximum temperature drift during active learning (1.0-3.0°C)",
-          "calibration_hour": "Hour when daily calibration cycle runs (0-23, typically during low usage)"
+          "calibration_idle_minutes": "Minutes AC must be idle before opportunistic calibration triggers (15-120)",
+          "calibration_drift_threshold": "Maximum temperature drift to consider conditions stable for calibration (0.05-0.5°C)"
         }
       }
     }
