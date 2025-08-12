@@ -424,13 +424,25 @@ class ThermalManager:
                 "temperature_history_count": len(self.stability_detector._temperature_history)
             }
 
-        # Get priming start time if in PRIMING state
-        priming_start_time = None
+        # Get enhanced priming state data if in PRIMING state
+        priming_data = None
         if self._current_state == ThermalState.PRIMING:
             handler = self._state_handlers.get(ThermalState.PRIMING)
-            if handler and hasattr(handler, '_start_time') and handler._start_time:
-                priming_start_time = handler._start_time.isoformat()
-                _LOGGER.debug("Serializing priming start time: %s", priming_start_time)
+            if handler:
+                priming_data = {
+                    "start_time": handler._start_time.isoformat() if hasattr(handler, '_start_time') and handler._start_time else None,
+                    "current_phase": getattr(handler, '_current_phase', 'passive'),
+                    "controlled_drift_state": getattr(handler, '_controlled_drift_state', 'inactive'),
+                    "controlled_drift_attempted": getattr(handler, '_controlled_drift_attempted', False),
+                    "controlled_drift_start_time": (
+                        handler._controlled_drift_start_time.isoformat() 
+                        if hasattr(handler, '_controlled_drift_start_time') and handler._controlled_drift_start_time 
+                        else None
+                    ),
+                    "controlled_drift_start_temp": getattr(handler, '_controlled_drift_start_temp', None)
+                }
+                _LOGGER.debug("Serializing enhanced priming data: phase=%s, drift_state=%s, drift_attempted=%s",
+                            priming_data['current_phase'], priming_data['controlled_drift_state'], priming_data['controlled_drift_attempted'])
 
         return {
             "version": "1.0",
@@ -438,7 +450,7 @@ class ThermalManager:
                 "current_state": self._current_state.value,
                 "last_transition": self._last_transition.isoformat() if self._last_transition else datetime.now().isoformat(),
                 "last_probe_time": self._last_probe_time.isoformat() if self._last_probe_time else None,
-                "priming_start_time": priming_start_time  # Add priming start time to state
+                "priming_data": priming_data  # Enhanced priming state data
             },
             "model": {
                 "tau_cooling": getattr(self._model, '_tau_cooling', 90.0),
@@ -521,8 +533,52 @@ class ThermalManager:
                         self._last_probe_time = None
                         self._corruption_recovery_count += 1
                 
-                # Restore priming start time if present and in PRIMING state
-                if "priming_start_time" in state_data and self._current_state == ThermalState.PRIMING:
+                # Restore enhanced priming data if present and in PRIMING state
+                if "priming_data" in state_data and self._current_state == ThermalState.PRIMING:
+                    try:
+                        priming_data = state_data["priming_data"]
+                        if priming_data and isinstance(priming_data, dict):
+                            handler = self._state_handlers.get(ThermalState.PRIMING)
+                            if handler:
+                                # Restore start time
+                                if "start_time" in priming_data and priming_data["start_time"]:
+                                    handler._start_time = datetime.fromisoformat(priming_data["start_time"])
+                                    _LOGGER.debug("Restored priming start time: %s", priming_data["start_time"])
+                                
+                                # Restore current phase
+                                phase = priming_data.get("current_phase", "passive")
+                                if phase in ["passive", "active"]:
+                                    handler._current_phase = phase
+                                    _LOGGER.debug("Restored priming phase: %s", phase)
+                                
+                                # Restore controlled drift state
+                                drift_state = priming_data.get("controlled_drift_state", "inactive")
+                                if drift_state in ["inactive", "requested", "monitoring", "analyzing"]:
+                                    handler._controlled_drift_state = drift_state
+                                    _LOGGER.debug("Restored controlled drift state: %s", drift_state)
+                                
+                                # Restore controlled drift attempted flag
+                                handler._controlled_drift_attempted = priming_data.get("controlled_drift_attempted", False)
+                                _LOGGER.debug("Restored controlled drift attempted: %s", handler._controlled_drift_attempted)
+                                
+                                # Restore controlled drift start time
+                                if "controlled_drift_start_time" in priming_data and priming_data["controlled_drift_start_time"]:
+                                    handler._controlled_drift_start_time = datetime.fromisoformat(priming_data["controlled_drift_start_time"])
+                                    _LOGGER.debug("Restored controlled drift start time: %s", priming_data["controlled_drift_start_time"])
+                                
+                                # Restore controlled drift start temperature
+                                handler._controlled_drift_start_temp = priming_data.get("controlled_drift_start_temp")
+                                if handler._controlled_drift_start_temp is not None:
+                                    _LOGGER.debug("Restored controlled drift start temp: %.2f", handler._controlled_drift_start_temp)
+                                
+                                _LOGGER.info("Restored enhanced priming state: phase=%s, drift_state=%s", 
+                                           handler._current_phase, handler._controlled_drift_state)
+                    except (ValueError, TypeError, AttributeError) as e:
+                        _LOGGER.debug("Could not restore enhanced priming data: %s", e)
+                        self._corruption_recovery_count += 1
+                
+                # Fallback: restore legacy priming_start_time format
+                elif "priming_start_time" in state_data and self._current_state == ThermalState.PRIMING:
                     try:
                         priming_time_str = state_data["priming_start_time"]
                         if priming_time_str:  # Check it's not None
@@ -531,9 +587,10 @@ class ThermalManager:
                             handler = self._state_handlers.get(ThermalState.PRIMING)
                             if handler:
                                 handler._start_time = priming_start
-                                _LOGGER.info("Restored priming start time: %s", priming_time_str)
+                                _LOGGER.info("Restored legacy priming start time: %s", priming_time_str)
                     except (ValueError, TypeError, AttributeError) as e:
-                        _LOGGER.debug("Could not restore priming start time: %s", e)
+                        _LOGGER.debug("Could not restore legacy priming start time: %s", e)
+                        self._corruption_recovery_count += 1
 
             # Restore model section with validation
             if "model" in data:

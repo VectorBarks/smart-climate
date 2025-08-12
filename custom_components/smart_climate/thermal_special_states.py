@@ -3,7 +3,7 @@ Implements PrimingState, RecoveryState, ProbeState, and CalibratingState handler
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
+from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING, Literal
 
 from .thermal_models import ThermalState, ProbeResult, ThermalConstants
 from .thermal_states import StateHandler
@@ -13,6 +13,12 @@ if TYPE_CHECKING:
     from .thermal_manager import ThermalManager
 
 _LOGGER = logging.getLogger(__name__)
+
+# Phase types for PRIMING state
+PrimingPhase = Literal['passive', 'active']
+
+# Controlled drift states
+ControlledDriftState = Literal['inactive', 'requested', 'monitoring', 'analyzing']
 
 
 def _trigger_persistence(context: "ThermalManager") -> None:
@@ -32,24 +38,34 @@ def _trigger_persistence(context: "ThermalManager") -> None:
 class PrimingState(StateHandler):
     """Handler for PRIMING thermal state.
     
-    Conservative learning phase for new users with ±1.2°C bands and aggressive passive learning.
-    Runs for 24-48 hours (configurable) before transitioning to normal operation.
+    Enhanced two-phase learning approach for new users with tiered passive/active learning.
+    Runs for 24-48 hours (configurable) with phase-specific behaviors.
     
     THERMAL STATE FLOW: PRIMING → PROBING → CALIBRATING → DRIFTING
     
-    Key behaviors:
-    - Uses conservative comfort bands (±1.2°C from setpoint)
-    - Enables aggressive passive learning to quickly gather thermal data
-    - Transitions to PROBING when stable conditions detected
-    - Transitions to DRIFTING when priming duration complete
+    Phase 1 (0-24h): Enhanced passive learning
+    - Conservative comfort bands (±1.2°C from setpoint)
+    - Aggressive passive learning with micro-drift analysis (5+ minutes)
+    - Lower confidence threshold (0.25) for passive learning acceptance
+    
+    Phase 2 (24-48h): Controlled drift if needed
+    - Controlled drift requests only if no tau learned yet
+    - Safety checks: avoid sleep hours, monitor temperature deviation
+    - Abort controlled drift if temperature changes >0.5°C for comfort
     """
     
     def __init__(self):
         """Initialize PrimingState handler."""
         self._start_time: Optional[datetime] = None
+        self._current_phase: PrimingPhase = 'passive'
+        self._controlled_drift_state: ControlledDriftState = 'inactive'
+        self._controlled_drift_attempted: bool = False
+        self._controlled_drift_start_time: Optional[datetime] = None
+        self._controlled_drift_start_temp: Optional[float] = None
+        self._temperature_history: List[Tuple[float, float]] = []  # (timestamp, temperature)
 
     def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
-        """Execute priming state logic and check for transitions.
+        """Execute enhanced priming state logic with two-phase learning.
         
         Args:
             context: ThermalManager instance providing system state
@@ -60,30 +76,12 @@ class PrimingState(StateHandler):
             PROBING if stable conditions detected, DRIFTING if priming duration complete, None to stay in PRIMING
         """
         try:
-            # Check if passive learning is enabled (default to True if not set)
-            passive_learning_enabled = getattr(context, 'passive_learning_enabled', True)
-            
-            # Enable aggressive passive learning during priming phase (if not explicitly disabled)
-            if passive_learning_enabled:
-                # Set the attribute if it doesn't exist or enable if True
-                context.passive_learning_enabled = True
-                
-                # Trigger passive learning if handler available
-                if hasattr(context, '_handle_passive_learning'):
-                    try:
-                        context._handle_passive_learning()
-                    except Exception as e:
-                        _LOGGER.warning("Error in passive learning during priming: %s", e)
-            
-            # Handle missing thermal constants
-            if not hasattr(context, 'thermal_constants') or context.thermal_constants is None:
-                _LOGGER.warning("Missing thermal constants in PrimingState")
-                return None
+            current_time = datetime.now()
             
             # Handle missing start time (should be set in on_enter or restored from persistence)
             if self._start_time is None:
                 _LOGGER.warning("Missing start time in PrimingState, initializing to current time")
-                self._start_time = datetime.now()
+                self._start_time = current_time
                 # Also trigger persistence to save this start time
                 if hasattr(context, '_persistence_callback') and context._persistence_callback:
                     try:
@@ -91,45 +89,338 @@ class PrimingState(StateHandler):
                     except Exception as e:
                         _LOGGER.debug("Could not trigger persistence callback: %s", e)
             
-            current_time = datetime.now()
-            
-            # Check if stable conditions detected for opportunistic probing
-            if hasattr(context, 'stability_detector') and context.stability_detector:
-                if context.stability_detector.is_stable_for_calibration():
-                    _LOGGER.info("Stable conditions detected during PRIMING, transitioning to PROBING")
-                    return ThermalState.PROBING
-            
-            # Check if priming duration is complete
-            elapsed_time = (current_time - self._start_time).total_seconds()
-            priming_duration = context.thermal_constants.priming_duration
-            
-            # Log detailed priming check for debugging  
-            stability_ready = False
-            if hasattr(context, 'stability_detector') and context.stability_detector:
-                stability_ready = context.stability_detector.is_stable_for_calibration()
-            _LOGGER.debug("PrimingState check - elapsed: %.1fh of %.1fh, stability_ready: %s",
-                          elapsed_time / 3600.0, priming_duration / 3600.0, stability_ready)
+            # Handle missing thermal constants
+            if not hasattr(context, 'thermal_constants') or context.thermal_constants is None:
+                _LOGGER.warning("Missing thermal constants in PrimingState")
+                return None
             
             # Handle system clock changes gracefully
+            elapsed_time = (current_time - self._start_time).total_seconds()
             if elapsed_time < 0:
                 _LOGGER.warning("System clock moved backward during priming, resetting start time")
                 self._start_time = current_time
                 return None
             
+            priming_duration = context.thermal_constants.priming_duration
+            elapsed_hours = elapsed_time / 3600.0
+            
+            # Collect temperature history continuously
+            if current_temp is not None:
+                timestamp = current_time.timestamp()
+                self._temperature_history.append((timestamp, current_temp))
+                # Keep only last 4 hours of data
+                cutoff_time = timestamp - (4 * 3600)
+                self._temperature_history = [(t, temp) for t, temp in self._temperature_history if t >= cutoff_time]
+            
+            # Update stability detector if available
+            if hasattr(context, 'stability_detector') and context.stability_detector and current_temp is not None:
+                ac_state = self._get_current_hvac_state(context)
+                context.stability_detector.add_reading(timestamp, current_temp, ac_state)
+                
+                # Update regular stability detector as well
+                context.stability_detector.update(ac_state, current_temp)
+            
+            # Determine current phase based on elapsed time and learning progress
+            self._update_current_phase(elapsed_hours, context)
+            
+            # Check for opportunistic probing during stable conditions
+            if hasattr(context, 'stability_detector') and context.stability_detector:
+                if context.stability_detector.is_stable_for_calibration():
+                    _LOGGER.info("Stable conditions detected during PRIMING phase %s, transitioning to PROBING", 
+                               self._current_phase)
+                    return ThermalState.PROBING
+            
+            # Phase-specific behavior
+            if self._current_phase == 'passive':
+                # Phase 1: Enhanced passive learning with shorter drift requirements
+                self._handle_passive_phase(context)
+            elif self._current_phase == 'active':
+                # Phase 2: Controlled drift if tau not learned yet
+                result = self._handle_active_phase(context, current_temp)
+                if result is not None:
+                    return result
+            
+            # Check if priming duration is complete
             if elapsed_time >= priming_duration:
-                _LOGGER.info("Priming duration %.1f hours complete, transitioning to DRIFTING",
-                           elapsed_time / 3600.0)
+                _LOGGER.info("Priming duration %.1f hours complete (phase: %s), transitioning to DRIFTING",
+                           elapsed_hours, self._current_phase)
                 return ThermalState.DRIFTING
             
-            # Stay in priming phase
+            # Log progress
             remaining_hours = (priming_duration - elapsed_time) / 3600.0
-            _LOGGER.debug("Priming phase continuing, %.1f hours remaining (need %.1f total)", 
-                         remaining_hours, priming_duration / 3600.0)
+            _LOGGER.debug("Priming phase %s continuing, %.1f hours remaining, %d temp readings", 
+                         self._current_phase, remaining_hours, len(self._temperature_history))
+            
             return None
             
         except (AttributeError, TypeError, ValueError) as e:
             _LOGGER.error("Error in PrimingState execute: %s", e)
             return None
+    
+    def _get_current_hvac_state(self, context: "ThermalManager") -> str:
+        """Get current HVAC state for stability tracking.
+        
+        Args:
+            context: ThermalManager instance
+            
+        Returns:
+            HVAC state string ("cooling", "heating", "idle", "off")
+        """
+        try:
+            # Try to get actual HVAC state from context
+            # This is a placeholder - actual implementation would read from HA climate entity
+            if hasattr(context, '_last_hvac_mode'):
+                mode = getattr(context, '_last_hvac_mode', 'off')
+                if mode in ['cool', 'heat', 'auto']:
+                    # For now, assume idle if mode is set but not actively running
+                    return 'idle'
+            return 'off'
+        except Exception:
+            return 'off'
+    
+    def _update_current_phase(self, elapsed_hours: float, context: "ThermalManager") -> None:
+        """Update current phase based on elapsed time and learning progress.
+        
+        Args:
+            elapsed_hours: Hours elapsed since priming started
+            context: ThermalManager instance
+        """
+        if elapsed_hours < 24:
+            if self._current_phase != 'passive':
+                self._current_phase = 'passive'
+                _LOGGER.info("Entering PRIMING passive phase (0-24h): enhanced passive learning")
+        else:
+            if self._current_phase != 'active':
+                self._current_phase = 'active'
+                _LOGGER.info("Entering PRIMING active phase (24-48h): controlled drift if needed")
+    
+    def _handle_passive_phase(self, context: "ThermalManager") -> None:
+        """Handle passive learning phase with enhanced micro-drift analysis.
+        
+        Args:
+            context: ThermalManager instance
+        """
+        # Enable aggressive passive learning with shorter minimum drift time
+        passive_learning_enabled = getattr(context, 'passive_learning_enabled', True)
+        
+        if passive_learning_enabled:
+            # Set enhanced parameters for PRIMING passive phase
+            if hasattr(context, 'stability_detector') and context.stability_detector:
+                # Look for natural drift events with shorter duration requirement for PRIMING
+                drift_data = context.stability_detector.find_natural_drift_event_priming(min_duration_minutes=5)
+                if drift_data:
+                    _LOGGER.info("Found micro-drift event during PRIMING passive phase: %d points, %.1f minutes",
+                               len(drift_data), (drift_data[-1][0] - drift_data[0][0]) / 60.0)
+                    
+                    # Analyze with lower confidence threshold for passive learning
+                    probe_result = thermal_utils.analyze_drift_data(drift_data, is_passive=True)
+                    if probe_result and probe_result.confidence >= 0.25:  # Lower threshold during PRIMING
+                        _LOGGER.info("Passive learning successful in PRIMING: tau=%.1f, confidence=%.3f",
+                                   probe_result.tau_value, probe_result.confidence)
+                        
+                        # Update thermal model
+                        if hasattr(context, '_model') and context._model:
+                            is_cooling = getattr(context, '_last_hvac_mode', 'cool') == 'cool'
+                            context._model.update_tau(probe_result, is_cooling)
+                            _trigger_persistence(context)
+                else:
+                    # Fallback to regular drift detection as well
+                    drift_data = context.stability_detector.find_natural_drift_event()
+                    if drift_data:
+                        _LOGGER.debug("Found regular drift event during PRIMING passive phase: %d points, %.1f minutes",
+                                    len(drift_data), (drift_data[-1][0] - drift_data[0][0]) / 60.0)
+                        
+                        # Analyze with lower confidence threshold for passive learning
+                        probe_result = thermal_utils.analyze_drift_data(drift_data, is_passive=True)
+                        if probe_result and probe_result.confidence >= 0.25:  # Lower threshold during PRIMING
+                            _LOGGER.info("Regular passive learning successful in PRIMING: tau=%.1f, confidence=%.3f",
+                                       probe_result.tau_value, probe_result.confidence)
+                            
+                            # Update thermal model
+                            if hasattr(context, '_model') and context._model:
+                                is_cooling = getattr(context, '_last_hvac_mode', 'cool') == 'cool'
+                                context._model.update_tau(probe_result, is_cooling)
+                                _trigger_persistence(context)
+            
+            # Trigger any existing passive learning handler
+            if hasattr(context, '_handle_passive_learning'):
+                try:
+                    context._handle_passive_learning()
+                except Exception as e:
+                    _LOGGER.warning("Error in passive learning during priming: %s", e)
+    
+    def _handle_active_phase(self, context: "ThermalManager", current_temp: Optional[float]) -> Optional[ThermalState]:
+        """Handle active phase with controlled drift capability.
+        
+        Args:
+            context: ThermalManager instance
+            current_temp: Current room temperature
+            
+        Returns:
+            ThermalState to transition to, or None to continue
+        """
+        # Check if we already have sufficient tau learning
+        if hasattr(context, '_model') and context._model:
+            confidence = getattr(context._model, 'get_confidence', lambda: 0.0)()
+            if confidence > 0.3:
+                _LOGGER.debug("Sufficient tau learned (confidence=%.3f), staying passive", confidence)
+                return None
+        
+        # Only attempt controlled drift if not already attempted
+        if self._controlled_drift_attempted:
+            _LOGGER.debug("Controlled drift already attempted, continuing passive learning")
+            return None
+        
+        # Handle controlled drift state machine
+        if self._controlled_drift_state == 'inactive':
+            # Check if conditions are safe for controlled drift
+            if self._is_safe_for_controlled_drift():
+                _LOGGER.info("Initiating controlled drift during active phase")
+                self._controlled_drift_state = 'requested'
+                self._controlled_drift_start_time = datetime.now()
+                self._controlled_drift_start_temp = current_temp
+                
+                # Request HVAC to turn off for controlled drift
+                self._request_hvac_off(context)
+                
+        elif self._controlled_drift_state == 'requested':
+            # Wait for HVAC to actually turn off, then start monitoring
+            if self._is_hvac_off(context):
+                self._controlled_drift_state = 'monitoring'
+                _LOGGER.info("HVAC off confirmed, starting controlled drift monitoring")
+            
+        elif self._controlled_drift_state == 'monitoring':
+            # Monitor temperature during controlled drift
+            if current_temp is not None and self._controlled_drift_start_temp is not None:
+                temp_change = abs(current_temp - self._controlled_drift_start_temp)
+                
+                # Abort if temperature change is too large for comfort
+                if temp_change > 0.5:
+                    _LOGGER.warning("Aborting controlled drift: temperature change %.2f°C > 0.5°C limit",
+                                  temp_change)
+                    self._abort_controlled_drift(context)
+                    return None
+                
+                # Check if we have enough data for analysis (20 minutes or more)
+                if self._controlled_drift_start_time:
+                    elapsed_minutes = (datetime.now() - self._controlled_drift_start_time).total_seconds() / 60.0
+                    if elapsed_minutes >= 20:
+                        self._controlled_drift_state = 'analyzing'
+                        _LOGGER.info("Controlled drift complete after %.1f minutes, analyzing data", elapsed_minutes)
+        
+        elif self._controlled_drift_state == 'analyzing':
+            # Analyze collected controlled drift data
+            self._analyze_controlled_drift(context)
+            self._controlled_drift_attempted = True  # Mark as attempted regardless of result
+            self._controlled_drift_state = 'inactive'
+            
+            # Trigger persistence to save state
+            if hasattr(context, '_persistence_callback') and context._persistence_callback:
+                try:
+                    context._persistence_callback()
+                except Exception as e:
+                    _LOGGER.debug("Could not trigger persistence after controlled drift: %s", e)
+        
+        return None
+    
+    def _is_safe_for_controlled_drift(self) -> bool:
+        """Check if conditions are safe for controlled drift.
+        
+        Returns:
+            True if safe to initiate controlled drift
+        """
+        current_time = datetime.now()
+        current_hour = current_time.hour
+        
+        # Avoid sleep hours (22:00-06:00)
+        if current_hour >= 22 or current_hour <= 6:
+            _LOGGER.debug("Controlled drift not safe during sleep hours (%02d:00)", current_hour)
+            return False
+        
+        # Additional safety checks could be added here:
+        # - Check outdoor temperature if available
+        # - Check for recent temperature changes
+        # - Check HVAC cycle timing
+        
+        return True
+    
+    def _request_hvac_off(self, context: "ThermalManager") -> None:
+        """Request HVAC to turn off for controlled drift.
+        
+        Args:
+            context: ThermalManager instance
+        """
+        try:
+            # This would integrate with the climate entity to request AC off
+            # For now, just log the request
+            _LOGGER.info("Requesting HVAC off for controlled drift learning")
+            
+            # In a real implementation, this would:
+            # 1. Set a flag that the AC control logic can read
+            # 2. Or directly interface with the climate entity
+            # 3. Have a timeout mechanism to resume normal operation
+            
+        except Exception as e:
+            _LOGGER.error("Error requesting HVAC off: %s", e)
+    
+    def _is_hvac_off(self, context: "ThermalManager") -> bool:
+        """Check if HVAC is actually off.
+        
+        Args:
+            context: ThermalManager instance
+            
+        Returns:
+            True if HVAC is confirmed off
+        """
+        # Placeholder implementation - would check actual HVAC state
+        return True
+    
+    def _abort_controlled_drift(self, context: "ThermalManager") -> None:
+        """Abort controlled drift and resume normal operation.
+        
+        Args:
+            context: ThermalManager instance
+        """
+        _LOGGER.warning("Aborting controlled drift - safety limit exceeded")
+        self._controlled_drift_state = 'inactive'
+        self._controlled_drift_attempted = True
+        
+        # Resume normal HVAC operation
+        # This would integrate with the climate control logic
+    
+    def _analyze_controlled_drift(self, context: "ThermalManager") -> None:
+        """Analyze controlled drift data and update thermal model.
+        
+        Args:
+            context: ThermalManager instance
+        """
+        if not self._controlled_drift_start_time or len(self._temperature_history) < 10:
+            _LOGGER.warning("Insufficient data for controlled drift analysis")
+            return
+        
+        # Extract temperature data from the controlled drift period
+        start_timestamp = self._controlled_drift_start_time.timestamp()
+        drift_data = [(t, temp) for t, temp in self._temperature_history if t >= start_timestamp]
+        
+        if len(drift_data) < 10:
+            _LOGGER.warning("Insufficient controlled drift data points: %d", len(drift_data))
+            return
+        
+        # Analyze with standard confidence (not passive scaling)
+        probe_result = thermal_utils.analyze_drift_data(drift_data, is_passive=False)
+        
+        if probe_result and probe_result.confidence > 0.3:
+            _LOGGER.info("Controlled drift analysis successful: tau=%.1f, confidence=%.3f",
+                       probe_result.tau_value, probe_result.confidence)
+            
+            # Update thermal model
+            if hasattr(context, '_model') and context._model:
+                is_cooling = getattr(context, '_last_hvac_mode', 'cool') == 'cool'
+                context._model.update_tau(probe_result, is_cooling)
+                _trigger_persistence(context)
+        else:
+            _LOGGER.info("Controlled drift analysis failed or low confidence (%.3f)",
+                       probe_result.confidence if probe_result else 0.0)
 
     def get_conservative_band(self, context: "ThermalManager") -> float:
         """Get conservative comfort band for priming phase.
@@ -149,6 +440,13 @@ class PrimingState(StateHandler):
             context: ThermalManager instance
         """
         self._start_time = datetime.now()
+        self._current_phase = 'passive'  # Always start in passive phase
+        self._controlled_drift_state = 'inactive'
+        self._controlled_drift_attempted = False
+        self._controlled_drift_start_time = None
+        self._controlled_drift_start_temp = None
+        self._temperature_history = []  # Reset temperature history
+        
         duration_hours = 24  # Default duration
         
         try:
@@ -157,7 +455,7 @@ class PrimingState(StateHandler):
         except (AttributeError, TypeError):
             pass
         
-        _LOGGER.info("Entering PRIMING state - conservative learning for %.1f hours", duration_hours)
+        _LOGGER.info("Entering PRIMING state - enhanced two-phase learning for %.1f hours", duration_hours)
 
     def on_exit(self, context: "ThermalManager") -> None:
         """Called when exiting PRIMING state.
@@ -165,7 +463,13 @@ class PrimingState(StateHandler):
         Args:
             context: ThermalManager instance
         """
-        _LOGGER.info("Exiting PRIMING state - transitioning to normal operation")
+        _LOGGER.info("Exiting PRIMING state - completed %s phase, transitioning to normal operation", 
+                   self._current_phase)
+        
+        # Clean up any ongoing controlled drift
+        if self._controlled_drift_state != 'inactive':
+            _LOGGER.info("Cleaning up ongoing controlled drift state: %s", self._controlled_drift_state)
+            self._controlled_drift_state = 'inactive'
 
 
 class RecoveryState(StateHandler):

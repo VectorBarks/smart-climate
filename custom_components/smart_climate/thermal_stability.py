@@ -235,3 +235,68 @@ class StabilityDetector:
         # No valid drift event found
         _LOGGER.debug("No valid natural drift event found")
         return None
+
+    def find_natural_drift_event_priming(self, min_duration_minutes: int = 5) -> Optional[List[Tuple[float, float]]]:
+        """Search history for valid natural drift events with shorter duration requirement for PRIMING.
+        
+        Looks for cooling->off or heating->off transitions with sufficient data
+        and shorter duration (>= 5 minutes) for enhanced passive learning during PRIMING.
+        
+        Args:
+            min_duration_minutes: Minimum duration in minutes (default 5 for PRIMING)
+        
+        Returns:
+            List of (timestamp, temperature) tuples for the off period, or None
+            if no valid drift event is found or event already analyzed.
+        """
+        if len(self._history) < 10:
+            _LOGGER.debug("Insufficient history for PRIMING drift detection: %d entries", len(self._history))
+            return None
+        
+        min_duration_s = min_duration_minutes * 60
+        
+        # Search backwards through history to find transitions
+        for i in range(len(self._history) - 1, 0, -1):
+            current = self._history[i]
+            previous = self._history[i-1]
+            
+            # Look for cooling->off or heating->off transitions
+            if (previous['hvac'] in ['cooling', 'heating'] and 
+                current['hvac'] == 'off'):
+                
+                transition_ts = current['ts']
+                
+                # Skip if we already analyzed this event
+                if transition_ts <= self._last_event_ts:
+                    continue
+                
+                # Collect all consecutive 'off' readings after this transition
+                off_data = []
+                for j in range(i, len(self._history)):
+                    if self._history[j]['hvac'] == 'off':
+                        entry = self._history[j]
+                        off_data.append((entry['ts'], entry['temp']))
+                    else:
+                        break
+                
+                # Check if we have enough data and duration (lower requirements for PRIMING)
+                if len(off_data) < 6:  # Lower from 10 to 6 data points
+                    _LOGGER.debug("Insufficient off data points for PRIMING: %d < 6", len(off_data))
+                    continue
+                
+                # Check duration (last - first timestamp)
+                duration = off_data[-1][0] - off_data[0][0]
+                if duration < min_duration_s:
+                    _LOGGER.debug("Insufficient PRIMING drift duration: %.1fs < %ds", 
+                                 duration, min_duration_s)
+                    continue
+                
+                # Valid drift event found
+                self._last_event_ts = transition_ts
+                _LOGGER.debug("Found PRIMING drift event: %s->off at ts=%.1f, duration=%.1fs, points=%d",
+                             previous['hvac'], transition_ts, duration, len(off_data))
+                return off_data
+        
+        # No valid drift event found
+        _LOGGER.debug("No valid PRIMING natural drift event found")
+        return None
