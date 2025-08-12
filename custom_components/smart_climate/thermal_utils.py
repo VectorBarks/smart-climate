@@ -4,12 +4,6 @@ Provides exponential decay modeling and drift data analysis for passive thermal 
 import numpy as np
 from typing import List, Tuple, Optional
 
-try:
-    from scipy.optimize import curve_fit
-    HAS_SCIPY = True
-except ImportError:
-    HAS_SCIPY = False
-
 from .thermal_models import ProbeResult
 
 
@@ -47,8 +41,10 @@ def analyze_drift_data(
         ProbeResult with tau_value, confidence, duration, fit_quality, aborted=False
         Returns None if analysis fails or insufficient data
     """
-    # Check for scipy availability
-    if not HAS_SCIPY:
+    # Lazy import scipy to avoid blocking event loop during startup
+    try:
+        from scipy.optimize import curve_fit
+    except ImportError:
         return None
         
     # Validate minimum data points
