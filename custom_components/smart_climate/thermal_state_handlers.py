@@ -31,7 +31,8 @@ class DriftingState(StateHandler):
             operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
-            CALIBRATING if calibration hour reached, CORRECTING if temperature exceeds bounds, None to stay in DRIFTING
+            CALIBRATING if stable conditions detected, PROBING if low confidence and sufficient time passed,
+            CORRECTING if temperature exceeds bounds, None to stay in DRIFTING
         """
         try:
             # Pause offset learning during drift phase (per architecture)
@@ -42,6 +43,19 @@ class DriftingState(StateHandler):
                 if context.stability_detector.is_stable_for_calibration():
                     _LOGGER.info("Stable conditions detected during DRIFTING, transitioning to CALIBRATING")
                     return ThermalState.CALIBRATING
+            
+            # Check for automatic probing trigger based on low thermal model confidence
+            if hasattr(context, '_model') and context._model:
+                try:
+                    confidence = context._model.get_confidence()
+                    if confidence < 0.3 and hasattr(context, 'can_auto_probe') and context.can_auto_probe():
+                        _LOGGER.info("Low thermal model confidence (%.2f < 0.3) detected during DRIFTING, triggering automatic PROBING",
+                                   confidence)
+                        return ThermalState.PROBING
+                    elif confidence < 0.3:
+                        _LOGGER.debug("Low thermal model confidence (%.2f) but minimum probe interval not met", confidence)
+                except (AttributeError, Exception) as e:
+                    _LOGGER.debug("Could not check thermal model confidence: %s", e)
             
             # Use parameters instead of trying to access context attributes
             # current_temp and operating_window are now passed as parameters

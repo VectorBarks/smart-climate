@@ -4,7 +4,7 @@ Coordinates thermal states, operating window calculations, and AC control decisi
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Optional, Any, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from homeassistant.core import HomeAssistant
 
 from .thermal_models import ThermalState, ThermalConstants
@@ -12,6 +12,9 @@ from .thermal_preferences import UserPreferences
 from .thermal_model import PassiveThermalModel
 
 _LOGGER = logging.getLogger(__name__)
+
+# Minimum time between automatic probing triggers (24 hours)
+MIN_PROBE_INTERVAL = timedelta(hours=24)
 
 
 class StateHandler(ABC):
@@ -92,6 +95,7 @@ class ThermalManager:
         self._last_hvac_mode = "cool"  # Default assumption
         self._setpoint = 24.0  # Default setpoint
         self._last_transition: Optional[datetime] = None
+        self._last_probe_time: Optional[datetime] = None  # Track when last probe occurred
         
         # Diagnostic properties per §10.2.3
         self._thermal_data_last_saved: Optional[datetime] = None
@@ -199,6 +203,10 @@ class ThermalManager:
         # Update state and record timestamp
         self._current_state = new_state
         self._last_transition = datetime.now()
+        
+        # Record when probing occurs for minimum interval tracking
+        if new_state == ThermalState.PROBING:
+            self._last_probe_time = self._last_transition
         
         # Call enter handler for new state
         try:
@@ -429,6 +437,7 @@ class ThermalManager:
             "state": {
                 "current_state": self._current_state.value,
                 "last_transition": self._last_transition.isoformat() if self._last_transition else datetime.now().isoformat(),
+                "last_probe_time": self._last_probe_time.isoformat() if self._last_probe_time else None,
                 "priming_start_time": priming_start_time  # Add priming start time to state
             },
             "model": {
@@ -495,6 +504,21 @@ class ThermalManager:
                     except (ValueError, TypeError) as e:
                         _LOGGER.debug("Invalid last_transition timestamp, using current time: %s", e)
                         self._last_transition = datetime.now()
+                        self._corruption_recovery_count += 1
+                
+                # Restore last probe time if present
+                if "last_probe_time" in state_data:
+                    try:
+                        probe_time_str = state_data["last_probe_time"]
+                        if probe_time_str:  # Check it's not None
+                            self._last_probe_time = datetime.fromisoformat(probe_time_str)
+                            _LOGGER.debug("Restored last probe time: %s", probe_time_str)
+                        else:
+                            self._last_probe_time = None
+                            _LOGGER.debug("No previous probe time found")
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.debug("Invalid last_probe_time timestamp, clearing probe history: %s", e)
+                        self._last_probe_time = None
                         self._corruption_recovery_count += 1
                 
                 # Restore priming start time if present and in PRIMING state
@@ -814,3 +838,31 @@ class ThermalManager:
         if self._current_state != ThermalState.CALIBRATING:
             self.transition_to(ThermalState.CALIBRATING)
             _LOGGER.info("Manual calibration triggered from %s state", self._current_state)
+
+    def force_probing(self) -> None:
+        """Force immediate transition to PROBING state."""
+        if self._current_state == ThermalState.PROBING:
+            _LOGGER.info("Already in PROBING state")
+            return
+        self.transition_to(ThermalState.PROBING)
+        _LOGGER.info("Manual probing triggered from %s state", self._current_state)
+
+    def can_auto_probe(self) -> bool:
+        """Check if sufficient time has passed since last probe for automatic probing.
+        
+        Returns:
+            True if minimum probe interval has passed, False otherwise
+        """
+        if self._last_probe_time is None:
+            # Never probed before, allow probing
+            return True
+        
+        time_since_last_probe = datetime.now() - self._last_probe_time
+        can_probe = time_since_last_probe >= MIN_PROBE_INTERVAL
+        
+        if not can_probe:
+            remaining = MIN_PROBE_INTERVAL - time_since_last_probe
+            hours_remaining = remaining.total_seconds() / 3600
+            _LOGGER.debug("Cannot auto-probe yet, %.1f hours remaining until next probe allowed", hours_remaining)
+        
+        return can_probe

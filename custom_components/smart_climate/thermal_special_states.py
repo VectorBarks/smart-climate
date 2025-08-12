@@ -3,15 +3,30 @@ Implements PrimingState, RecoveryState, ProbeState, and CalibratingState handler
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 
 from .thermal_models import ThermalState, ProbeResult, ThermalConstants
 from .thermal_states import StateHandler
+from . import thermal_utils
 
 if TYPE_CHECKING:
     from .thermal_manager import ThermalManager
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _trigger_persistence(context: "ThermalManager") -> None:
+    """Helper function to trigger persistence after tau updates.
+    
+    Args:
+        context: ThermalManager instance
+    """
+    if hasattr(context, '_persistence_callback') and context._persistence_callback:
+        try:
+            context._persistence_callback()
+            _LOGGER.debug("Triggered persistence callback after tau update")
+        except Exception as e:
+            _LOGGER.warning("Could not trigger persistence callback: %s", e)
 
 
 class PrimingState(StateHandler):
@@ -20,10 +35,13 @@ class PrimingState(StateHandler):
     Conservative learning phase for new users with ±1.2°C bands and aggressive passive learning.
     Runs for 24-48 hours (configurable) before transitioning to normal operation.
     
+    THERMAL STATE FLOW: PRIMING → PROBING → CALIBRATING → DRIFTING
+    
     Key behaviors:
     - Uses conservative comfort bands (±1.2°C from setpoint)
     - Enables aggressive passive learning to quickly gather thermal data
-    - Tracks duration and transitions to DRIFTING when complete
+    - Transitions to PROBING when stable conditions detected
+    - Transitions to DRIFTING when priming duration complete
     """
     
     def __init__(self):
@@ -39,7 +57,7 @@ class PrimingState(StateHandler):
             operating_window: Tuple of (lower_bound, upper_bound) temperatures
             
         Returns:
-            CALIBRATING if calibration hour reached, DRIFTING if priming duration complete, None to stay in PRIMING
+            PROBING if stable conditions detected, DRIFTING if priming duration complete, None to stay in PRIMING
         """
         try:
             # Check if passive learning is enabled (default to True if not set)
@@ -75,11 +93,11 @@ class PrimingState(StateHandler):
             
             current_time = datetime.now()
             
-            # Check if stable conditions detected for opportunistic calibration
+            # Check if stable conditions detected for opportunistic probing
             if hasattr(context, 'stability_detector') and context.stability_detector:
                 if context.stability_detector.is_stable_for_calibration():
-                    _LOGGER.info("Stable conditions detected during PRIMING, transitioning to CALIBRATING")
-                    return ThermalState.CALIBRATING
+                    _LOGGER.info("Stable conditions detected during PRIMING, transitioning to PROBING")
+                    return ThermalState.PROBING
             
             # Check if priming duration is complete
             elapsed_time = (current_time - self._start_time).total_seconds()
@@ -306,12 +324,14 @@ class ProbeState(StateHandler):
     Active learning with wider drift allowance (±2.0°C) and user notifications.
     Supports abort capability to return to previous state if user is uncomfortable.
     
+    THERMAL STATE FLOW: PRIMING → PROBING → CALIBRATING → DRIFTING
+    
     Key behaviors:
     - Allows ±2.0°C drift for active thermal time constant measurement
     - Tracks probe start time and temperature for tau calculation
     - Sends phone notifications during active learning
     - Supports abort capability returning to previous state
-    - Calculates ProbeResult on completion
+    - Transitions to CALIBRATING when probe completes successfully
     """
     
     def __init__(self):
@@ -319,6 +339,7 @@ class ProbeState(StateHandler):
         self._probe_start_time: Optional[datetime] = None
         self._probe_start_temp: Optional[float] = None
         self._previous_state: ThermalState = ThermalState.DRIFTING
+        self._temperature_history: List[Tuple[float, float]] = []  # (timestamp, temperature)
 
     def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute probing state logic and check for transitions.
@@ -348,8 +369,12 @@ class ProbeState(StateHandler):
                 _LOGGER.warning("Missing current temperature during probe")
                 return None  # Continue probing until valid data
             
-            # Check if probe has run for minimum duration
+            # Collect temperature data for analysis
             current_time = datetime.now()
+            timestamp = current_time.timestamp()
+            self._temperature_history.append((timestamp, current_temp))
+            
+            # Check if probe has run for minimum duration
             elapsed_time = (current_time - self._probe_start_time).total_seconds()
             min_probe_duration = 1800  # 30 minutes default
             
@@ -361,21 +386,40 @@ class ProbeState(StateHandler):
             
             # Check if sufficient time has elapsed for meaningful data
             if elapsed_time >= min_probe_duration:
-                # Calculate probe result
-                probe_result = self.calculate_probe_result(context)
+                # Analyze temperature data using thermal_utils
+                probe_result = thermal_utils.analyze_drift_data(self._temperature_history)
                 
-                if probe_result and not probe_result.aborted:
-                    _LOGGER.info("Probe completed successfully after %.1f minutes, transitioning to CALIBRATING",
-                               elapsed_time / 60.0)
+                if probe_result:
+                    _LOGGER.info("Probe analysis successful after %.1f minutes: tau=%.1f, confidence=%.3f",
+                               elapsed_time / 60.0, probe_result.tau_value, probe_result.confidence)
+                    
+                    # Update thermal model with probe result
+                    if hasattr(context, '_model') and context._model:
+                        # Determine cooling vs warming mode
+                        is_cooling = getattr(context, '_last_hvac_mode', 'cool') == "cool" or (
+                            getattr(context, '_last_hvac_mode', 'cool') == "auto" and 
+                            current_temp > getattr(context, '_setpoint', current_temp + 1)
+                        )
+                        
+                        context._model.update_tau(probe_result, is_cooling)
+                        _LOGGER.info("Updated thermal model with probe result: cooling=%s", is_cooling)
+                        
+                        # Trigger persistence after tau update
+                        _trigger_persistence(context)
                     
                     # Store probe result in context if possible
                     if hasattr(context, 'last_probe_result'):
                         context.last_probe_result = probe_result
                     
                     return ThermalState.CALIBRATING
+                else:
+                    _LOGGER.warning("Probe analysis failed with %d data points, extending probe duration",
+                                  len(self._temperature_history))
+                    # Continue probing to gather more data
             
             # Continue probing
-            _LOGGER.debug("Probe continuing, %.1f minutes elapsed", elapsed_time / 60.0)
+            _LOGGER.debug("Probe continuing, %.1f minutes elapsed, %d data points collected", 
+                         elapsed_time / 60.0, len(self._temperature_history))
             return None
             
         except (AttributeError, TypeError, ValueError) as e:
@@ -463,6 +507,7 @@ class ProbeState(StateHandler):
         """
         self._probe_start_time = datetime.now()
         self._probe_start_temp = getattr(context, 'current_temp', None)
+        self._temperature_history = []  # Reset temperature history for new probe
         
         # Send notification about probe start if service available
         try:
@@ -492,6 +537,8 @@ class CalibratingState(StateHandler):
     Daily 1-hour window with very tight bands (±0.1°C) for clean offset readings.
     Provides precise measurements for offset engine calibration.
     
+    THERMAL STATE FLOW: PRIMING → PROBING → CALIBRATING → DRIFTING
+    
     Key behaviors:
     - Uses very tight ±0.1°C bands for precise control
     - Runs for 1-hour duration during optimal daily window
@@ -503,6 +550,7 @@ class CalibratingState(StateHandler):
     def __init__(self):
         """Initialize CalibratingState handler."""
         self._start_time: Optional[datetime] = None
+        self._temperature_history: List[Tuple[float, float]] = []  # (timestamp, temperature)
 
     def execute(self, context: "ThermalManager", current_temp: float, operating_window: tuple[float, float]) -> Optional[ThermalState]:
         """Execute calibrating state logic and check for transitions.
@@ -530,8 +578,13 @@ class CalibratingState(StateHandler):
                 _LOGGER.warning("Missing start time in CalibratingState, transitioning immediately")
                 return ThermalState.DRIFTING
             
-            # Check if calibration duration is complete
+            # Collect temperature data for potential analysis
             current_time = datetime.now()
+            if current_temp is not None:
+                timestamp = current_time.timestamp()
+                self._temperature_history.append((timestamp, current_temp))
+            
+            # Check if calibration duration is complete
             elapsed_time = (current_time - self._start_time).total_seconds()
             calibrating_duration = getattr(context.thermal_constants, 'calibrating_duration', 3600)  # 1 hour default
             
@@ -541,13 +594,43 @@ class CalibratingState(StateHandler):
                 return ThermalState.DRIFTING
             
             if elapsed_time >= calibrating_duration:
-                _LOGGER.info("Calibration duration %.1f minutes complete, transitioning to DRIFTING",
-                           elapsed_time / 60.0)
+                _LOGGER.info("Calibration duration %.1f minutes complete with %d data points, analyzing data",
+                           elapsed_time / 60.0, len(self._temperature_history))
+                
+                # Try to analyze collected data for potential tau refinement
+                if len(self._temperature_history) >= 10:
+                    probe_result = thermal_utils.analyze_drift_data(self._temperature_history)
+                    
+                    if probe_result and probe_result.confidence > 0.3:  # Higher threshold for calibration
+                        _LOGGER.info("Calibration analysis successful: tau=%.1f, confidence=%.3f",
+                                   probe_result.tau_value, probe_result.confidence)
+                        
+                        # Update thermal model with calibration result
+                        if hasattr(context, '_model') and context._model:
+                            # Determine cooling vs warming mode
+                            is_cooling = getattr(context, '_last_hvac_mode', 'cool') == "cool" or (
+                                getattr(context, '_last_hvac_mode', 'cool') == "auto" and 
+                                current_temp > getattr(context, '_setpoint', current_temp + 1)
+                            )
+                            
+                            context._model.update_tau(probe_result, is_cooling)
+                            _LOGGER.info("Updated thermal model with calibration result: cooling=%s", is_cooling)
+                            
+                            # Trigger persistence after tau update
+                            _trigger_persistence(context)
+                    else:
+                        _LOGGER.debug("Calibration data insufficient for tau update (confidence=%.3f)",
+                                    probe_result.confidence if probe_result else 0.0)
+                else:
+                    _LOGGER.debug("Insufficient calibration data points (%d) for analysis",
+                                len(self._temperature_history))
+                
                 return ThermalState.DRIFTING
             
             # Stay in calibrating phase
             remaining_minutes = (calibrating_duration - elapsed_time) / 60.0
-            _LOGGER.debug("Calibration phase continuing, %.1f minutes remaining", remaining_minutes)
+            _LOGGER.debug("Calibration phase continuing, %.1f minutes remaining, %d data points collected", 
+                         remaining_minutes, len(self._temperature_history))
             return None
             
         except (AttributeError, TypeError, ValueError) as e:
@@ -630,6 +713,7 @@ class CalibratingState(StateHandler):
             context: ThermalManager instance
         """
         self._start_time = datetime.now()
+        self._temperature_history = []  # Reset temperature history for new calibration
         duration_minutes = 60  # Default 1 hour
         
         try:
