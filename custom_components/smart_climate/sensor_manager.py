@@ -64,7 +64,6 @@ class SensorManager:
                 return None
             
             temperature = float(state.state)
-            _LOGGER.debug("Room temperature: %.1f°C", temperature)
             return temperature
             
         except (ValueError, TypeError) as exc:
@@ -100,7 +99,6 @@ class SensorManager:
                 return None
             
             temperature = float(state.state)
-            _LOGGER.debug("Outdoor temperature: %.1f°C", temperature)
             return temperature
             
         except (ValueError, TypeError) as exc:
@@ -172,7 +170,6 @@ class SensorManager:
                 return None
             
             humidity = float(state.state)
-            _LOGGER.debug("Indoor humidity: %.1f%%", humidity)
             return humidity
             
         except (ValueError, TypeError) as exc:
@@ -208,7 +205,6 @@ class SensorManager:
                 return None
             
             humidity = float(state.state)
-            _LOGGER.debug("Outdoor humidity: %.1f%%", humidity)
             return humidity
             
         except (ValueError, TypeError) as exc:
