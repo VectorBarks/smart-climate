@@ -106,8 +106,6 @@ from .humidity_sensors import (
     MLHumidityOffsetSensor,
     MLHumidityConfidenceSensor,
     MLHumidityWeightSensor,
-    HumiditySensorStatusSensor,
-    HumidityComfortLevelSensor,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -219,7 +217,7 @@ async def async_setup_entry(
         humidity_monitor = entry_data.get("humidity_monitor")
         _LOGGER.info("HumidityMonitor check: %s", "Found" if humidity_monitor is not None else "Not found")
         if humidity_monitor is not None:
-            _LOGGER.info("Creating 12 humidity sensors for entity %s", entity_id)
+            _LOGGER.info("Creating 10 humidity sensors for entity %s", entity_id)
             sensors.extend([
                 # Core Humidity Sensors (4)
                 IndoorHumiditySensor(humidity_monitor),
@@ -236,10 +234,8 @@ async def async_setup_entry(
                 MLHumidityOffsetSensor(humidity_monitor),
                 MLHumidityConfidenceSensor(humidity_monitor),
                 
-                # System & Status Sensors (3)
+                # System & Status Sensors (1)
                 MLHumidityWeightSensor(humidity_monitor),
-                HumiditySensorStatusSensor(humidity_monitor),
-                HumidityComfortLevelSensor(humidity_monitor),
             ])
         else:
             _LOGGER.debug("HumidityMonitor not available for entity %s, skipping humidity sensors", entity_id)

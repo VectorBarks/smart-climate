@@ -218,12 +218,6 @@ class HumidityMonitor:
         ml_humidity_confidence = self._get_ml_humidity_confidence() 
         ml_humidity_weight = self._get_ml_humidity_weight()
             
-        # Determine sensor status
-        sensor_status = self._determine_sensor_status(indoor_humidity, outdoor_humidity)
-        
-        # Determine comfort level
-        comfort_level = self._determine_comfort_level(indoor_humidity, heat_index)
-        
         return {
             'indoor_humidity': indoor_humidity,
             'outdoor_humidity': outdoor_humidity,
@@ -234,9 +228,7 @@ class HumidityMonitor:
             'absolute_humidity': absolute_humidity,
             'ml_humidity_offset': ml_humidity_offset,
             'ml_humidity_confidence': ml_humidity_confidence,
-            'ml_humidity_weight': ml_humidity_weight,
-            'humidity_sensor_status': sensor_status,
-            'humidity_comfort_level': comfort_level
+            'ml_humidity_weight': ml_humidity_weight
         }
     
     def _get_ml_humidity_offset(self) -> Optional[float]:
@@ -369,51 +361,6 @@ class HumidityMonitor:
         
         return round(dew_point, 1)
     
-    def _determine_sensor_status(self, indoor: Optional[float], outdoor: Optional[float]) -> str:
-        """Determine sensor status based on availability.
-        
-        Args:
-            indoor: Indoor humidity value
-            outdoor: Outdoor humidity value
-            
-        Returns:
-            Status string: "Both", "Indoor Only", "Outdoor Only", or "None"
-        """
-        if indoor is not None and outdoor is not None:
-            return "Both"
-        elif indoor is not None:
-            return "Indoor Only"
-        elif outdoor is not None:
-            return "Outdoor Only"
-        else:
-            return "None"
-    
-    def _determine_comfort_level(self, humidity: Optional[float], heat_index: Optional[float]) -> str:
-        """Determine comfort level based on humidity and heat index.
-        
-        Args:
-            humidity: Indoor humidity percentage
-            heat_index: Calculated heat index
-            
-        Returns:
-            Comfort level string
-        """
-        if humidity is None:
-            return "Unknown"
-            
-        # Check humidity ranges
-        if humidity < 30:
-            return "Too Dry"
-        elif humidity > 60:
-            return "Too Humid"
-        elif heat_index is not None and heat_index > self._thresholds.get('heat_index_high', 29):
-            return "Uncomfortable - High Heat Index"
-        elif heat_index is not None and heat_index > self._thresholds.get('heat_index_warning', 26):
-            return "Caution - Elevated Heat Index"
-        elif 40 <= humidity <= 50:
-            return "Optimal"
-        else:
-            return "Comfortable"
     
     def _calculate_absolute_humidity(self, temp_c: Optional[float], humidity: Optional[float]) -> Optional[float]:
         """Calculate absolute humidity in grams per cubic meter.

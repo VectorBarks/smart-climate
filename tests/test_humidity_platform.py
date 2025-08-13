@@ -18,8 +18,6 @@ from custom_components.smart_climate.humidity_sensors import (
     MLHumidityOffsetSensor,
     MLHumidityConfidenceSensor,
     MLHumidityWeightSensor,
-    HumiditySensorStatusSensor,
-    HumidityComfortLevelSensor,
 )
 
 
@@ -72,10 +70,13 @@ class TestHumidityPlatformIntegration:
         """Test that humidity sensors are created when humidity sensors are configured."""
         # Arrange
         mock_config_entry.options = {"humidity_sensors_enabled": True}
+        # Create the humidity monitor mock
+        humidity_monitor_mock = Mock()
         mock_hass.data = {
             "smart_climate": {
                 "test_entry": {
-                    "coordinators": {"climate.test": mock_coordinator}
+                    "coordinators": {"climate.test": mock_coordinator},
+                    "humidity_monitor": humidity_monitor_mock
                 }
             }
         }
@@ -101,8 +102,6 @@ class TestHumidityPlatformIntegration:
             MLHumidityOffsetSensor,
             MLHumidityConfidenceSensor,
             MLHumidityWeightSensor,
-            HumiditySensorStatusSensor,
-            HumidityComfortLevelSensor,
         }
         
         found_humidity_sensors = [
@@ -110,8 +109,8 @@ class TestHumidityPlatformIntegration:
             if type(sensor) in humidity_sensor_types
         ]
         
-        # Should find all 12 humidity sensor types
-        assert len(found_humidity_sensors) == 12
+        # Should find all 10 humidity sensor types
+        assert len(found_humidity_sensors) == 10
         
         # Verify each sensor type is present
         found_types = {type(sensor) for sensor in found_humidity_sensors}
@@ -120,7 +119,7 @@ class TestHumidityPlatformIntegration:
         # Verify each humidity sensor was passed the HumidityMonitor instance
         for sensor in found_humidity_sensors:
             assert hasattr(sensor, '_monitor')
-            assert sensor._monitor == mock_coordinator.smart_climate.humidity_monitor
+            assert sensor._monitor == humidity_monitor_mock
     
     @pytest.mark.asyncio
     async def test_no_humidity_sensors_when_not_configured(
@@ -158,8 +157,6 @@ class TestHumidityPlatformIntegration:
             MLHumidityOffsetSensor,
             MLHumidityConfidenceSensor,
             MLHumidityWeightSensor,
-            HumiditySensorStatusSensor,
-            HumidityComfortLevelSensor,
         }
         
         found_humidity_sensors = [
@@ -206,8 +203,6 @@ class TestHumidityPlatformIntegration:
             MLHumidityOffsetSensor,
             MLHumidityConfidenceSensor,
             MLHumidityWeightSensor,
-            HumiditySensorStatusSensor,
-            HumidityComfortLevelSensor,
         }
         
         found_humidity_sensors = [
@@ -242,10 +237,10 @@ class TestHumidityPlatformIntegration:
         mock_add_entities.assert_called_once()
         created_sensors = mock_add_entities.call_args[0][0]
         
-        # Should have many sensors (existing + 12 humidity sensors)
+        # Should have many sensors (existing + 10 humidity sensors)
         # The exact number depends on what other sensors are configured
-        # but should be > 12 (since existing sensors should still be there)
-        assert len(created_sensors) > 12
+        # but should be > 10 (since existing sensors should still be there)
+        assert len(created_sensors) > 10
         
         # Verify some key existing sensors are still present (these should always be there)
         from custom_components.smart_climate.sensor import (
@@ -276,13 +271,16 @@ class TestHumidityPlatformIntegration:
         mock_coordinator_2.smart_climate = Mock()
         mock_coordinator_2.smart_climate.humidity_monitor = humidity_monitor_2
         
+        # Create the humidity monitor mock
+        humidity_monitor_mock = Mock()
         mock_hass.data = {
             "smart_climate": {
                 "test_entry": {
                     "coordinators": {
                         "climate.test1": mock_coordinator,
                         "climate.test2": mock_coordinator_2,
-                    }
+                    },
+                    "humidity_monitor": humidity_monitor_mock
                 }
             }
         }
@@ -308,8 +306,6 @@ class TestHumidityPlatformIntegration:
             MLHumidityOffsetSensor,
             MLHumidityConfidenceSensor,
             MLHumidityWeightSensor,
-            HumiditySensorStatusSensor,
-            HumidityComfortLevelSensor,
         }
         
         found_humidity_sensors = [
@@ -317,8 +313,8 @@ class TestHumidityPlatformIntegration:
             if type(sensor) in humidity_sensor_types
         ]
         
-        # Should find 12 humidity sensors for each entity (24 total)
-        assert len(found_humidity_sensors) == 24
+        # Should find 10 humidity sensors for each entity (20 total)
+        assert len(found_humidity_sensors) == 20
     
     @pytest.mark.asyncio
     async def test_no_coordinators_handles_gracefully(
