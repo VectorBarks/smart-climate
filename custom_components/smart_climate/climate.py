@@ -1614,10 +1614,18 @@ class SmartClimateEntity(ClimateEntity):
             # Get humidity values if available
             indoor_humidity = None
             outdoor_humidity = None
-            if hasattr(self._sensor_manager, 'get_indoor_humidity'):
+            try:
                 indoor_humidity = self._sensor_manager.get_indoor_humidity()
-            if hasattr(self._sensor_manager, 'get_outdoor_humidity'):
                 outdoor_humidity = self._sensor_manager.get_outdoor_humidity()
+                _LOGGER.debug(
+                    "Retrieved humidity values: indoor=%.2f%%, outdoor=%.2f%%",
+                    indoor_humidity if indoor_humidity is not None else 0.0,
+                    outdoor_humidity if outdoor_humidity is not None else 0.0
+                )
+            except AttributeError as e:
+                _LOGGER.warning("SensorManager missing humidity methods: %s", e)
+            except Exception as e:
+                _LOGGER.error("Error retrieving humidity values: %s", e)
             
             # Calculate derived humidity features if we have the values
             humidity_differential = None
@@ -1639,6 +1647,14 @@ class SmartClimateEntity(ClimateEntity):
             # Create offset input with humidity data
             from datetime import datetime
             now = datetime.now()
+            
+            _LOGGER.debug(
+                "Creating OffsetInput with humidity data: indoor=%.2f%%, outdoor=%.2f%%, differential=%.2f%%",
+                indoor_humidity if indoor_humidity is not None else 0.0,
+                outdoor_humidity if outdoor_humidity is not None else 0.0,
+                humidity_differential if humidity_differential is not None else 0.0
+            )
+            
             offset_input = OffsetInput(
                 ac_internal_temp=ac_internal_temp,
                 room_temp=room_temp,
