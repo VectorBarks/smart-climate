@@ -157,6 +157,7 @@ class SensorManager:
             Humidity percentage, or None if unavailable or not configured
         """
         if self._indoor_humidity_sensor_id is None:
+            _LOGGER.debug("Indoor humidity sensor ID is None - not configured")
             return None
         
         try:
@@ -166,10 +167,11 @@ class SensorManager:
                 return None
             
             if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-                _LOGGER.debug("Indoor humidity sensor unavailable: %s", self._indoor_humidity_sensor_id)
+                _LOGGER.debug("Indoor humidity sensor unavailable: %s (state: %s)", self._indoor_humidity_sensor_id, state.state)
                 return None
             
             humidity = float(state.state)
+            _LOGGER.debug("Indoor humidity retrieved: %.2f%% from %s", humidity, self._indoor_humidity_sensor_id)
             return humidity
             
         except (ValueError, TypeError) as exc:
@@ -192,6 +194,7 @@ class SensorManager:
             Humidity percentage, or None if unavailable or not configured
         """
         if self._outdoor_humidity_sensor_id is None:
+            _LOGGER.debug("Outdoor humidity sensor ID is None - not configured")
             return None
         
         try:
@@ -201,10 +204,11 @@ class SensorManager:
                 return None
             
             if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-                _LOGGER.debug("Outdoor humidity sensor unavailable: %s", self._outdoor_humidity_sensor_id)
+                _LOGGER.debug("Outdoor humidity sensor unavailable: %s (state: %s)", self._outdoor_humidity_sensor_id, state.state)
                 return None
             
             humidity = float(state.state)
+            _LOGGER.debug("Outdoor humidity retrieved: %.2f%% from %s", humidity, self._outdoor_humidity_sensor_id)
             return humidity
             
         except (ValueError, TypeError) as exc:
