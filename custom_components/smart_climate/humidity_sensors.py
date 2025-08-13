@@ -10,6 +10,9 @@ from .humidity_monitor import HumidityMonitor
 class HumiditySensorEntity(SensorEntity):
     """Base class for humidity monitoring sensors."""
     
+    # Enable polling so Home Assistant calls async_update()
+    _attr_should_poll = True
+    
     def __init__(self, monitor: HumidityMonitor, sensor_type: str):
         """Initialize base humidity sensor.
         
