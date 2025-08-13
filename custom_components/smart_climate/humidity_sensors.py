@@ -214,6 +214,15 @@ class HumiditySensorStatusSensor(HumiditySensorEntity):
     def _get_unit(self) -> str:
         """Return empty string - status is a text value."""
         return ""
+    
+    async def async_update(self) -> None:
+        """Update sensor state from HumidityMonitor."""
+        data = await self._monitor.async_get_sensor_data()
+        value = data.get(self._sensor_type)
+        
+        # For text sensors, always mark as available if we have a value
+        self._attr_native_value = value if value is not None else "Unknown"
+        self._attr_available = True
 
 
 class HumidityComfortLevelSensor(HumiditySensorEntity):
@@ -230,3 +239,12 @@ class HumidityComfortLevelSensor(HumiditySensorEntity):
     def _get_unit(self) -> str:
         """Return empty string - comfort level is a text value."""
         return ""
+    
+    async def async_update(self) -> None:
+        """Update sensor state from HumidityMonitor."""
+        data = await self._monitor.async_get_sensor_data()
+        value = data.get(self._sensor_type)
+        
+        # For text sensors, always mark as available if we have a value
+        self._attr_native_value = value if value is not None else "Unknown"
+        self._attr_available = True

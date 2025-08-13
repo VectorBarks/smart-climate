@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from homeassistant.core import HomeAssistant
 import logging
+import math
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -296,7 +297,7 @@ class HumidityMonitor:
             return 0.0
     
     def _calculate_heat_index(self, temp_c: Optional[float], humidity: Optional[float]) -> Optional[float]:
-        """Calculate heat index using simplified Steadman formula for Celsius.
+        """Calculate heat index using Rothfusz regression formula.
         
         Args:
             temp_c: Temperature in degrees Celsius
@@ -308,16 +309,33 @@ class HumidityMonitor:
         if temp_c is None or humidity is None:
             return None
             
-        # Only calculate heat index for warm conditions where it's meaningful
-        if temp_c < 20.0 or humidity < 40.0:
+        # Heat index only meaningful above 27°C (80°F)
+        if temp_c < 27.0:
             return temp_c  # Return regular temperature when heat index not applicable
             
-        # Simplified heat index formula for Celsius (adapted from Steadman)
-        # HI = T + 0.348 * RH - 0.70 * WS - 4.25
-        # Where WS (wind speed) = 0 for indoor conditions
-        heat_index = temp_c + (0.348 * humidity) - 4.25
+        # Convert to Fahrenheit for calculation
+        temp_f = temp_c * 9/5 + 32
         
-        return round(heat_index, 1)
+        # Rothfusz regression formula
+        hi_f = (-42.379 + 2.04901523 * temp_f + 10.14333127 * humidity
+                - 0.22475541 * temp_f * humidity - 0.00683783 * temp_f * temp_f
+                - 0.05481717 * humidity * humidity + 0.00122874 * temp_f * temp_f * humidity
+                + 0.00085282 * temp_f * humidity * humidity
+                - 0.00000199 * temp_f * temp_f * humidity * humidity)
+        
+        # Adjustments for low humidity
+        if humidity < 13 and 80 <= temp_f <= 112:
+            adjustment = ((13 - humidity) / 4) * math.sqrt((17 - abs(temp_f - 95)) / 17)
+            hi_f -= adjustment
+        # Adjustments for high humidity  
+        elif humidity > 85 and 80 <= temp_f <= 87:
+            adjustment = ((humidity - 85) / 10) * ((87 - temp_f) / 5)
+            hi_f += adjustment
+            
+        # Convert back to Celsius
+        hi_c = (hi_f - 32) * 5/9
+        
+        return round(hi_c, 1)
     
     def _calculate_dew_point(self, temp_c: Optional[float], humidity: Optional[float]) -> Optional[float]:
         """Calculate dew point using Magnus formula.
@@ -344,7 +362,6 @@ class HumidityMonitor:
             return None
             
         # Calculate gamma
-        import math
         gamma = (b * temp_c) / (c + temp_c) + math.log(humidity / 100.0)
         
         # Calculate dew point
@@ -415,7 +432,6 @@ class HumidityMonitor:
             return None
             
         # Buck equation for saturated vapor pressure (in kPa)
-        import math
         svp = 0.61121 * math.exp((18.678 - temp_c / 234.5) * (temp_c / (257.14 + temp_c)))
         
         # Actual vapor pressure
