@@ -341,6 +341,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register the dashboard generation service (only once per HA instance)
     await _async_register_services(hass)
+    
+    # Register update listener for options changes (HACS reload support)
+    entry.async_on_unload(entry.add_update_listener(update_listener))
+    _LOGGER.debug("Registered update_listener for config entry %s", entry.entry_id)
 
     return True
 
@@ -954,6 +958,16 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         _LOGGER.info("Smart Climate service 'generate_dashboard' registered successfully")
     except Exception as exc:
         _LOGGER.error("Failed to register Smart Climate service: %s", exc, exc_info=True)
+
+
+async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Update listener for config entry options changes.
+    
+    Called automatically by Home Assistant when integration options are modified
+    through the UI. Triggers a reload to apply the new configuration.
+    """
+    _LOGGER.info("Reloading Smart Climate integration due to options update")
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
