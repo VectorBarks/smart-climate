@@ -85,6 +85,16 @@ CONF_PASSIVE_LEARNING_ENABLED = "passive_learning_enabled"
 CONF_PASSIVE_MIN_DRIFT_MINUTES = "passive_min_drift_minutes"
 CONF_PASSIVE_CONFIDENCE_THRESHOLD = "passive_confidence_threshold"
 
+# Humidity monitoring configuration keys (v1.5.0+)
+CONF_HUMIDITY_CHANGE_THRESHOLD = "humidity_change_threshold"
+CONF_HEAT_INDEX_WARNING = "heat_index_warning"
+CONF_HEAT_INDEX_HIGH = "heat_index_high"
+CONF_DEW_POINT_WARNING = "dew_point_warning"
+CONF_DEW_POINT_CRITICAL = "dew_point_critical"
+CONF_DIFFERENTIAL_SIGNIFICANT = "differential_significant"
+CONF_DIFFERENTIAL_EXTREME = "differential_extreme"
+CONF_HUMIDITY_LOG_LEVEL = "humidity_log_level"
+
 # Default values
 DEFAULT_MAX_OFFSET = 5.0
 DEFAULT_MIN_TEMPERATURE = 16.0
@@ -183,6 +193,16 @@ DEFAULT_CALIBRATION_DRIFT_THRESHOLD = 0.3
 DEFAULT_PASSIVE_LEARNING_ENABLED = True  # Enabled by default for new passive learning feature
 DEFAULT_PASSIVE_MIN_DRIFT_MINUTES = 15  # Minimum 15 minutes of off time for valid drift
 DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD = 0.3  # Accept passive measurements with 30% confidence or higher
+
+# Humidity monitoring default values (v1.5.0+)
+DEFAULT_HUMIDITY_CHANGE_THRESHOLD = 2.0  # percent
+DEFAULT_HEAT_INDEX_WARNING = 26.0  # °C
+DEFAULT_HEAT_INDEX_HIGH = 29.0  # °C
+DEFAULT_DEW_POINT_WARNING = 2.0  # °C buffer
+DEFAULT_DEW_POINT_CRITICAL = 1.0  # °C buffer
+DEFAULT_DIFFERENTIAL_SIGNIFICANT = 25.0  # percent
+DEFAULT_DIFFERENTIAL_EXTREME = 40.0  # percent
+DEFAULT_HUMIDITY_LOG_LEVEL = "DEBUG"  # Default log level
 
 # Preference level options
 PREFERENCE_LEVELS = [

@@ -41,6 +41,7 @@ from .offset_engine import OffsetEngine
 from .seasonal_learner import SeasonalHysteresisLearner
 from .feature_engineering import FeatureEngineering
 from .sensor_manager import SensorManager
+from .humidity_monitor import HumidityMonitor
 
 # Thermal efficiency imports
 from .thermal_models import ThermalState, ThermalConstants
@@ -187,9 +188,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         outdoor_humidity_sensor_id=outdoor_humidity
     )
     
+    # Create HumidityMonitor if humidity sensors are configured
+    humidity_monitor = None
+    if indoor_humidity or outdoor_humidity:
+        _LOGGER.debug("Creating HumidityMonitor with humidity sensors configured")
+        
+        # Build humidity monitoring configuration from entry options/data
+        humidity_config = {}
+        for key, default_value in [
+            ("humidity_change_threshold", 2.0),
+            ("heat_index_warning", 26.0), 
+            ("heat_index_high", 29.0),
+            ("dew_point_warning", 2.0),
+            ("dew_point_critical", 1.0),
+            ("differential_significant", 25.0),
+            ("differential_extreme", 40.0),
+            ("humidity_log_level", "DEBUG"),
+        ]:
+            # Options take precedence over data for user-configurable settings
+            humidity_config[key] = config.get(key, default_value)
+        
+        humidity_monitor = HumidityMonitor(
+            hass=hass,
+            sensor_manager=sensor_manager,
+            offset_engine=None,  # Will be set later per entity
+            config=humidity_config
+        )
+        _LOGGER.info("HumidityMonitor created successfully")
+    else:
+        _LOGGER.debug("No humidity sensors configured, skipping HumidityMonitor creation")
+    
     # Store components for platform access
     entry_data["feature_engineer"] = feature_engineer
     entry_data["sensor_manager"] = sensor_manager
+    entry_data["humidity_monitor"] = humidity_monitor
     
     _LOGGER.info("Humidity components wired successfully")
     # --- END HUMIDITY COMPONENT WIRING ---

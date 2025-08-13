@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from .cycle_monitor import CycleMonitor
     from .comfort_band_controller import ComfortBandController
     from .thermal_manager import ThermalManager
+    from .humidity_monitor import HumidityMonitor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +49,8 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         comfort_band_controller: Optional["ComfortBandController"] = None,
         thermal_efficiency_enabled: bool = False,
         wrapped_entity_id: Optional[str] = None,
-        entity_id: Optional[str] = None  # Smart Climate entity ID for looking up ThermalManager
+        entity_id: Optional[str] = None,  # Smart Climate entity ID for looking up ThermalManager
+        humidity_monitor: Optional["HumidityMonitor"] = None
     ):
         """Initialize the coordinator."""
         super().__init__(
@@ -63,6 +65,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         self._forecast_engine = forecast_engine
         self._wrapped_entity_id = wrapped_entity_id
         self._entity_id = entity_id  # Store Smart Climate entity ID for ThermalManager lookup
+        self._humidity_monitor = humidity_monitor
         self._is_startup = True  # Flag for startup calculation
         
         # Initialize thermal efficiency components (Phase 1)
@@ -515,6 +518,15 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 indoor_humidity = self._sensor_manager.get_indoor_humidity()
                 outdoor_humidity = self._sensor_manager.get_outdoor_humidity()
             
+            # Update humidity monitor if configured
+            humidity_data = None
+            if self._humidity_monitor:
+                try:
+                    humidity_data = await self._humidity_monitor.async_update()
+                    _LOGGER.debug("HumidityMonitor updated successfully")
+                except Exception as exc:
+                    _LOGGER.warning("Error updating HumidityMonitor: %s", exc)
+            
             # Get AC internal temperature from wrapped entity if available
             ac_internal_temp = room_temp  # Default to room temp if unavailable
             if hasattr(self, '_wrapped_entity_id') and self._wrapped_entity_id:
@@ -753,7 +765,9 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 # Phase 2 fields
                 thermal_state=thermal_state,
                 learning_active=learning_active,
-                learning_target=learning_target
+                learning_target=learning_target,
+                # Humidity monitoring data
+                humidity_data=humidity_data
             )
             
         except Exception as err:

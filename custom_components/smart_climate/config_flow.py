@@ -119,6 +119,23 @@ from .const import (
     DEFAULT_PASSIVE_MIN_DRIFT_MINUTES,
     DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD,
     PREFERENCE_LEVELS,
+    # Humidity monitoring imports
+    CONF_HUMIDITY_CHANGE_THRESHOLD,
+    CONF_HEAT_INDEX_WARNING,
+    CONF_HEAT_INDEX_HIGH,
+    CONF_DEW_POINT_WARNING,
+    CONF_DEW_POINT_CRITICAL,
+    CONF_DIFFERENTIAL_SIGNIFICANT,
+    CONF_DIFFERENTIAL_EXTREME,
+    CONF_HUMIDITY_LOG_LEVEL,
+    DEFAULT_HUMIDITY_CHANGE_THRESHOLD,
+    DEFAULT_HEAT_INDEX_WARNING,
+    DEFAULT_HEAT_INDEX_HIGH,
+    DEFAULT_DEW_POINT_WARNING,
+    DEFAULT_DEW_POINT_CRITICAL,
+    DEFAULT_DIFFERENTIAL_SIGNIFICANT,
+    DEFAULT_DIFFERENTIAL_EXTREME,
+    DEFAULT_HUMIDITY_LOG_LEVEL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -941,6 +958,104 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                         selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
                         for entity_id, friendly_name in humidity_sensors.items()
                     ] if humidity_sensors else [],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            
+            # Humidity monitoring configuration
+            vol.Optional(
+                CONF_HUMIDITY_CHANGE_THRESHOLD,
+                default=current_options.get(CONF_HUMIDITY_CHANGE_THRESHOLD, current_config.get(CONF_HUMIDITY_CHANGE_THRESHOLD, DEFAULT_HUMIDITY_CHANGE_THRESHOLD))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.5,
+                    max=10.0,
+                    step=0.1,
+                    unit_of_measurement="%",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_HEAT_INDEX_WARNING,
+                default=current_options.get(CONF_HEAT_INDEX_WARNING, current_config.get(CONF_HEAT_INDEX_WARNING, DEFAULT_HEAT_INDEX_WARNING))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=20.0,
+                    max=35.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_HEAT_INDEX_HIGH,
+                default=current_options.get(CONF_HEAT_INDEX_HIGH, current_config.get(CONF_HEAT_INDEX_HIGH, DEFAULT_HEAT_INDEX_HIGH))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=25.0,
+                    max=40.0,
+                    step=0.5,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_DEW_POINT_WARNING,
+                default=current_options.get(CONF_DEW_POINT_WARNING, current_config.get(CONF_DEW_POINT_WARNING, DEFAULT_DEW_POINT_WARNING))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.5,
+                    max=5.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_DEW_POINT_CRITICAL,
+                default=current_options.get(CONF_DEW_POINT_CRITICAL, current_config.get(CONF_DEW_POINT_CRITICAL, DEFAULT_DEW_POINT_CRITICAL))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.1,
+                    max=3.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_DIFFERENTIAL_SIGNIFICANT,
+                default=current_options.get(CONF_DIFFERENTIAL_SIGNIFICANT, current_config.get(CONF_DIFFERENTIAL_SIGNIFICANT, DEFAULT_DIFFERENTIAL_SIGNIFICANT))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10.0,
+                    max=50.0,
+                    step=1.0,
+                    unit_of_measurement="%",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_DIFFERENTIAL_EXTREME,
+                default=current_options.get(CONF_DIFFERENTIAL_EXTREME, current_config.get(CONF_DIFFERENTIAL_EXTREME, DEFAULT_DIFFERENTIAL_EXTREME))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=20.0,
+                    max=80.0,
+                    step=1.0,
+                    unit_of_measurement="%",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_HUMIDITY_LOG_LEVEL,
+                default=current_options.get(CONF_HUMIDITY_LOG_LEVEL, current_config.get(CONF_HUMIDITY_LOG_LEVEL, DEFAULT_HUMIDITY_LOG_LEVEL))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="INFO", label="INFO"),
+                        selector.SelectOptionDict(value="DEBUG", label="DEBUG"),
+                    ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),

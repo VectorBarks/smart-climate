@@ -95,6 +95,20 @@ from .sensor_thermal import (
     LastProbeResultSensor,
     ProbingActiveSensor,
 )
+from .humidity_sensors import (
+    IndoorHumiditySensor,
+    OutdoorHumiditySensor,
+    HumidityDifferentialSensor,
+    HeatIndexSensor,
+    IndoorDewPointSensor,
+    OutdoorDewPointSensor,
+    AbsoluteHumiditySensor,
+    MLHumidityOffsetSensor,
+    MLHumidityConfidenceSensor,
+    MLHumidityWeightSensor,
+    HumiditySensorStatusSensor,
+    HumidityComfortLevelSensor,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -199,6 +213,40 @@ async def async_setup_entry(
         outlier_detection_enabled = config_entry.options.get("outlier_detection_enabled", True)
         if outlier_detection_enabled:
             sensors.append(OutlierCountSensor(coordinator, entity_id, config_entry))
+        
+        # === HUMIDITY MONITORING SENSORS (12) ===
+        # Only add humidity sensors when humidity monitoring is configured
+        humidity_sensors_enabled = config_entry.options.get("humidity_sensors_enabled", False)
+        if humidity_sensors_enabled:
+            # Check if HumidityMonitor is available (created by H1-H3)
+            humidity_monitor = None
+            if hasattr(coordinator, 'smart_climate') and hasattr(coordinator.smart_climate, 'humidity_monitor'):
+                humidity_monitor = coordinator.smart_climate.humidity_monitor
+            
+            if humidity_monitor is not None:
+                sensors.extend([
+                    # Core Humidity Sensors (4)
+                    IndoorHumiditySensor(humidity_monitor),
+                    OutdoorHumiditySensor(humidity_monitor),
+                    HumidityDifferentialSensor(humidity_monitor),
+                    HeatIndexSensor(humidity_monitor),
+                    
+                    # Dew Point Sensors (2)  
+                    IndoorDewPointSensor(humidity_monitor),
+                    OutdoorDewPointSensor(humidity_monitor),
+                    
+                    # Advanced Humidity Metrics (3)
+                    AbsoluteHumiditySensor(humidity_monitor),
+                    MLHumidityOffsetSensor(humidity_monitor),
+                    MLHumidityConfidenceSensor(humidity_monitor),
+                    
+                    # System & Status Sensors (3)
+                    MLHumidityWeightSensor(humidity_monitor),
+                    HumiditySensorStatusSensor(humidity_monitor),
+                    HumidityComfortLevelSensor(humidity_monitor),
+                ])
+            else:
+                _LOGGER.debug("HumidityMonitor not available for entity %s, skipping humidity sensors", entity_id)
     
     async_add_entities(sensors)
 

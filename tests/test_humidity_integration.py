@@ -230,3 +230,180 @@ class TestHumidityIntegration:
         sample = learner_samples[0]
         assert sample["indoor_humidity"] is None
         assert sample["outdoor_humidity"] is None
+
+    @pytest.mark.asyncio
+    async def test_humidity_sensor_status_sensor(self):
+        """Test HumiditySensorStatusSensor shows correct availability status."""
+        from custom_components.smart_climate.humidity_sensors import HumiditySensorStatusSensor
+        from custom_components.smart_climate.humidity_monitor import HumidityMonitor
+        
+        # Mock HumidityMonitor with availability data
+        monitor = Mock(spec=HumidityMonitor)
+        
+        # Test "OK" status when both sensors available
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_sensor_status": "OK",
+            "indoor_humidity": 45.0,
+            "outdoor_humidity": 65.0
+        }
+        
+        sensor = HumiditySensorStatusSensor(monitor)
+        assert sensor.name == "Smart Climate Humidity Sensor Status"
+        assert sensor.unique_id == "smart_climate_humidity_sensor_status"
+        assert sensor._get_unit() == ""
+        
+        # Mock update
+        await sensor.async_update()
+        assert sensor._attr_native_value == "OK"
+        
+        # Test "Degraded" status when one sensor unavailable
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_sensor_status": "Degraded",
+            "indoor_humidity": 45.0,
+            "outdoor_humidity": None
+        }
+        
+        await sensor.async_update()
+        assert sensor._attr_native_value == "Degraded"
+        
+        # Test "Unavailable" status when both sensors unavailable
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_sensor_status": "Unavailable",
+            "indoor_humidity": None,
+            "outdoor_humidity": None
+        }
+        
+        await sensor.async_update()
+        assert sensor._attr_native_value == "Unavailable"
+
+    @pytest.mark.asyncio
+    async def test_humidity_comfort_level_sensor(self):
+        """Test HumidityComfortLevelSensor shows correct comfort assessment."""
+        from custom_components.smart_climate.humidity_sensors import HumidityComfortLevelSensor
+        from custom_components.smart_climate.humidity_monitor import HumidityMonitor
+        
+        # Mock HumidityMonitor with comfort data
+        monitor = Mock(spec=HumidityMonitor)
+        
+        # Test "Comfortable" range (30-60%)
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_comfort_level": "Comfortable",
+            "indoor_humidity": 45.0
+        }
+        
+        sensor = HumidityComfortLevelSensor(monitor)
+        assert sensor.name == "Smart Climate Humidity Comfort Level"
+        assert sensor.unique_id == "smart_climate_humidity_comfort_level"
+        assert sensor._get_unit() == ""
+        
+        # Mock update
+        await sensor.async_update()
+        assert sensor._attr_native_value == "Comfortable"
+        
+        # Test "Too Dry" (< 30%)
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_comfort_level": "Too Dry",
+            "indoor_humidity": 25.0
+        }
+        
+        await sensor.async_update()
+        assert sensor._attr_native_value == "Too Dry"
+        
+        # Test "Too Humid" (> 60%)
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_comfort_level": "Too Humid",
+            "indoor_humidity": 75.0
+        }
+        
+        await sensor.async_update()
+        assert sensor._attr_native_value == "Too Humid"
+
+    def test_coordinator_humidity_update_integration_in_models(self):
+        """Test that SmartClimateData model includes humidity_data field."""
+        from custom_components.smart_climate.models import SmartClimateData
+        import inspect
+        
+        # Get dataclass fields
+        sig = inspect.signature(SmartClimateData.__init__)
+        
+        # Verify humidity_data parameter exists
+        assert 'humidity_data' in sig.parameters
+        
+        # Verify it's optional with None default
+        humidity_data_param = sig.parameters['humidity_data']
+        assert humidity_data_param.default is None
+        
+        # Test creating SmartClimateData with humidity_data
+        data = SmartClimateData(
+            room_temp=22.0,
+            outdoor_temp=30.0,
+            power=250.0,
+            calculated_offset=1.5,
+            mode_adjustments=None,
+            humidity_data={"indoor_humidity": 45.0, "triggers": ["humidity_change"]}
+        )
+        
+        assert data.humidity_data is not None
+        assert data.humidity_data["indoor_humidity"] == 45.0
+        assert data.humidity_data["triggers"] == ["humidity_change"]
+
+    @pytest.mark.asyncio
+    async def test_end_to_end_humidity_sensor_update_flow(self):
+        """Test complete flow from sensor change to entity update."""
+        from custom_components.smart_climate.humidity_sensors import (
+            HumiditySensorStatusSensor, 
+            HumidityComfortLevelSensor
+        )
+        from custom_components.smart_climate.humidity_monitor import HumidityMonitor
+        
+        # Mock HumidityMonitor
+        monitor = Mock(spec=HumidityMonitor)
+        
+        # Create sensors
+        status_sensor = HumiditySensorStatusSensor(monitor)
+        comfort_sensor = HumidityComfortLevelSensor(monitor)
+        
+        # Mock initial state
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_sensor_status": "OK",
+            "humidity_comfort_level": "Comfortable",
+            "indoor_humidity": 45.0,
+            "outdoor_humidity": 65.0
+        }
+        
+        # Initial update
+        await status_sensor.async_update()
+        await comfort_sensor.async_update()
+        
+        assert status_sensor._attr_native_value == "OK"
+        assert comfort_sensor._attr_native_value == "Comfortable"
+        
+        # Simulate humidity change that triggers comfort change
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_sensor_status": "OK",
+            "humidity_comfort_level": "Too Humid",
+            "indoor_humidity": 75.0,  # High humidity
+            "outdoor_humidity": 65.0
+        }
+        
+        # Update after change
+        await status_sensor.async_update()
+        await comfort_sensor.async_update()
+        
+        assert status_sensor._attr_native_value == "OK"
+        assert comfort_sensor._attr_native_value == "Too Humid"
+        
+        # Simulate sensor failure
+        monitor.async_get_sensor_data.return_value = {
+            "humidity_sensor_status": "Unavailable",
+            "humidity_comfort_level": "Comfortable",  # Default when no data
+            "indoor_humidity": None,
+            "outdoor_humidity": None
+        }
+        
+        # Update after sensor failure
+        await status_sensor.async_update()
+        await comfort_sensor.async_update()
+        
+        assert status_sensor._attr_native_value == "Unavailable"
+        assert comfort_sensor._attr_native_value == "Comfortable"

@@ -104,6 +104,8 @@ class SmartClimateData:
     thermal_state: Optional[str] = None
     learning_active: bool = False
     learning_target: Optional[float] = None
+    # Humidity monitoring data
+    humidity_data: Optional[dict] = None
     
     def __post_init__(self):
         """Initialize default values for outlier fields."""
