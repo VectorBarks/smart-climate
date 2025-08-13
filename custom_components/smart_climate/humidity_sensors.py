@@ -23,7 +23,6 @@ class HumiditySensorEntity(SensorEntity):
         super().__init__()
         self._monitor = monitor
         self._sensor_type = sensor_type
-        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_device_class = self._get_device_class()
         self._attr_native_unit_of_measurement = self._get_unit()
         self._attr_available = True
@@ -61,6 +60,7 @@ class IndoorHumiditySensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize indoor humidity sensor."""
         super().__init__(monitor, "indoor_humidity")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> SensorDeviceClass:
         """Return humidity device class."""
@@ -73,6 +73,7 @@ class OutdoorHumiditySensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize outdoor humidity sensor."""
         super().__init__(monitor, "outdoor_humidity")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> SensorDeviceClass:
         """Return humidity device class."""
@@ -85,6 +86,7 @@ class HumidityDifferentialSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize humidity differential sensor."""
         super().__init__(monitor, "humidity_differential")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> Optional[SensorDeviceClass]:
         """Return None - differential doesn't use humidity device class."""
@@ -97,6 +99,7 @@ class HeatIndexSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize heat index sensor."""
         super().__init__(monitor, "heat_index")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> SensorDeviceClass:
         """Return temperature device class for heat index."""
@@ -113,6 +116,7 @@ class IndoorDewPointSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize indoor dew point sensor."""
         super().__init__(monitor, "dew_point_indoor")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> SensorDeviceClass:
         """Return temperature device class for dew point."""
@@ -129,6 +133,7 @@ class OutdoorDewPointSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize outdoor dew point sensor."""
         super().__init__(monitor, "dew_point_outdoor")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> SensorDeviceClass:
         """Return temperature device class for dew point."""
@@ -145,6 +150,7 @@ class AbsoluteHumiditySensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize absolute humidity sensor."""
         super().__init__(monitor, "absolute_humidity")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> Optional[SensorDeviceClass]:
         """Return None - no device class for g/m³ unit."""
@@ -161,6 +167,7 @@ class MLHumidityOffsetSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize ML humidity offset sensor."""
         super().__init__(monitor, "ml_humidity_offset")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> Optional[SensorDeviceClass]:
         """Return None - no device class for offset contribution."""
@@ -177,6 +184,7 @@ class MLHumidityConfidenceSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize ML humidity confidence sensor."""
         super().__init__(monitor, "ml_humidity_confidence")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> Optional[SensorDeviceClass]:
         """Return None - no device class for confidence impact."""
@@ -193,6 +201,7 @@ class MLHumidityWeightSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize ML humidity weight sensor."""
         super().__init__(monitor, "ml_humidity_weight")
+        self._attr_state_class = SensorStateClass.MEASUREMENT
     
     def _get_device_class(self) -> Optional[SensorDeviceClass]:
         """Return None - no device class for feature importance."""

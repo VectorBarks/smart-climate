@@ -33,7 +33,8 @@ class TestHumiditySensorEntity:
         
         assert sensor._monitor == mock_monitor
         assert sensor._sensor_type == sensor_type
-        assert sensor._attr_state_class == SensorStateClass.MEASUREMENT
+        # Base class should not set state_class by default
+        assert not hasattr(sensor, '_attr_state_class')
         
     def test_name_property(self):
         """Test name property formats sensor type correctly."""
