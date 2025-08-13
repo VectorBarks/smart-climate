@@ -50,7 +50,8 @@ class SmartClimateEntity(ClimateEntity):
         mode_manager,
         temperature_controller,
         coordinator,
-        forecast_engine=None
+        forecast_engine=None,
+        feature_engineer=None
     ):
         """Initialize the SmartClimateEntity.
         
@@ -79,6 +80,7 @@ class SmartClimateEntity(ClimateEntity):
         self._temperature_controller = temperature_controller
         self._coordinator = coordinator
         self._forecast_engine = forecast_engine
+        self._feature_engineer = feature_engineer
         self._config = config
         self._last_offset = 0.0
         self._last_total_offset = 0.0  # Track total offset for update logic
@@ -1609,7 +1611,32 @@ class SmartClimateEntity(ClimateEntity):
                 )
                 return
             
-            # Create offset input
+            # Get humidity values if available
+            indoor_humidity = None
+            outdoor_humidity = None
+            if hasattr(self._sensor_manager, 'get_indoor_humidity'):
+                indoor_humidity = self._sensor_manager.get_indoor_humidity()
+            if hasattr(self._sensor_manager, 'get_outdoor_humidity'):
+                outdoor_humidity = self._sensor_manager.get_outdoor_humidity()
+            
+            # Calculate derived humidity features if we have the values
+            humidity_differential = None
+            indoor_dew_point = None
+            outdoor_dew_point = None
+            heat_index = None
+            
+            if self._feature_engineer:
+                if indoor_humidity is not None:
+                    indoor_dew_point = self._feature_engineer.calculate_dew_point(room_temp, indoor_humidity)
+                    heat_index = self._feature_engineer.calculate_heat_index(room_temp, indoor_humidity)
+                if outdoor_humidity is not None and outdoor_temp is not None:
+                    outdoor_dew_point = self._feature_engineer.calculate_dew_point(outdoor_temp, outdoor_humidity)
+                if indoor_humidity is not None and outdoor_humidity is not None:
+                    humidity_differential = self._feature_engineer.calculate_humidity_differential(
+                        indoor_humidity, outdoor_humidity
+                    )
+            
+            # Create offset input with humidity data
             from datetime import datetime
             now = datetime.now()
             offset_input = OffsetInput(
@@ -1620,7 +1647,14 @@ class SmartClimateEntity(ClimateEntity):
                 power_consumption=power_consumption,
                 time_of_day=now.time(),
                 day_of_week=now.weekday(),
-                hvac_mode=self.hvac_mode
+                hvac_mode=self.hvac_mode,
+                # Add humidity data
+                indoor_humidity=indoor_humidity,
+                outdoor_humidity=outdoor_humidity,
+                humidity_differential=humidity_differential,
+                indoor_dew_point=indoor_dew_point,
+                outdoor_dew_point=outdoor_dew_point,
+                heat_index=heat_index
             )
             
             _LOGGER.debug(
@@ -2941,6 +2975,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
     config = {**config_entry.data, **config_entry.options}
     # Access the correct offset engine using the climate entity ID as the key
     climate_entity_id = config["climate_entity"]
+    
+    # Get feature_engineer from entry data
+    feature_engineer = hass.data[DOMAIN][config_entry.entry_id].get("feature_engineer")
+    
     try:
         offset_engine = hass.data[DOMAIN][config_entry.entry_id]["offset_engines"][climate_entity_id]
     except KeyError as exc:
@@ -3069,7 +3107,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             mode_manager,
             temperature_controller,
             coordinator,
-            forecast_engine=forecast_engine
+            forecast_engine=forecast_engine,
+            feature_engineer=feature_engineer
         )
         
         # Set unique ID and name from integration utilities
