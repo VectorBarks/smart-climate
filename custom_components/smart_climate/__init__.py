@@ -176,7 +176,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Get humidity sensor IDs from config
     indoor_humidity = config.get(CONF_INDOOR_HUMIDITY_SENSOR)
     outdoor_humidity = config.get(CONF_OUTDOOR_HUMIDITY_SENSOR)
-    _LOGGER.debug("Humidity sensors configured: indoor=%s, outdoor=%s", indoor_humidity, outdoor_humidity)
+    _LOGGER.info("Humidity sensors configured: indoor='%s', outdoor='%s'", indoor_humidity, outdoor_humidity)
     
     # Create SensorManager with humidity sensor IDs
     sensor_manager = SensorManager(
