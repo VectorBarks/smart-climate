@@ -775,6 +775,20 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
         })
         return vol.Schema(schema_dict)
+    
+    async def _get_humidity_sensors(self) -> Dict[str, str]:
+        """Get all humidity sensors."""
+        entities = {}
+        
+        for state in self.hass.states.async_all():
+            if (
+                state.entity_id.startswith("sensor.") and
+                state.attributes.get("device_class") == "humidity"
+            ):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                entities[state.entity_id] = friendly_name
+        
+        return entities
 
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle options flow."""
@@ -783,6 +797,9 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
 
         current_config = self.config_entry.data
         current_options = self.config_entry.options
+        
+        # Get available humidity sensors for selectors
+        humidity_sensors = await self._get_humidity_sensors()
         
         data_schema = vol.Schema({
             vol.Optional(
@@ -901,6 +918,33 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 CONF_ENABLE_LEARNING,
                 default=current_options.get(CONF_ENABLE_LEARNING, current_config.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING))
             ): selector.BooleanSelector(),
+            
+            # Humidity sensor configuration
+            vol.Optional(
+                CONF_INDOOR_HUMIDITY_SENSOR,
+                default=current_options.get(CONF_INDOOR_HUMIDITY_SENSOR, current_config.get(CONF_INDOOR_HUMIDITY_SENSOR))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in humidity_sensors.items()
+                    ] if humidity_sensors else [],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(
+                CONF_OUTDOOR_HUMIDITY_SENSOR,
+                default=current_options.get(CONF_OUTDOOR_HUMIDITY_SENSOR, current_config.get(CONF_OUTDOOR_HUMIDITY_SENSOR))
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in humidity_sensors.items()
+                    ] if humidity_sensors else [],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            
             vol.Optional(
                 CONF_DEFAULT_TARGET_TEMPERATURE,
                 default=current_options.get(CONF_DEFAULT_TARGET_TEMPERATURE, current_config.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE))

@@ -541,8 +541,6 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             if accepts_callbacks and get_thermal_cb is not None:
                 _LOGGER.info("[DEBUG] OffsetEngine supports callbacks - creating with thermal persistence")
                 offset_engine = OffsetEngine(
-                    hass=hass,
-                    entity_id=entity_id,
                     config=config,
                     feature_engineer=feature_engineer,
                     seasonal_learner=seasonal_learner,
@@ -553,8 +551,6 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             else:
                 _LOGGER.info("[DEBUG] OffsetEngine does not support callbacks yet - creating without")
                 offset_engine = OffsetEngine(
-                    hass=hass,
-                    entity_id=entity_id,
                     config=config,
                     feature_engineer=feature_engineer,
                     seasonal_learner=seasonal_learner,
@@ -564,8 +560,6 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
         except Exception as exc:
             _LOGGER.warning("[DEBUG] Error creating OffsetEngine with callbacks: %s - falling back to basic creation", exc)
             offset_engine = OffsetEngine(
-                hass=hass,
-                entity_id=entity_id,
                 config=config,
                 feature_engineer=feature_engineer,
                 seasonal_learner=seasonal_learner,
