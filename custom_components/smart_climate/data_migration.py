@@ -19,9 +19,9 @@ class ThermalDataMigrator:
     
     def __init__(self):
         """Initialize migrator with validation ranges per c_architecture.md §10.4.1."""
-        # Validation ranges from architecture specification
-        self._tau_min = 1.0    # 1 minute minimum
-        self._tau_max = 1000.0 # 1000 minutes maximum
+        # Validation ranges from architecture specification (in seconds)
+        self._tau_min = 60.0    # 60 seconds (1 minute) minimum
+        self._tau_max = 86400.0 # 86400 seconds (24 hours) maximum
         self._confidence_min = 0.0
         self._confidence_max = 1.0
         self._fit_quality_min = 0.0
@@ -260,7 +260,7 @@ class ThermalDataMigrator:
         }, 0
     
     def _is_valid_tau_value(self, value: Any) -> bool:
-        """Check if tau value is valid (1-1000 minutes)."""
+        """Check if tau value is valid (60-86400 seconds)."""
         try:
             if not isinstance(value, (int, float)):
                 return False

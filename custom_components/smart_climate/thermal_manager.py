@@ -596,28 +596,28 @@ class ThermalManager:
             if "model" in data:
                 model_data = data["model"]
                 
-                # Validate and restore tau_cooling (1-1000 range)
+                # Validate and restore tau_cooling (60-86400 seconds range)
                 if "tau_cooling" in model_data:
                     tau_cooling = model_data["tau_cooling"]
-                    if isinstance(tau_cooling, (int, float)) and 1 <= tau_cooling <= 1000:
+                    if isinstance(tau_cooling, (int, float)) and 60 <= tau_cooling <= 86400:
                         if hasattr(self._model, '_tau_cooling'):
                             self._model._tau_cooling = float(tau_cooling)
                         _LOGGER.debug("Restored tau_cooling: %.1f", tau_cooling)
                     else:
-                        _LOGGER.debug("Invalid tau_cooling %.1f, using default 90.0", tau_cooling)
+                        _LOGGER.debug("Invalid tau_cooling %.1f seconds (range: 60-86400s), using default 90.0", tau_cooling)
                         if hasattr(self._model, '_tau_cooling'):
                             self._model._tau_cooling = 90.0
                         self._corruption_recovery_count += 1
                 
-                # Validate and restore tau_warming (1-1000 range)  
+                # Validate and restore tau_warming (60-86400 seconds range)  
                 if "tau_warming" in model_data:
                     tau_warming = model_data["tau_warming"]
-                    if isinstance(tau_warming, (int, float)) and 1 <= tau_warming <= 1000:
+                    if isinstance(tau_warming, (int, float)) and 60 <= tau_warming <= 86400:
                         if hasattr(self._model, '_tau_warming'):
                             self._model._tau_warming = float(tau_warming)
                         _LOGGER.debug("Restored tau_warming: %.1f", tau_warming)
                     else:
-                        _LOGGER.debug("Invalid tau_warming %.1f, using default 150.0", tau_warming)
+                        _LOGGER.debug("Invalid tau_warming %.1f seconds (range: 60-86400s), using default 150.0", tau_warming)
                         if hasattr(self._model, '_tau_warming'):
                             self._model._tau_warming = 150.0
                         self._corruption_recovery_count += 1
