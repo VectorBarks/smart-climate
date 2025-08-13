@@ -206,6 +206,8 @@ class HumiditySensorStatusSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize humidity sensor status sensor."""
         super().__init__(monitor, "humidity_sensor_status")
+        # Text sensors should not have state_class
+        self._attr_state_class = None
     
     def _get_device_class(self) -> Optional[SensorDeviceClass]:
         """Return None - no device class for status strings."""
@@ -213,7 +215,7 @@ class HumiditySensorStatusSensor(HumiditySensorEntity):
     
     def _get_unit(self) -> str:
         """Return empty string - status is a text value."""
-        return ""
+        return None
     
     async def async_update(self) -> None:
         """Update sensor state from HumidityMonitor."""
@@ -231,6 +233,8 @@ class HumidityComfortLevelSensor(HumiditySensorEntity):
     def __init__(self, monitor: HumidityMonitor):
         """Initialize humidity comfort level sensor."""
         super().__init__(monitor, "humidity_comfort_level")
+        # Text sensors should not have state_class
+        self._attr_state_class = None
     
     def _get_device_class(self) -> Optional[SensorDeviceClass]:
         """Return None - no device class for comfort level strings."""
@@ -238,7 +242,7 @@ class HumidityComfortLevelSensor(HumiditySensorEntity):
     
     def _get_unit(self) -> str:
         """Return empty string - comfort level is a text value."""
-        return ""
+        return None
     
     async def async_update(self) -> None:
         """Update sensor state from HumidityMonitor."""
