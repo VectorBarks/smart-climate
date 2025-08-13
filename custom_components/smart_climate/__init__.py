@@ -32,11 +32,15 @@ from .const import (
     DEFAULT_OUTLIER_POWER_BOUNDS,
     DEFAULT_SHADOW_MODE,
     DEFAULT_PREFERENCE_LEVEL,
+    CONF_INDOOR_HUMIDITY_SENSOR,
+    CONF_OUTDOOR_HUMIDITY_SENSOR,
 )
 from .data_store import SmartClimateDataStore
 from .entity_waiter import EntityWaiter, EntityNotAvailableError
 from .offset_engine import OffsetEngine
 from .seasonal_learner import SeasonalHysteresisLearner
+from .feature_engineering import FeatureEngineering
+from .sensor_manager import SensorManager
 
 # Thermal efficiency imports
 from .thermal_models import ThermalState, ThermalConstants
@@ -162,6 +166,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Store entry data
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = entry_data
+
+    # --- HUMIDITY COMPONENT WIRING ---
+    # Create humidity feature engineering component
+    _LOGGER.debug("Creating FeatureEngineering component for humidity features")
+    feature_engineer = FeatureEngineering()
+    
+    # Get humidity sensor IDs from config
+    indoor_humidity = config.get(CONF_INDOOR_HUMIDITY_SENSOR)
+    outdoor_humidity = config.get(CONF_OUTDOOR_HUMIDITY_SENSOR)
+    _LOGGER.debug("Humidity sensors configured: indoor=%s, outdoor=%s", indoor_humidity, outdoor_humidity)
+    
+    # Create SensorManager with humidity sensor IDs
+    sensor_manager = SensorManager(
+        hass,
+        room_sensor_id=config["room_sensor"],
+        outdoor_sensor_id=config.get("outdoor_sensor"),
+        power_sensor_id=config.get("power_sensor"),
+        indoor_humidity_sensor_id=indoor_humidity,
+        outdoor_humidity_sensor_id=outdoor_humidity
+    )
+    
+    # Store components for platform access
+    entry_data["feature_engineer"] = feature_engineer
+    entry_data["sensor_manager"] = sensor_manager
+    
+    _LOGGER.info("Humidity components wired successfully")
+    # --- END HUMIDITY COMPONENT WIRING ---
 
     # Wait for required entities to become available
     try:
@@ -493,6 +524,9 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             restore_thermal_cb = restore_thermal_data_direct
             _LOGGER.info("[DEBUG] Direct thermal persistence callbacks created successfully")
         
+        # Get feature_engineer from entry_data
+        feature_engineer = hass.data[DOMAIN][entry.entry_id].get("feature_engineer")
+        
         # Create OffsetEngine with thermal callbacks (Architecture §10.2.1)
         _LOGGER.info("[DEBUG] Creating OffsetEngine with callbacks for entity: %s", entity_id)
         try:
@@ -507,7 +541,10 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             if accepts_callbacks and get_thermal_cb is not None:
                 _LOGGER.info("[DEBUG] OffsetEngine supports callbacks - creating with thermal persistence")
                 offset_engine = OffsetEngine(
+                    hass=hass,
+                    entity_id=entity_id,
                     config=config,
+                    feature_engineer=feature_engineer,
                     seasonal_learner=seasonal_learner,
                     outlier_detection_config=outlier_config,
                     get_thermal_data_cb=get_thermal_cb,
@@ -516,7 +553,10 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             else:
                 _LOGGER.info("[DEBUG] OffsetEngine does not support callbacks yet - creating without")
                 offset_engine = OffsetEngine(
+                    hass=hass,
+                    entity_id=entity_id,
                     config=config,
+                    feature_engineer=feature_engineer,
                     seasonal_learner=seasonal_learner,
                     outlier_detection_config=outlier_config
                 )
@@ -524,7 +564,10 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
         except Exception as exc:
             _LOGGER.warning("[DEBUG] Error creating OffsetEngine with callbacks: %s - falling back to basic creation", exc)
             offset_engine = OffsetEngine(
+                hass=hass,
+                entity_id=entity_id,
                 config=config,
+                feature_engineer=feature_engineer,
                 seasonal_learner=seasonal_learner,
                 outlier_detection_config=outlier_config
             )

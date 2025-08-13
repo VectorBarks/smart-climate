@@ -20,6 +20,8 @@ from .const import (
     CONF_ROOM_SENSOR,
     CONF_OUTDOOR_SENSOR,
     CONF_POWER_SENSOR,
+    CONF_INDOOR_HUMIDITY_SENSOR,
+    CONF_OUTDOOR_HUMIDITY_SENSOR,
     CONF_MAX_OFFSET,
     CONF_MIN_TEMPERATURE,
     CONF_MAX_TEMPERATURE,
@@ -209,6 +211,7 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         climate_entities = await self._get_climate_entities()
         temperature_sensors = await self._get_temperature_sensors()
         power_sensors = await self._get_power_sensors()
+        humidity_sensors = await self._get_humidity_sensors()
         weather_entities = await self._get_weather_entities()
 
         # Build the form schema
@@ -236,6 +239,24 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     options=[
                         selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
                         for entity_id, friendly_name in temperature_sensors.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(CONF_INDOOR_HUMIDITY_SENSOR): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in humidity_sensors.items()
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
+            vol.Optional(CONF_OUTDOOR_HUMIDITY_SENSOR): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+                        for entity_id, friendly_name in humidity_sensors.items()
                     ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
@@ -531,6 +552,20 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 raise vol.Invalid("power_sensor not found")
             validated[CONF_POWER_SENSOR] = power_sensor
         
+        # Validate optional indoor humidity sensor
+        indoor_humidity_sensor = user_input.get(CONF_INDOOR_HUMIDITY_SENSOR)
+        if indoor_humidity_sensor:
+            if not await self._entity_exists(indoor_humidity_sensor, "sensor"):
+                raise vol.Invalid("indoor_humidity_sensor not found")
+            validated[CONF_INDOOR_HUMIDITY_SENSOR] = indoor_humidity_sensor
+        
+        # Validate optional outdoor humidity sensor
+        outdoor_humidity_sensor = user_input.get(CONF_OUTDOOR_HUMIDITY_SENSOR)
+        if outdoor_humidity_sensor:
+            if not await self._entity_exists(outdoor_humidity_sensor, "sensor"):
+                raise vol.Invalid("outdoor_humidity_sensor not found")
+            validated[CONF_OUTDOOR_HUMIDITY_SENSOR] = outdoor_humidity_sensor
+        
         # Validate temperature range
         min_temp = user_input.get(CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE)
         max_temp = user_input.get(CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE)
@@ -657,6 +692,20 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if (
                 state.entity_id.startswith("sensor.") and
                 state.attributes.get("device_class") == "power"
+            ):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                entities[state.entity_id] = friendly_name
+        
+        return entities
+
+    async def _get_humidity_sensors(self) -> Dict[str, str]:
+        """Get all humidity sensors."""
+        entities = {}
+        
+        for state in self.hass.states.async_all():
+            if (
+                state.entity_id.startswith("sensor.") and
+                state.attributes.get("device_class") == "humidity"
             ):
                 friendly_name = state.attributes.get("friendly_name", state.entity_id)
                 entities[state.entity_id] = friendly_name

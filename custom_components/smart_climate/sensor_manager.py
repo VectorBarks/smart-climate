@@ -19,7 +19,9 @@ class SensorManager:
         hass: HomeAssistant,
         room_sensor_id: str,
         outdoor_sensor_id: Optional[str] = None,
-        power_sensor_id: Optional[str] = None
+        power_sensor_id: Optional[str] = None,
+        indoor_humidity_sensor_id: Optional[str] = None,
+        outdoor_humidity_sensor_id: Optional[str] = None
     ):
         """Initialize SensorManager.
         
@@ -28,17 +30,21 @@ class SensorManager:
             room_sensor_id: Entity ID of room temperature sensor (required)
             outdoor_sensor_id: Entity ID of outdoor temperature sensor (optional)
             power_sensor_id: Entity ID of power consumption sensor (optional)
+            indoor_humidity_sensor_id: Entity ID of indoor humidity sensor (optional)
+            outdoor_humidity_sensor_id: Entity ID of outdoor humidity sensor (optional)
         """
         self._hass = hass
         self._room_sensor_id = room_sensor_id
         self._outdoor_sensor_id = outdoor_sensor_id
         self._power_sensor_id = power_sensor_id
+        self._indoor_humidity_sensor_id = indoor_humidity_sensor_id
+        self._outdoor_humidity_sensor_id = outdoor_humidity_sensor_id
         self._update_callbacks: List[Callable] = []
         self._remove_listeners: List[Callable] = []
         
         _LOGGER.debug(
-            "SensorManager initialized with room=%s, outdoor=%s, power=%s",
-            room_sensor_id, outdoor_sensor_id, power_sensor_id
+            "SensorManager initialized with room=%s, outdoor=%s, power=%s, indoor_humidity=%s, outdoor_humidity=%s",
+            room_sensor_id, outdoor_sensor_id, power_sensor_id, indoor_humidity_sensor_id, outdoor_humidity_sensor_id
         )
     
     def get_room_temperature(self) -> Optional[float]:
@@ -146,6 +152,78 @@ class SensorManager:
             )
             return None
     
+    def get_indoor_humidity(self) -> Optional[float]:
+        """Get current indoor humidity if available.
+        
+        Returns:
+            Humidity percentage, or None if unavailable or not configured
+        """
+        if self._indoor_humidity_sensor_id is None:
+            return None
+        
+        try:
+            state = self._hass.states.get(self._indoor_humidity_sensor_id)
+            if state is None:
+                _LOGGER.debug("Indoor humidity sensor state not found: %s", self._indoor_humidity_sensor_id)
+                return None
+            
+            if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                _LOGGER.debug("Indoor humidity sensor unavailable: %s", self._indoor_humidity_sensor_id)
+                return None
+            
+            humidity = float(state.state)
+            _LOGGER.debug("Indoor humidity: %.1f%%", humidity)
+            return humidity
+            
+        except (ValueError, TypeError) as exc:
+            _LOGGER.warning(
+                "Failed to parse indoor humidity from %s: %s",
+                self._indoor_humidity_sensor_id, exc
+            )
+            return None
+        except Exception as exc:
+            _LOGGER.error(
+                "Error reading indoor humidity from %s: %s",
+                self._indoor_humidity_sensor_id, exc
+            )
+            return None
+    
+    def get_outdoor_humidity(self) -> Optional[float]:
+        """Get current outdoor humidity if available.
+        
+        Returns:
+            Humidity percentage, or None if unavailable or not configured
+        """
+        if self._outdoor_humidity_sensor_id is None:
+            return None
+        
+        try:
+            state = self._hass.states.get(self._outdoor_humidity_sensor_id)
+            if state is None:
+                _LOGGER.debug("Outdoor humidity sensor state not found: %s", self._outdoor_humidity_sensor_id)
+                return None
+            
+            if state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                _LOGGER.debug("Outdoor humidity sensor unavailable: %s", self._outdoor_humidity_sensor_id)
+                return None
+            
+            humidity = float(state.state)
+            _LOGGER.debug("Outdoor humidity: %.1f%%", humidity)
+            return humidity
+            
+        except (ValueError, TypeError) as exc:
+            _LOGGER.warning(
+                "Failed to parse outdoor humidity from %s: %s",
+                self._outdoor_humidity_sensor_id, exc
+            )
+            return None
+        except Exception as exc:
+            _LOGGER.error(
+                "Error reading outdoor humidity from %s: %s",
+                self._outdoor_humidity_sensor_id, exc
+            )
+            return None
+    
     def register_update_callback(self, callback: Callable) -> None:
         """Register callback for sensor updates.
         
@@ -188,6 +266,26 @@ class SensorManager:
             )
             self._remove_listeners.append(remove_listener)
             _LOGGER.debug("Started listening to power sensor: %s", self._power_sensor_id)
+        
+        # Track indoor humidity sensor if configured
+        if self._indoor_humidity_sensor_id is not None:
+            remove_listener = async_track_state_change_event(
+                self._hass,
+                self._indoor_humidity_sensor_id,
+                self._async_sensor_state_changed
+            )
+            self._remove_listeners.append(remove_listener)
+            _LOGGER.debug("Started listening to indoor humidity sensor: %s", self._indoor_humidity_sensor_id)
+        
+        # Track outdoor humidity sensor if configured
+        if self._outdoor_humidity_sensor_id is not None:
+            remove_listener = async_track_state_change_event(
+                self._hass,
+                self._outdoor_humidity_sensor_id,
+                self._async_sensor_state_changed
+            )
+            self._remove_listeners.append(remove_listener)
+            _LOGGER.debug("Started listening to outdoor humidity sensor: %s", self._outdoor_humidity_sensor_id)
         
         _LOGGER.info("Started listening to %d sensors", len(self._remove_listeners))
     

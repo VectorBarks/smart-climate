@@ -508,6 +508,13 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             outdoor_temp = self._sensor_manager.get_outdoor_temperature()
             power = self._sensor_manager.get_power_consumption()
             
+            # Get humidity data
+            indoor_humidity = None
+            outdoor_humidity = None
+            if self._sensor_manager:
+                indoor_humidity = self._sensor_manager.get_indoor_humidity()
+                outdoor_humidity = self._sensor_manager.get_outdoor_humidity()
+            
             # Get AC internal temperature from wrapped entity if available
             ac_internal_temp = room_temp  # Default to room temp if unavailable
             if hasattr(self, '_wrapped_entity_id') and self._wrapped_entity_id:
@@ -612,7 +619,9 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                     power_consumption=power,
                     time_of_day=now.time(),
                     day_of_week=now.weekday(),
-                    hvac_mode=hvac_mode
+                    hvac_mode=hvac_mode,
+                    indoor_humidity=indoor_humidity,  # Add humidity data
+                    outdoor_humidity=outdoor_humidity  # Add humidity data
                 )
                 
                 # Pass thermal window to offset calculation (Phase 2 integration)

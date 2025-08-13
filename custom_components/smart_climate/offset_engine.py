@@ -7,6 +7,7 @@ import statistics
 from datetime import datetime
 from collections import deque
 import sys
+import numpy as np
 
 from .models import OffsetInput, OffsetResult
 from .lightweight_learner import LightweightOffsetLearner as EnhancedLightweightOffsetLearner
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
     from .seasonal_learner import SeasonalHysteresisLearner
     from .delay_learner import DelayLearner
     from .forecast_engine import ForecastEngine
+    from .feature_engineering import FeatureEngineering
 
 # Type definitions for thermal persistence callbacks
 GetThermalDataCallback = Callable[[], Optional[Dict[str, Any]]]
@@ -219,7 +221,8 @@ class OffsetEngine:
         delay_learner: Optional["DelayLearner"] = None,
         outlier_detection_config: Optional[dict] = None,
         get_thermal_data_cb: Optional[GetThermalDataCallback] = None,
-        restore_thermal_data_cb: Optional[RestoreThermalDataCallback] = None
+        restore_thermal_data_cb: Optional[RestoreThermalDataCallback] = None,
+        feature_engineer: Optional["FeatureEngineering"] = None
     ):
         """Initialize the offset engine with configuration.
         
@@ -230,10 +233,14 @@ class OffsetEngine:
             outlier_detection_config: Optional configuration for outlier detection
             get_thermal_data_cb: Optional callback to get thermal data for persistence
             restore_thermal_data_cb: Optional callback to restore thermal data from persistence
+            feature_engineer: Optional FeatureEngineering for enriching input features
         """
         self._max_offset = config.get("max_offset", 5.0)
         self._ml_enabled = config.get("ml_enabled", True)
         self._ml_model = None  # Loaded when available
+        
+        # Feature engineering for ML input enhancement
+        self._feature_engineer = feature_engineer
         
         # Thermal persistence callbacks (v2.1 schema support)
         self._get_thermal_data_cb = get_thermal_data_cb
@@ -751,6 +758,10 @@ class OffsetEngine:
         Returns:
             OffsetResult with calculated offset and metadata
         """
+        # Enrich features if feature_engineer available
+        if self._feature_engineer:
+            input_data = self._feature_engineer.enrich_features(input_data)
+        
         # Store the input data for confidence calculation
         self._last_input_data = input_data
         
@@ -884,14 +895,16 @@ class OffsetEngine:
                         "Attempting learning prediction for offset calculation (%d samples available)",
                         sample_count
                     )
-                    # Use enhanced predict method with hysteresis context
+                    # Use enhanced predict method with hysteresis context and humidity data
                     learned_offset = self._learner.predict(
                         ac_temp=input_data.ac_internal_temp,
                         room_temp=input_data.room_temp,
                         outdoor_temp=input_data.outdoor_temp,
                         mode=input_data.mode,
                         power=input_data.power_consumption,
-                        hysteresis_state=hysteresis_state
+                        hysteresis_state=hysteresis_state,
+                        indoor_humidity=input_data.indoor_humidity,
+                        outdoor_humidity=input_data.outdoor_humidity
                     )
                     learning_confidence = 0.8  # High confidence for hysteresis-aware prediction
                     
@@ -1140,6 +1153,9 @@ class OffsetEngine:
     def update_ml_model(self, model_path: str) -> None:
         """Update the ML model used for predictions.
         
+        Supports both old format (direct model object) and new format (model package).
+        Model package format: {'model': ..., 'features': [...], 'version': '...'}
+        
         Args:
             model_path: Path to the ML model file
         """
@@ -1150,9 +1166,56 @@ class OffsetEngine:
             return
         
         # TODO: Implement ML model loading when ML features are added
-        # For now, this is a placeholder
+        # For now, this is a placeholder that supports both formats
         _LOGGER.debug("ML model update is not yet implemented")
         self._ml_model = None
+    
+    def _prepare_feature_vector(self, data: OffsetInput) -> List[float]:
+        """Prepare feature vector from OffsetInput for ML model.
+        
+        Args:
+            data: OffsetInput containing all sensor data and context
+            
+        Returns:
+            List of float values with None converted to numpy.nan
+        """
+        # Convert OffsetInput to dictionary
+        feature_dict = {
+            'ac_internal_temp': data.ac_internal_temp,
+            'room_temp': data.room_temp,
+            'outdoor_temp': data.outdoor_temp,
+            'power_consumption': data.power_consumption,
+            'day_of_week': float(data.day_of_week),
+            'time_of_day': data.time_of_day.hour + data.time_of_day.minute / 60.0,
+            'indoor_humidity': data.indoor_humidity,
+            'outdoor_humidity': data.outdoor_humidity,
+            'humidity_differential': data.humidity_differential,
+            'indoor_dew_point': data.indoor_dew_point,
+            'outdoor_dew_point': data.outdoor_dew_point,
+            'heat_index': data.heat_index,
+        }
+        
+        # If we have a model package with features list, align with it
+        if isinstance(self._ml_model, dict) and 'features' in self._ml_model:
+            model_features = self._ml_model['features']
+            feature_vector = []
+            for feature_name in model_features:
+                value = feature_dict.get(feature_name)
+                # Convert None to numpy.nan
+                if value is None:
+                    feature_vector.append(np.nan)
+                else:
+                    feature_vector.append(float(value))
+        else:
+            # Use all features, convert None to numpy.nan
+            feature_vector = []
+            for value in feature_dict.values():
+                if value is None:
+                    feature_vector.append(np.nan)
+                else:
+                    feature_vector.append(float(value))
+        
+        return feature_vector
     
     def record_feedback(
         self,
@@ -1261,7 +1324,7 @@ class OffsetEngine:
                 except Exception:
                     hysteresis_state = "learning_hysteresis"  # Graceful fallback
             
-            # Record sample with hysteresis context
+            # Record sample with hysteresis context and humidity data
             self._learner.add_sample(
                 predicted=predicted_offset,
                 actual=actual_offset,
@@ -1270,7 +1333,9 @@ class OffsetEngine:
                 outdoor_temp=input_data.outdoor_temp,
                 mode=input_data.mode,
                 power=input_data.power_consumption,
-                hysteresis_state=hysteresis_state
+                hysteresis_state=hysteresis_state,
+                indoor_humidity=input_data.indoor_humidity,
+                outdoor_humidity=input_data.outdoor_humidity
             )
             _LOGGER.debug(
                 "Recorded enhanced learning sample: predicted=%.2f, actual=%.2f, hysteresis_state=%s, source=%s",

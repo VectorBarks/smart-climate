@@ -26,6 +26,14 @@ class OffsetInput:
     time_of_day: time
     day_of_week: int
     hvac_mode: Optional[str] = None
+    # Raw humidity values
+    indoor_humidity: Optional[float] = None
+    outdoor_humidity: Optional[float] = None
+    # Derived humidity features (calculated by FeatureEngineering)
+    humidity_differential: Optional[float] = None
+    indoor_dew_point: Optional[float] = None
+    outdoor_dew_point: Optional[float] = None
+    heat_index: Optional[float] = None
 
 
 @dataclass

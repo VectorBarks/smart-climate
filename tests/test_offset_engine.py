@@ -1,11 +1,13 @@
 """Tests for OffsetEngine component."""
 
 import pytest
+import numpy as np
 from datetime import time
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 from custom_components.smart_climate.offset_engine import OffsetEngine
 from custom_components.smart_climate.models import OffsetInput, OffsetResult
+from custom_components.smart_climate.feature_engineering import FeatureEngineering
 
 
 class TestOffsetEngine:
@@ -310,3 +312,206 @@ class TestOffsetEngine:
         assert isinstance(result, OffsetResult)
         assert abs(result.offset) <= 5.0
         assert result.clamped
+
+
+class TestOffsetEngineFeatureIntegration:
+    """Test suite for OffsetEngine feature engineering integration."""
+
+    def test_constructor_accepts_feature_engineer_parameter(self):
+        """Test OffsetEngine constructor accepts feature_engineer parameter."""
+        config = {"max_offset": 5.0}
+        feature_engineer = Mock(spec=FeatureEngineering)
+        
+        # This should work - optional parameter with None default
+        engine = OffsetEngine(config, feature_engineer=None)
+        assert engine._feature_engineer is None
+        
+        # This should also work - with actual feature engineer
+        engine_with_fe = OffsetEngine(config, feature_engineer=feature_engineer)
+        assert engine_with_fe._feature_engineer is feature_engineer
+
+    def test_calculate_offset_enriches_input_with_feature_engineer(self):
+        """Test calculate_offset enriches input when feature_engineer provided."""
+        config = {"max_offset": 5.0}
+        mock_feature_engineer = Mock(spec=FeatureEngineering)
+        
+        # Create enriched input data that enrich_features will return
+        enriched_input = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=25.0,
+            mode="none",
+            power_consumption=150.0,
+            time_of_day=time(14, 30),
+            day_of_week=1,
+            indoor_humidity=60.0,
+            outdoor_humidity=55.0,
+            humidity_differential=5.0,
+            indoor_dew_point=12.5,
+            outdoor_dew_point=15.2,
+            heat_index=21.3
+        )
+        mock_feature_engineer.enrich_features.return_value = enriched_input
+        
+        engine = OffsetEngine(config, feature_engineer=mock_feature_engineer)
+        
+        original_input = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=25.0,
+            mode="none",
+            power_consumption=150.0,
+            time_of_day=time(14, 30),
+            day_of_week=1,
+            indoor_humidity=60.0,
+            outdoor_humidity=55.0
+        )
+        
+        result = engine.calculate_offset(original_input)
+        
+        # Verify enrich_features was called with original input
+        mock_feature_engineer.enrich_features.assert_called_once_with(original_input)
+        
+        assert isinstance(result, OffsetResult)
+
+    def test_calculate_offset_works_without_feature_engineer(self):
+        """Test calculate_offset works without feature_engineer (backward compatibility)."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config, feature_engineer=None)
+        
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=25.0,
+            mode="none",
+            power_consumption=150.0,
+            time_of_day=time(14, 30),
+            day_of_week=1
+        )
+        
+        result = engine.calculate_offset(input_data)
+        
+        assert isinstance(result, OffsetResult)
+        assert isinstance(result.offset, float)
+
+    def test_prepare_feature_vector_handles_numpy_nan(self):
+        """Test _prepare_feature_vector converts None values to numpy.nan."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=None,  # None value
+            mode="none",
+            power_consumption=150.0,
+            time_of_day=time(14, 30),
+            day_of_week=1,
+            indoor_humidity=None,  # None value
+            outdoor_humidity=55.0,
+            humidity_differential=None  # None value
+        )
+        
+        feature_vector = engine._prepare_feature_vector(input_data)
+        
+        assert isinstance(feature_vector, (list, np.ndarray))
+        # Check that None values were converted to np.nan
+        if isinstance(feature_vector, list):
+            nan_count = sum(1 for x in feature_vector if x is None or (isinstance(x, float) and np.isnan(x)))
+            assert nan_count > 0  # Should have some nan values
+        else:  # numpy array
+            assert np.any(np.isnan(feature_vector))
+
+    def test_model_versioning_support(self):
+        """Test model package loading with features list."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        # Mock model package format
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([1.5])
+        
+        model_package = {
+            'model': mock_model,
+            'features': ['ac_internal_temp', 'room_temp', 'indoor_humidity'],
+            'version': '2.0-humidity'
+        }
+        
+        # This should work - loading model package format
+        engine._ml_model = model_package
+        
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=25.0,
+            mode="none",
+            power_consumption=150.0,
+            time_of_day=time(14, 30),
+            day_of_week=1,
+            indoor_humidity=60.0
+        )
+        
+        result = engine.calculate_offset(input_data)
+        
+        assert isinstance(result, OffsetResult)
+
+    def test_model_versioning_backward_compatibility(self):
+        """Test old model format still works."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        # Mock old model format (just the model object)
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([1.5])
+        
+        engine._ml_model = mock_model  # Old format - direct model
+        
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=25.0,
+            mode="none",
+            power_consumption=150.0,
+            time_of_day=time(14, 30),
+            day_of_week=1
+        )
+        
+        result = engine.calculate_offset(input_data)
+        
+        assert isinstance(result, OffsetResult)
+
+    def test_feature_alignment(self):
+        """Test feature alignment with different feature sets."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        # Mock model trained with subset of features
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([1.5])
+        
+        model_package = {
+            'model': mock_model,
+            'features': ['ac_internal_temp', 'room_temp', 'indoor_humidity'],  # Only 3 features
+            'version': '2.0-humidity'
+        }
+        engine._ml_model = model_package
+        
+        # Input has more features than model expects
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=25.0,  # Extra feature
+            mode="none",
+            power_consumption=150.0,  # Extra feature  
+            time_of_day=time(14, 30),
+            day_of_week=1,
+            indoor_humidity=60.0,
+            outdoor_humidity=55.0,  # Extra feature
+            humidity_differential=5.0  # Extra feature
+        )
+        
+        result = engine.calculate_offset(input_data)
+        
+        assert isinstance(result, OffsetResult)
+        # Verify only model's features were used for prediction
+        # The exact verification will depend on implementation details

@@ -87,7 +87,9 @@ class LightweightOffsetLearner:
         outdoor_temp: Optional[float] = None,
         mode: str = "cool",
         power: Optional[float] = None,
-        hysteresis_state: str = "no_power_sensor"
+        hysteresis_state: str = "no_power_sensor",
+        indoor_humidity: Optional[float] = None,
+        outdoor_humidity: Optional[float] = None
     ) -> None:
         """Add a learning sample with hysteresis context.
         
@@ -100,6 +102,8 @@ class LightweightOffsetLearner:
             mode: Operating mode (cool, heat, etc.)
             power: Power consumption if available
             hysteresis_state: Current hysteresis state for enhanced learning
+            indoor_humidity: Indoor humidity percentage if available
+            outdoor_humidity: Outdoor humidity percentage if available
         """
         sample = {
             "predicted": predicted,
@@ -110,6 +114,8 @@ class LightweightOffsetLearner:
             "mode": mode,
             "power": power,
             "hysteresis_state": hysteresis_state,
+            "indoor_humidity": indoor_humidity,
+            "outdoor_humidity": outdoor_humidity,
             "timestamp": datetime.now().isoformat()
         }
         
@@ -141,7 +147,9 @@ class LightweightOffsetLearner:
         outdoor_temp: Optional[float] = None,
         mode: str = "cool",
         power: Optional[float] = None,
-        hysteresis_state: str = "no_power_sensor"
+        hysteresis_state: str = "no_power_sensor",
+        indoor_humidity: Optional[float] = None,
+        outdoor_humidity: Optional[float] = None
     ) -> float:
         """Predict offset based on learned patterns with hysteresis context.
         
@@ -152,6 +160,8 @@ class LightweightOffsetLearner:
             mode: Operating mode (cool, heat, etc.)
             power: Power consumption if available
             hysteresis_state: Current hysteresis state for enhanced prediction
+            indoor_humidity: Indoor humidity percentage if available
+            outdoor_humidity: Outdoor humidity percentage if available
             
         Returns:
             Predicted offset value
@@ -167,7 +177,8 @@ class LightweightOffsetLearner:
         
         for sample in self._enhanced_samples:
             similarity = self._calculate_similarity_with_hysteresis(
-                ac_temp, room_temp, outdoor_temp, mode, power, hysteresis_state, sample
+                ac_temp, room_temp, outdoor_temp, mode, power, hysteresis_state, 
+                indoor_humidity, outdoor_humidity, sample
             )
             
             if similarity > 0.0:
@@ -203,6 +214,8 @@ class LightweightOffsetLearner:
         mode: str,
         power: Optional[float],
         hysteresis_state: str,
+        indoor_humidity: Optional[float],
+        outdoor_humidity: Optional[float],
         sample: Dict[str, Any]
     ) -> float:
         """Calculate similarity between current conditions and a sample, including hysteresis context.
@@ -214,6 +227,8 @@ class LightweightOffsetLearner:
             mode: Current mode
             power: Current power (if available)
             hysteresis_state: Current hysteresis state
+            indoor_humidity: Current indoor humidity (if available)
+            outdoor_humidity: Current outdoor humidity (if available)
             sample: Sample to compare against
             
         Returns:
@@ -247,6 +262,18 @@ class LightweightOffsetLearner:
             power_diff = abs(power - sample["power"])
             power_similarity = max(0.0, 1.0 - (power_diff / 500.0))  # 500W range
             similarity_factors.append(power_similarity)
+        
+        # Indoor humidity similarity (if available for both)
+        if indoor_humidity is not None and sample.get("indoor_humidity") is not None:
+            indoor_humidity_diff = abs(indoor_humidity - sample["indoor_humidity"])
+            indoor_humidity_similarity = max(0.0, 1.0 - (indoor_humidity_diff / 20.0))  # 20% range
+            similarity_factors.append(indoor_humidity_similarity)
+        
+        # Outdoor humidity similarity (if available for both)
+        if outdoor_humidity is not None and sample.get("outdoor_humidity") is not None:
+            outdoor_humidity_diff = abs(outdoor_humidity - sample["outdoor_humidity"])
+            outdoor_humidity_similarity = max(0.0, 1.0 - (outdoor_humidity_diff / 30.0))  # 30% range
+            similarity_factors.append(outdoor_humidity_similarity)
         
         # Hysteresis state similarity (key enhancement)
         sample_hysteresis_state = sample.get("hysteresis_state", "no_power_sensor")
@@ -880,7 +907,7 @@ class LightweightOffsetLearner:
                 self._sample_count = actual_count
         
         return {
-            "version": "1.1",  # Bumped version for hysteresis support
+            "version": "1.2",  # Bumped version for humidity support
             "time_patterns": {
                 hour: offset for hour, offset in enumerate(self._time_patterns)
                 if self._time_pattern_counts[hour] > 0
@@ -905,9 +932,9 @@ class LightweightOffsetLearner:
             ValueError: If pattern data is invalid or incompatible
             KeyError: If required fields are missing
         """
-        # Validate version (support both 1.0 and 1.1 for backward compatibility)
+        # Validate version (support 1.0, 1.1, and 1.2 for backward compatibility)
         version = patterns.get("version")
-        if version not in ["1.0", "1.1"]:
+        if version not in ["1.0", "1.1", "1.2"]:
             raise ValueError(f"Unsupported pattern data version: {version}")
         
         # Validate and load time patterns
@@ -949,15 +976,15 @@ class LightweightOffsetLearner:
                 "count": int(pattern["count"])
             }
         
-        # Load enhanced samples (version 1.1 feature, optional for backward compatibility)
+        # Load enhanced samples (version 1.1+ feature, optional for backward compatibility)
         self._enhanced_samples = []
-        if version == "1.1" and "enhanced_samples" in patterns:
+        if version in ["1.1", "1.2"] and "enhanced_samples" in patterns:
             enhanced_samples = patterns["enhanced_samples"]
             valid_samples_loaded = 0
             for sample in enhanced_samples:
                 try:
-                    # Validate and load enhanced sample
-                    self._enhanced_samples.append({
+                    # Validate and load enhanced sample with humidity migration
+                    sample_data = {
                         "predicted": float(sample["predicted"]),
                         "actual": float(sample["actual"]),
                         "ac_temp": float(sample["ac_temp"]),
@@ -966,8 +993,12 @@ class LightweightOffsetLearner:
                         "mode": str(sample.get("mode", "cool")),
                         "power": sample.get("power"),  # May be None
                         "hysteresis_state": str(sample.get("hysteresis_state", "no_power_sensor")),
-                        "timestamp": str(sample.get("timestamp", ""))
-                    })
+                        "timestamp": str(sample.get("timestamp", "")),
+                        # Humidity fields - add if missing (migration from v1.1 to v1.2)
+                        "indoor_humidity": sample.get("indoor_humidity"),  # May be None
+                        "outdoor_humidity": sample.get("outdoor_humidity")  # May be None
+                    }
+                    self._enhanced_samples.append(sample_data)
                     valid_samples_loaded += 1
                 except (KeyError, ValueError, TypeError) as exc:
                     _LOGGER.warning(
@@ -986,7 +1017,7 @@ class LightweightOffsetLearner:
         
         # Synchronize sample count with actual enhanced samples if available
         # This fixes cases where the stored count doesn't match actual data
-        if version == "1.1" and self._enhanced_samples:
+        if version in ["1.1", "1.2"] and self._enhanced_samples:
             actual_sample_count = len(self._enhanced_samples)
             if stored_sample_count != actual_sample_count:
                 _LOGGER.warning(

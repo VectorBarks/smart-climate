@@ -539,3 +539,221 @@ class TestLightweightOffsetLearner:
         assert new_pattern > old_pattern
         assert new_pattern < 2.0  # But not exactly 2.0 due to smoothing
         assert new_pattern > 1.0  # But greater than original
+
+
+class TestHumidityDataPersistence:
+    """Test suite for humidity data persistence and migration."""
+
+    def test_add_sample_with_humidity_data(self):
+        """Test that add_sample can accept and store humidity data."""
+        learner = LightweightOffsetLearner()
+        
+        # Add sample with humidity data
+        learner.add_sample(
+            predicted=1.0,
+            actual=1.2,
+            ac_temp=22.0,
+            room_temp=24.0,
+            outdoor_temp=30.0,
+            mode="cool",
+            power=250.0,
+            hysteresis_state="active_phase",
+            indoor_humidity=45.0,
+            outdoor_humidity=65.0
+        )
+        
+        # Verify humidity data is stored
+        assert len(learner._enhanced_samples) == 1
+        sample = learner._enhanced_samples[0]
+        assert sample["indoor_humidity"] == 45.0
+        assert sample["outdoor_humidity"] == 65.0
+
+    def test_add_sample_with_none_humidity_data(self):
+        """Test that add_sample handles None humidity values."""
+        learner = LightweightOffsetLearner()
+        
+        # Add sample with None humidity values
+        learner.add_sample(
+            predicted=1.0,
+            actual=1.2,
+            ac_temp=22.0,
+            room_temp=24.0,
+            outdoor_temp=30.0,
+            mode="cool",
+            power=250.0,
+            hysteresis_state="active_phase",
+            indoor_humidity=None,
+            outdoor_humidity=None
+        )
+        
+        # Verify None humidity data is stored
+        assert len(learner._enhanced_samples) == 1
+        sample = learner._enhanced_samples[0]
+        assert sample["indoor_humidity"] is None
+        assert sample["outdoor_humidity"] is None
+
+    def test_add_sample_backward_compatibility(self):
+        """Test that add_sample works without humidity parameters (backward compatibility)."""
+        learner = LightweightOffsetLearner()
+        
+        # Call without humidity parameters (existing API)
+        learner.add_sample(
+            predicted=1.0,
+            actual=1.2,
+            ac_temp=22.0,
+            room_temp=24.0,
+            outdoor_temp=30.0,
+            mode="cool",
+            power=250.0,
+            hysteresis_state="active_phase"
+        )
+        
+        # Should work and default humidity to None
+        assert len(learner._enhanced_samples) == 1
+        sample = learner._enhanced_samples[0]
+        # Should have None values for humidity fields when not provided
+        assert "indoor_humidity" in sample
+        assert "outdoor_humidity" in sample
+
+    def test_similarity_calculation_with_humidity(self):
+        """Test that similarity calculation considers humidity data."""
+        learner = LightweightOffsetLearner()
+        
+        # Add sample with humidity data
+        learner.add_sample(
+            predicted=1.0,
+            actual=1.2,
+            ac_temp=22.0,
+            room_temp=24.0,
+            outdoor_temp=30.0,
+            mode="cool",
+            power=250.0,
+            hysteresis_state="active_phase",
+            indoor_humidity=45.0,
+            outdoor_humidity=65.0
+        )
+        
+        # Test prediction with similar humidity
+        prediction = learner.predict(
+            ac_temp=22.1,
+            room_temp=24.1,
+            outdoor_temp=30.1,
+            mode="cool",
+            power=250.0,
+            hysteresis_state="active_phase",
+            indoor_humidity=46.0,
+            outdoor_humidity=66.0
+        )
+        
+        # Should find similarity with the stored sample
+        assert prediction != 0.0
+
+    def test_save_patterns_includes_humidity_data(self):
+        """Test that save_patterns preserves humidity data in enhanced samples."""
+        learner = LightweightOffsetLearner()
+        
+        # Add samples with humidity data
+        learner.add_sample(
+            predicted=1.0, actual=1.2, ac_temp=22.0, room_temp=24.0,
+            outdoor_temp=30.0, mode="cool", power=250.0,
+            hysteresis_state="active_phase",
+            indoor_humidity=45.0, outdoor_humidity=65.0
+        )
+        learner.add_sample(
+            predicted=1.1, actual=1.3, ac_temp=22.5, room_temp=24.5,
+            outdoor_temp=31.0, mode="cool", power=260.0,
+            hysteresis_state="active_phase",
+            indoor_humidity=None, outdoor_humidity=None
+        )
+        
+        # Save patterns
+        saved_patterns = learner.save_patterns()
+        
+        # Verify humidity data is preserved
+        assert "enhanced_samples" in saved_patterns
+        samples = saved_patterns["enhanced_samples"]
+        assert len(samples) == 2
+        
+        # First sample has humidity data
+        assert samples[0]["indoor_humidity"] == 45.0
+        assert samples[0]["outdoor_humidity"] == 65.0
+        
+        # Second sample has None humidity
+        assert samples[1]["indoor_humidity"] is None
+        assert samples[1]["outdoor_humidity"] is None
+
+    def test_load_patterns_preserves_humidity_data(self):
+        """Test that load_patterns preserves humidity data."""
+        learner1 = LightweightOffsetLearner()
+        
+        # Add samples with humidity data
+        learner1.add_sample(
+            predicted=1.0, actual=1.2, ac_temp=22.0, room_temp=24.0,
+            outdoor_temp=30.0, mode="cool", power=250.0,
+            hysteresis_state="active_phase",
+            indoor_humidity=45.0, outdoor_humidity=65.0
+        )
+        
+        # Save and load in new instance
+        saved_patterns = learner1.save_patterns()
+        learner2 = LightweightOffsetLearner()
+        learner2.load_patterns(saved_patterns)
+        
+        # Verify humidity data is preserved after load
+        assert len(learner2._enhanced_samples) == 1
+        sample = learner2._enhanced_samples[0]
+        assert sample["indoor_humidity"] == 45.0
+        assert sample["outdoor_humidity"] == 65.0
+
+    def test_migration_from_v11_to_v12_adds_humidity_fields(self):
+        """Test migration from version 1.1 to 1.2 adds humidity fields to existing samples."""
+        # Create v1.1 format data without humidity fields
+        v11_data = {
+            "version": "1.1",
+            "time_patterns": {},
+            "time_pattern_counts": {},
+            "temp_correlation_data": [],
+            "power_state_patterns": {},
+            "enhanced_samples": [
+                {
+                    "predicted": 1.0,
+                    "actual": 1.2,
+                    "ac_temp": 22.0,
+                    "room_temp": 24.0,
+                    "outdoor_temp": 30.0,
+                    "mode": "cool",
+                    "power": 250.0,
+                    "hysteresis_state": "active_phase",
+                    "timestamp": "2023-01-01T12:00:00"
+                    # Note: no humidity fields
+                }
+            ],
+            "sample_count": 1
+        }
+        
+        learner = LightweightOffsetLearner()
+        learner.load_patterns(v11_data)
+        
+        # Should have migrated the sample with None humidity values
+        assert len(learner._enhanced_samples) == 1
+        sample = learner._enhanced_samples[0]
+        assert "indoor_humidity" in sample
+        assert "outdoor_humidity" in sample
+        assert sample["indoor_humidity"] is None
+        assert sample["outdoor_humidity"] is None
+
+    def test_save_patterns_bumps_version_to_12(self):
+        """Test that save_patterns updates version to 1.2 for humidity support."""
+        learner = LightweightOffsetLearner()
+        
+        # Add sample with humidity data
+        learner.add_sample(
+            predicted=1.0, actual=1.2, ac_temp=22.0, room_temp=24.0,
+            outdoor_temp=30.0, mode="cool", power=250.0,
+            hysteresis_state="active_phase",
+            indoor_humidity=45.0, outdoor_humidity=65.0
+        )
+        
+        # Save patterns should include version 1.2
+        saved_patterns = learner.save_patterns()
+        assert saved_patterns["version"] == "1.2"
