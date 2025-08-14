@@ -11,7 +11,36 @@ sys.path.insert(0, project_root)
 # Mock homeassistant modules before any imports
 sys.modules['homeassistant'] = MagicMock()
 sys.modules['homeassistant.core'] = MagicMock()
-sys.modules['homeassistant.exceptions'] = MagicMock()
+
+# Create a proper mock for exceptions that preserves actual exception classes
+class MockExceptions:
+    # Import actual exception classes so they work properly with pytest.raises
+    try:
+        from homeassistant.exceptions import (
+            HomeAssistantError, 
+            ConfigEntryNotReady, 
+            IntegrationError,
+            ServiceValidationError
+        )
+    except ImportError:
+        # Fallback - create our own exception classes that behave correctly
+        class HomeAssistantError(Exception):
+            """Base exception for Home Assistant."""
+            pass
+        
+        class IntegrationError(HomeAssistantError):
+            """Error with integration."""
+            pass
+            
+        class ConfigEntryNotReady(IntegrationError):
+            """Config entry is not ready for setup."""
+            pass
+            
+        class ServiceValidationError(HomeAssistantError):
+            """Service validation error."""
+            pass
+
+sys.modules['homeassistant.exceptions'] = MockExceptions()
 sys.modules['homeassistant.helpers'] = MagicMock()
 sys.modules['homeassistant.helpers.typing'] = MagicMock()
 sys.modules['homeassistant.helpers.config_validation'] = MagicMock()

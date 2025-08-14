@@ -515,3 +515,165 @@ class TestOffsetEngineFeatureIntegration:
         assert isinstance(result, OffsetResult)
         # Verify only model's features were used for prediction
         # The exact verification will depend on implementation details
+
+
+class TestOffsetEngineMissingOptionalData:
+    """Test suite for graceful handling of missing optional sensor data."""
+
+    def test_calculates_offset_with_missing_outdoor_temperature(self):
+        """Test OffsetEngine handles missing outdoor temperature gracefully."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        # Missing outdoor_temp but all other required data present
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=None,  # Missing optional sensor
+            mode="none",
+            power_consumption=150.0,
+            time_of_day=time(14, 30),
+            day_of_week=1
+        )
+        
+        result = engine.calculate_offset(input_data)
+        
+        # Should still calculate offset using fallback logic
+        assert isinstance(result, OffsetResult)
+        assert isinstance(result.offset, float)
+        assert result.confidence >= 0.0
+        assert "outdoor temperature unavailable" in result.reason.lower() or "fallback" in result.reason.lower()
+
+    def test_calculates_offset_with_missing_power_consumption(self):
+        """Test OffsetEngine handles missing power consumption gracefully."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        # Missing power_consumption but all other required data present
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=25.0,
+            mode="none",
+            power_consumption=None,  # Missing optional sensor
+            time_of_day=time(14, 30),
+            day_of_week=1
+        )
+        
+        result = engine.calculate_offset(input_data)
+        
+        # Should still calculate offset using fallback logic
+        assert isinstance(result, OffsetResult)
+        assert isinstance(result.offset, float)
+        assert result.confidence >= 0.0
+        # Should mention missing power data in reason or use fallback logic
+        assert result.reason is not None
+
+    def test_calculates_offset_with_missing_humidity_data(self):
+        """Test OffsetEngine handles missing humidity data gracefully."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        # Missing humidity data but all other required data present
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=25.0,
+            mode="none",
+            power_consumption=150.0,
+            time_of_day=time(14, 30),
+            day_of_week=1,
+            indoor_humidity=None,  # Missing optional sensor
+            outdoor_humidity=None,  # Missing optional sensor
+            humidity_differential=None,
+            indoor_dew_point=None,
+            outdoor_dew_point=None,
+            heat_index=None
+        )
+        
+        result = engine.calculate_offset(input_data)
+        
+        # Should still calculate offset using available data
+        assert isinstance(result, OffsetResult)
+        assert isinstance(result.offset, float)
+        assert result.confidence >= 0.0
+        assert result.reason is not None
+
+    def test_ml_predictions_work_with_partial_features(self):
+        """Test ML feature vector preparation works with missing optional features."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        # Mock ML model package that expects some features
+        mock_model = MagicMock()
+        mock_model.predict.return_value = np.array([1.5])
+        
+        model_package = {
+            'model': mock_model,
+            'features': ['ac_internal_temp', 'room_temp', 'outdoor_temp', 'power_consumption', 'indoor_humidity'],
+            'version': '2.0-humidity'
+        }
+        engine._ml_model = model_package
+        
+        # Missing some features that model expects
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=None,  # Missing - should use numpy.nan
+            mode="none", 
+            power_consumption=None,  # Missing - should use numpy.nan
+            time_of_day=time(14, 30),
+            day_of_week=1,
+            indoor_humidity=60.0,  # Present
+            outdoor_humidity=None  # Missing but not in model features
+        )
+        
+        # Test the feature vector preparation directly
+        feature_vector = engine._prepare_feature_vector(input_data)
+        
+        # Should have correct length and handle missing values with numpy.nan
+        assert len(feature_vector) == 5  # Should match number of features in model
+        assert feature_vector[0] == 22.0  # ac_internal_temp
+        assert feature_vector[1] == 20.0  # room_temp
+        assert np.isnan(feature_vector[2])  # outdoor_temp should be nan
+        assert np.isnan(feature_vector[3])  # power_consumption should be nan  
+        assert feature_vector[4] == 60.0  # indoor_humidity should be present
+        
+        # And the overall calculation should still work
+        result = engine.calculate_offset(input_data)
+        assert isinstance(result, OffsetResult)
+        assert isinstance(result.offset, float)
+        assert result.confidence >= 0.0
+
+    def test_fallback_logic_when_optional_data_missing(self):
+        """Test appropriate fallback logic when optional sensor data is missing."""
+        config = {"max_offset": 5.0}
+        engine = OffsetEngine(config)
+        
+        # All optional sensors missing
+        input_data = OffsetInput(
+            ac_internal_temp=22.0,
+            room_temp=20.0,
+            outdoor_temp=None,
+            mode="none",
+            power_consumption=None,
+            time_of_day=time(14, 30),
+            day_of_week=1,
+            indoor_humidity=None,
+            outdoor_humidity=None
+        )
+        
+        result = engine.calculate_offset(input_data)
+        
+        # Should use basic calculation when optional data missing
+        assert isinstance(result, OffsetResult)
+        assert isinstance(result.offset, float)
+        assert result.confidence >= 0.0
+        
+        # Basic calculation should be: ac_internal_temp - room_temp = 22.0 - 20.0 = 2.0
+        expected_basic_offset = 22.0 - 20.0
+        # Result might be modified by clamping or adjustments, but should be based on this
+        assert abs(result.offset - expected_basic_offset) <= 1.0  # Allow for adjustments
+        
+        # Reason should indicate fallback logic was used
+        assert result.reason is not None

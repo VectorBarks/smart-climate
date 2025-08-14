@@ -37,6 +37,10 @@ CONF_ADAPTIVE_DELAY = "adaptive_delay"
 CONF_PREDICTIVE = "predictive"
 CONF_DELAY_LEARNING_TIMEOUT = "delay_learning_timeout"
 
+# Entity availability waiting constants
+STARTUP_TIMEOUT_SEC = 90  # Default timeout for required entities
+CONF_STARTUP_TIMEOUT = "startup_timeout"  # Config option key
+
 # Seasonal learning constants
 SEASONAL_LEARNER_STORAGE_VERSION = 1
 POST_COOL_RISE_PERIOD_MINUTES = 10  # How long to wait after cooling stops to measure stabilized temp

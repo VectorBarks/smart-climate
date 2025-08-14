@@ -334,3 +334,106 @@ class TestThermalPersistenceIntegration:
         # Verify it calls coordinator.get_thermal_data with correct entity_id
         thermal_manager.serialize.assert_called_once()
         assert result == {"callback": "works"}
+
+    @pytest.mark.asyncio
+    async def test_probe_history_extension_integration_fix(self, mock_hass):
+        """Integration test for probe history data loss bug fix.
+        
+        CRITICAL BUG FIX VERIFICATION: Tests the complete fix from thermal_manager.py line 685
+        where restore() was replacing probe_history instead of extending it.
+        
+        This integration test verifies:
+        1. Runtime probes are preserved during HA restart simulation
+        2. Restored probes are properly added to existing ones
+        3. No thermal learning data is lost during typical save/restore cycles
+        4. Fix works end-to-end with real thermal manager components
+        """
+        from collections import deque
+        from custom_components.smart_climate.thermal_model import PassiveThermalModel
+        from custom_components.smart_climate.thermal_manager import ThermalManager
+        from custom_components.smart_climate.thermal_preferences import UserPreferences, PreferenceLevel
+        
+        # Create real thermal components (not mocks) for integration testing
+        thermal_model = PassiveThermalModel(tau_cooling=90.0, tau_warming=150.0)
+        preferences = Mock(spec=UserPreferences)
+        preferences.level = PreferenceLevel.BALANCED
+        preferences.get_adjusted_band.return_value = 1.5
+        
+        thermal_manager = ThermalManager(mock_hass, thermal_model, preferences)
+        
+        # Phase 1: Simulate active learning during runtime
+        runtime_probe1 = ProbeResult(
+            tau_value=95.0,
+            confidence=0.8,
+            duration=3600,
+            fit_quality=0.9,
+            aborted=False
+        )
+        runtime_probe2 = ProbeResult(
+            tau_value=102.5,
+            confidence=0.85,
+            duration=3200,
+            fit_quality=0.92,
+            aborted=False
+        )
+        
+        # Add probes during runtime (before any save/restore)
+        thermal_manager._model._probe_history.append(runtime_probe1)
+        thermal_manager._model._probe_history.append(runtime_probe2)
+        
+        initial_probe_count = len(thermal_manager._model._probe_history)
+        assert initial_probe_count == 2, "Initial probe setup failed"
+        
+        # Phase 2: Simulate HA restart by restoring data from disk
+        # This data would typically come from a previous save operation
+        restore_data = {
+            "version": "1.0",
+            "state": {"current_state": "priming", "last_transition": "2025-08-15T12:00:00"},
+            "model": {"tau_cooling": 88.0, "tau_warming": 155.0, "last_modified": "2025-08-15T11:30:00"},
+            "probe_history": [
+                {
+                    "tau_value": 87.5,
+                    "confidence": 0.75,
+                    "duration": 4200,
+                    "fit_quality": 0.88,
+                    "aborted": False,
+                    "timestamp": "2025-08-15T11:30:00"
+                }
+            ],
+            "confidence": 0.78,
+            "metadata": {"saves_count": 5, "corruption_recoveries": 0, "schema_version": "1.0"}
+        }
+        
+        # CRITICAL: This restore() call should EXTEND probe_history, not replace it
+        thermal_manager.restore(restore_data)
+        
+        # Phase 3: Verify fix - all probes should be present
+        final_probes = list(thermal_manager._model._probe_history)
+        final_tau_values = [p.tau_value for p in final_probes]
+        
+        # Should have 3 probes total: 2 runtime + 1 restored
+        assert len(final_probes) == 3, f"Expected 3 probes after restore, got {len(final_probes)} - data loss occurred!"
+        
+        # All original runtime probes must be preserved
+        assert 95.0 in final_tau_values, "Runtime probe 95.0 lost during restore - bug still exists!"
+        assert 102.5 in final_tau_values, "Runtime probe 102.5 lost during restore - bug still exists!"
+        
+        # Restored probe must be added
+        assert 87.5 in final_tau_values, "Restored probe 87.5 missing - restoration failed!"
+        
+        # Phase 4: Verify thermal model confidence reflects all probes
+        # With more probes, confidence should be higher than with just restored probe alone
+        final_confidence = thermal_manager._model.get_confidence()
+        assert final_confidence > 0.0, "Thermal confidence calculation broken"
+        
+        # Phase 5: Test serialization preserves all probes
+        serialized_after_restore = thermal_manager.serialize()
+        serialized_probes = serialized_after_restore["probe_history"]
+        serialized_tau_values = [p["tau_value"] for p in serialized_probes]
+        
+        assert len(serialized_probes) == 3, "Serialization lost probes after restore"
+        assert 95.0 in serialized_tau_values, "Runtime probe missing from serialization"
+        assert 102.5 in serialized_tau_values, "Runtime probe missing from serialization"
+        assert 87.5 in serialized_tau_values, "Restored probe missing from serialization"
+        
+        print("✅ INTEGRATION TEST PASSED: Probe history extension fix works end-to-end")

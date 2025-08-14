@@ -1132,6 +1132,9 @@ class OffsetEngine:
                 reasons.append("hot outdoor conditions")
             elif outdoor_diff < -10:
                 reasons.append("cold outdoor conditions")
+        else:
+            # Add explicit mention when outdoor temperature is unavailable
+            reasons.append("outdoor temperature unavailable")
         
         if input_data.power_consumption is not None:
             power_state = self._get_power_state(input_data.power_consumption)
@@ -1141,6 +1144,9 @@ class OffsetEngine:
                 reasons.append("low power usage")
             elif power_state == "idle":
                 reasons.append("AC idle/off")
+        else:
+            # Add explicit mention when power consumption is unavailable
+            reasons.append("power consumption unavailable")
         
         # Clamping reason
         if clamped:
@@ -1723,6 +1729,9 @@ class OffsetEngine:
                 contribution_text, 
                 self._last_humidity_contribution
             )
+        elif (input_data.indoor_humidity is None and input_data.outdoor_humidity is None):
+            # Mention when all humidity data is unavailable
+            reasons.append("humidity data unavailable")
         
         # Mode-specific reasons
         if input_data.mode == "away":
@@ -1754,6 +1763,9 @@ class OffsetEngine:
                 reasons.append("hot outdoor conditions")
             elif outdoor_diff < -10:
                 reasons.append("cold outdoor conditions")
+        else:
+            # Add explicit mention when outdoor temperature is unavailable
+            reasons.append("outdoor temperature unavailable")
         
         # Clamping reason
         if clamped:

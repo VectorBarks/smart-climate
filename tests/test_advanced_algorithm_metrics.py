@@ -49,7 +49,10 @@ class TestAdvancedAlgorithmMetrics:
             {"predicted": 1.5, "actual": 1.6, "timestamp": "2025-07-13T20:30:00Z"},
         ]
         learner._temp_correlation_data = [
-            (20.0, 1.0), (22.0, 1.2), (24.0, 1.4), (26.0, 1.6)
+            {"outdoor_temp": 20.0, "offset": 1.0},
+            {"outdoor_temp": 22.0, "offset": 1.2},
+            {"outdoor_temp": 24.0, "offset": 1.4},
+            {"outdoor_temp": 26.0, "offset": 1.6}
         ]
         
         engine._learner = learner
@@ -339,7 +342,12 @@ class TestAdvancedAlgorithmMetrics:
     def test_correlation_coefficient_statistical_correctness(self, smart_climate_entity):
         """Test correlation coefficient calculation is statistically correct."""
         # Set up temperature correlation data with known correlation
-        temp_data = [(20.0, 1.0), (25.0, 2.0), (30.0, 3.0), (35.0, 4.0)]  # Perfect positive correlation
+        temp_data = [
+            {"outdoor_temp": 20.0, "offset": 1.0},
+            {"outdoor_temp": 25.0, "offset": 2.0}, 
+            {"outdoor_temp": 30.0, "offset": 3.0},
+            {"outdoor_temp": 35.0, "offset": 4.0}
+        ]  # Perfect positive correlation
         smart_climate_entity._offset_engine._learner._temp_correlation_data = temp_data
         
         result = smart_climate_entity._calculate_correlation_coefficient()
@@ -348,7 +356,12 @@ class TestAdvancedAlgorithmMetrics:
         assert abs(result - 1.0) < 0.001
         
         # Test negative correlation
-        negative_data = [(20.0, 4.0), (25.0, 3.0), (30.0, 2.0), (35.0, 1.0)]
+        negative_data = [
+            {"outdoor_temp": 20.0, "offset": 4.0},
+            {"outdoor_temp": 25.0, "offset": 3.0}, 
+            {"outdoor_temp": 30.0, "offset": 2.0},
+            {"outdoor_temp": 35.0, "offset": 1.0}
+        ]
         smart_climate_entity._offset_engine._learner._temp_correlation_data = negative_data
         
         result = smart_climate_entity._calculate_correlation_coefficient()

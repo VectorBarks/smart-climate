@@ -462,3 +462,58 @@ class TestThermalManagerPersistence:
         
         # Verify thermal_data_last_saved is updated
         assert thermal_manager.thermal_data_last_saved is not None
+    
+    def test_restore_extends_probe_history_instead_of_replacing(self, thermal_manager, mock_thermal_model):
+        """Test that restoration extends existing probe_history instead of overwriting.
+        
+        CRITICAL BUG FIX: This test exposes the data loss bug where restore()
+        completely replaces probe_history instead of extending it, causing:
+        - Loss of probes added since last save
+        - Overwriting of active learning data
+        - Artificially low thermal confidence
+        - Slower thermal learning performance
+        """
+        from collections import deque
+        from custom_components.smart_climate.thermal_models import ProbeResult
+        
+        # Mock the actual deque structure in the model
+        mock_thermal_model._probe_history = deque(maxlen=5)
+        
+        # Add some probes to existing model (simulates runtime learning)
+        existing_probe = ProbeResult(
+            tau_value=100.0,
+            confidence=0.8,
+            duration=1800,
+            fit_quality=0.9,
+            aborted=False
+        )
+        mock_thermal_model._probe_history.append(existing_probe)
+        
+        # Prepare restoration data with different probe (simulates loaded from disk)
+        restore_data = {
+            "version": "1.0",
+            "state": {"current_state": "priming", "last_transition": "2025-08-08T15:45:00"},
+            "model": {"tau_cooling": 90.0, "tau_warming": 150.0, "last_modified": "2025-08-08T15:30:00"},
+            "probe_history": [{
+                "tau_value": 200.0,
+                "confidence": 0.7,
+                "duration": 2400, 
+                "fit_quality": 0.85,
+                "aborted": False,
+                "timestamp": "2025-08-08T15:30:00"
+            }],
+            "confidence": 0.75,
+            "metadata": {"saves_count": 1, "corruption_recoveries": 0, "schema_version": "1.0"}
+        }
+        
+        # BUG: restore() should EXTEND probe_history, not replace it
+        thermal_manager.restore(restore_data)
+        
+        # CRITICAL ASSERTION: Should have BOTH probes (existing + restored)
+        # Current buggy behavior: only has restored probe (existing probe lost!)
+        probe_history = list(mock_thermal_model._probe_history)
+        assert len(probe_history) == 2, f"Expected 2 probes, got {len(probe_history)} - existing probe was lost!"
+        
+        probe_values = [p.tau_value for p in probe_history]
+        assert 100.0 in probe_values, "Existing probe (100.0) was lost during restoration!"
+        assert 200.0 in probe_values, "Restored probe (200.0) was not added!"

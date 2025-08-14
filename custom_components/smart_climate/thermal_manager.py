@@ -682,7 +682,14 @@ class ThermalManager:
                             _LOGGER.debug("Error restoring probe, discarding: %s", e)
                             self._corruption_recovery_count += 1
                     
-                    self._model._probe_history = restored_probes
+                    # Extend existing probe history with restored probes (don't overwrite!)
+                    if restored_probes:
+                        for probe in restored_probes:
+                            self._model._probe_history.append(probe)
+                        _LOGGER.debug("Extended probe history with %d restored probes, total now: %d", 
+                                     len(restored_probes), len(self._model._probe_history))
+                    else:
+                        _LOGGER.debug("No valid probes to restore")
 
             # Restore confidence (informational, validated by model)
             if "confidence" in data:

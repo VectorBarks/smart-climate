@@ -441,3 +441,102 @@ class TestSensorManagerHumidityExtensions:
         hass.states.get.return_value = mock_room_state
         
         assert manager.get_room_temperature() == 23.0
+
+
+class TestSensorManagerNoneEntityGracefulDegradation:
+    """Test graceful degradation when optional sensor entity IDs are None."""
+    
+    def test_handles_none_outdoor_sensor_gracefully(self):
+        """Test get_outdoor_temperature returns None gracefully when outdoor sensor ID is None."""
+        hass = Mock()
+        
+        # Create manager with None outdoor sensor ID
+        manager = SensorManager(
+            hass=hass,
+            room_sensor_id="sensor.room_temp",
+            outdoor_sensor_id=None  # Explicitly None
+        )
+        
+        # Should return None without calling hass.states.get
+        result = manager.get_outdoor_temperature()
+        assert result is None
+        hass.states.get.assert_not_called()
+    
+    def test_handles_none_power_sensor_gracefully(self):
+        """Test get_power_consumption returns None gracefully when power sensor ID is None.""" 
+        hass = Mock()
+        
+        # Create manager with None power sensor ID
+        manager = SensorManager(
+            hass=hass,
+            room_sensor_id="sensor.room_temp",
+            power_sensor_id=None  # Explicitly None
+        )
+        
+        # Should return None without calling hass.states.get
+        result = manager.get_power_consumption()
+        assert result is None
+        hass.states.get.assert_not_called()
+    
+    def test_handles_none_humidity_sensors_gracefully(self):
+        """Test humidity methods return None gracefully when humidity sensor IDs are None."""
+        hass = Mock()
+        
+        # Create manager with None humidity sensor IDs
+        manager = SensorManager(
+            hass=hass,
+            room_sensor_id="sensor.room_temp",
+            indoor_humidity_sensor_id=None,  # Explicitly None
+            outdoor_humidity_sensor_id=None  # Explicitly None
+        )
+        
+        # Should return None without calling hass.states.get
+        indoor_result = manager.get_indoor_humidity()
+        outdoor_result = manager.get_outdoor_humidity()
+        
+        assert indoor_result is None
+        assert outdoor_result is None
+        hass.states.get.assert_not_called()
+    
+    def test_returns_none_for_missing_optional_sensors(self):
+        """Test all optional sensor methods return None when not configured."""
+        hass = Mock()
+        
+        # Create manager with only required room sensor
+        manager = SensorManager(
+            hass=hass,
+            room_sensor_id="sensor.room_temp"
+            # All optional sensors default to None
+        )
+        
+        # All optional methods should return None
+        assert manager.get_outdoor_temperature() is None
+        assert manager.get_power_consumption() is None
+        assert manager.get_indoor_humidity() is None
+        assert manager.get_outdoor_humidity() is None
+        
+        # Should not call hass.states.get for any optional sensors
+        hass.states.get.assert_not_called()
+    
+    def test_logs_appropriate_messages_for_missing_sensors(self):
+        """Test appropriate debug messages are logged when sensors are not configured."""
+        hass = Mock()
+        
+        manager = SensorManager(
+            hass=hass,
+            room_sensor_id="sensor.room_temp"
+            # All optional sensors default to None
+        )
+        
+        with patch('custom_components.smart_climate.sensor_manager._LOGGER') as mock_logger:
+            # Call humidity methods which have debug logging for None sensors
+            manager.get_indoor_humidity()
+            manager.get_outdoor_humidity()
+            
+            # Should log debug messages for None sensor IDs
+            assert mock_logger.debug.call_count == 2
+            
+            # Verify the log messages contain appropriate information
+            debug_calls = [call[0][0] for call in mock_logger.debug.call_args_list]
+            assert any("Indoor humidity sensor ID is None" in msg for msg in debug_calls)
+            assert any("Outdoor humidity sensor ID is None" in msg for msg in debug_calls)

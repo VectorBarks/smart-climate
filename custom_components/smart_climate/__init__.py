@@ -11,7 +11,7 @@ import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.const import Platform
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, ConfigEntryNotReady
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import entity_registry as er, config_validation as cv
 from homeassistant.helpers.event import async_call_later
@@ -34,9 +34,16 @@ from .const import (
     DEFAULT_PREFERENCE_LEVEL,
     CONF_INDOOR_HUMIDITY_SENSOR,
     CONF_OUTDOOR_HUMIDITY_SENSOR,
+    CONF_CLIMATE_ENTITY,
+    CONF_ROOM_SENSOR,
+    CONF_OUTDOOR_SENSOR,
+    CONF_POWER_SENSOR,
+    CONF_STARTUP_TIMEOUT,
+    STARTUP_TIMEOUT_SEC,
 )
 from .data_store import SmartClimateDataStore
 from .entity_waiter import EntityWaiter, EntityNotAvailableError
+from .helpers import async_wait_for_entities
 from .offset_engine import OffsetEngine
 from .seasonal_learner import SeasonalHysteresisLearner
 from .feature_engineering import FeatureEngineering
@@ -226,52 +233,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Humidity components wired successfully")
     # --- END HUMIDITY COMPONENT WIRING ---
 
-    # Wait for required entities to become available
-    try:
-        entity_waiter = EntityWaiter()
-        # Get configurable timeout, cap at 300 seconds
-        timeout = min(config.get("initial_timeout", DEFAULT_INITIAL_TIMEOUT), 300)
-        await entity_waiter.wait_for_required_entities(hass, config, timeout=timeout)
-        _LOGGER.info("All required entities are available for entry: %s", entry.entry_id)
-        
-        # Clear retry attempt on successful entity wait
-        if "_retry_attempt" in hass.data[DOMAIN][entry.entry_id]:
-            del hass.data[DOMAIN][entry.entry_id]["_retry_attempt"]
-            
-    except EntityNotAvailableError as exc:
-        # Check if retry is enabled
-        if not config.get("enable_retry", DEFAULT_RETRY_ENABLED):
-            raise HomeAssistantError(f"Required entities not available: {exc}") from exc
-            
-        # Check if we've exceeded max retry attempts
-        max_attempts = config.get("max_retry_attempts", DEFAULT_MAX_RETRY_ATTEMPTS)
-        if retry_attempt >= max_attempts:
-            # Send notification about failure
-            await async_create_notification(
-                hass,
-                title="Smart Climate Setup Failed",
-                message=(
-                    f"Smart Climate '{entry.title}' failed to initialize after {max_attempts} attempts. "
-                    f"Required entities are not available: {exc}\n\n"
-                    "You can manually reload the integration when entities are available:\n"
-                    "1. Go to Settings → Devices & Services\n"
-                    "2. Find the Smart Climate integration\n"
-                    "3. Click the three dots menu\n"
-                    "4. Select 'Reload'"
-                ),
-                notification_id=f"smart_climate_setup_failed_{entry.entry_id}",
-            )
-            _LOGGER.error(
-                "Smart Climate setup failed after %d retry attempts for entry %s: %s",
-                max_attempts, entry.entry_id, exc
-            )
-            return False
-            
-        # Schedule retry
-        retry_attempt += 1
-        hass.data[DOMAIN][entry.entry_id]["_retry_attempt"] = retry_attempt
-        await _schedule_retry(hass, entry, retry_attempt)
-        return False
+    # --- ENTITY AVAILABILITY WAITING ---
+    # Required entities (must be available for startup)
+    required_entities = [
+        entry.data[CONF_CLIMATE_ENTITY],
+        entry.data[CONF_ROOM_SENSOR],
+    ]
+    
+    # Optional entities (enhance functionality, allow degraded operation)
+    optional_entities = [
+        entity_id for key in [CONF_OUTDOOR_SENSOR, CONF_POWER_SENSOR, CONF_INDOOR_HUMIDITY_SENSOR, CONF_OUTDOOR_HUMIDITY_SENSOR]
+        if (entity_id := entry.options.get(key))
+    ]
+    
+    _LOGGER.info("Waiting for required entities: %s", required_entities)
+    
+    # Wait for required entities
+    startup_timeout = entry.options.get(CONF_STARTUP_TIMEOUT, STARTUP_TIMEOUT_SEC)
+    if not await async_wait_for_entities(hass, required_entities, startup_timeout):
+        raise ConfigEntryNotReady(
+            f"Required entities not available after {startup_timeout}s. "
+            f"Integration setup will be retried."
+        )
+    
+    # Wait for optional entities (shorter timeout)
+    if optional_entities and not await async_wait_for_entities(hass, optional_entities, 15):
+        _LOGGER.warning(
+            "Optional entities not available after 15s. "
+            "Integration will start without them: %s", optional_entities
+        )
+    
+    _LOGGER.info("Entity availability check completed for entry: %s", entry.entry_id)
+    # --- END ENTITY AVAILABILITY WAITING ---
 
     # --- SEASONAL ADAPTATION INTEGRATION ---
     # Set up seasonal learning infrastructure for each climate entity

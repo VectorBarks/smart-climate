@@ -136,6 +136,9 @@ from .const import (
     DEFAULT_DIFFERENTIAL_SIGNIFICANT,
     DEFAULT_DIFFERENTIAL_EXTREME,
     DEFAULT_HUMIDITY_LOG_LEVEL,
+    # Entity availability waiting imports
+    CONF_STARTUP_TIMEOUT,
+    STARTUP_TIMEOUT_SEC,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1115,6 +1118,20 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 CONF_ADAPTIVE_DELAY,
                 default=current_options.get(CONF_ADAPTIVE_DELAY, current_config.get(CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY))
             ): selector.BooleanSelector(),
+            
+            # Entity availability waiting configuration
+            vol.Optional(
+                CONF_STARTUP_TIMEOUT,
+                default=current_options.get(CONF_STARTUP_TIMEOUT, current_config.get(CONF_STARTUP_TIMEOUT, STARTUP_TIMEOUT_SEC))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=30,
+                    max=300,
+                    step=10,
+                    unit_of_measurement="seconds",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
             
             # Weather forecast configuration
             vol.Optional(
