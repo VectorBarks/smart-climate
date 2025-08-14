@@ -718,53 +718,59 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading Smart Climate Control for entry: %s", entry.entry_id)
 
-    # Unload platforms first
+    # Get entry data BEFORE unloading platforms to preserve thermal_manager access
+    entry_data = hass.data[DOMAIN].get(entry.entry_id, {})
+    
+    # --- PERSISTENCE CLEANUP (BEFORE PLATFORM UNLOAD) ---
+    _LOGGER.info("Performing shutdown save... before platform unload")
+    
+    # Cancel all periodic save listeners to prevent resource leaks
+    unload_listeners = entry_data.get("unload_listeners", [])
+    _LOGGER.debug("Canceling %d periodic save listeners", len(unload_listeners))
+    
+    for remove_listener in unload_listeners:
+        try:
+            remove_listener()
+        except Exception as exc:
+            _LOGGER.warning("Error removing listener during unload: %s", exc)
+
+    # Perform final save for all offset engines with timeout protection
+    offset_engines = entry_data.get("offset_engines", {})
+    if offset_engines:
+        _LOGGER.info("Starting shutdown save for %d offset engines", len(offset_engines))
+        
+        # Create save tasks for all engines
+        save_tasks = []
+        for entity_id, offset_engine in offset_engines.items():
+            try:
+                save_tasks.append(offset_engine.async_save_learning_data())
+            except Exception as exc:
+                _LOGGER.warning("Error creating save task for %s: %s", entity_id, exc)
+        
+        # Execute all saves concurrently with timeout protection
+        if save_tasks:
+            try:
+                # Wait for all save tasks with 5 second timeout
+                await asyncio.wait_for(
+                    asyncio.gather(*save_tasks, return_exceptions=True),
+                    timeout=5.0
+                )
+                _LOGGER.info("Final save completed for all entities")
+            except asyncio.TimeoutError:
+                _LOGGER.warning(
+                    "Shutdown save timeout after 5 seconds - some data may not be saved. "
+                    "This prevents Home Assistant shutdown from hanging."
+                )
+            except Exception as exc:
+                _LOGGER.warning("Error during final save: %s", exc)
+    # --- END PERSISTENCE CLEANUP ---
+
+    # NOW unload platforms after data is saved
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        entry_data = hass.data[DOMAIN].pop(entry.entry_id, {})
-
-        # --- PERSISTENCE CLEANUP ---
-        # Cancel all periodic save listeners to prevent resource leaks
-        unload_listeners = entry_data.get("unload_listeners", [])
-        _LOGGER.debug("Canceling %d periodic save listeners", len(unload_listeners))
-        
-        for remove_listener in unload_listeners:
-            try:
-                remove_listener()
-            except Exception as exc:
-                _LOGGER.warning("Error removing listener during unload: %s", exc)
-
-        # Perform final save for all offset engines with timeout protection
-        offset_engines = entry_data.get("offset_engines", {})
-        if offset_engines:
-            _LOGGER.info("Starting shutdown save for %d offset engines", len(offset_engines))
-            
-            # Create save tasks for all engines
-            save_tasks = []
-            for entity_id, offset_engine in offset_engines.items():
-                try:
-                    save_tasks.append(offset_engine.async_save_learning_data())
-                except Exception as exc:
-                    _LOGGER.warning("Error creating save task for %s: %s", entity_id, exc)
-            
-            # Execute all saves concurrently with timeout protection
-            if save_tasks:
-                try:
-                    # Wait for all save tasks with 5 second timeout
-                    await asyncio.wait_for(
-                        asyncio.gather(*save_tasks, return_exceptions=True),
-                        timeout=5.0
-                    )
-                    _LOGGER.info("Final save completed for all entities")
-                except asyncio.TimeoutError:
-                    _LOGGER.warning(
-                        "Shutdown save timeout after 5 seconds - some data may not be saved. "
-                        "This prevents Home Assistant shutdown from hanging."
-                    )
-                except Exception as exc:
-                    _LOGGER.warning("Error during final save: %s", exc)
-        # --- END PERSISTENCE CLEANUP ---
+        # Remove entry data from hass.data after successful platform unload
+        hass.data[DOMAIN].pop(entry.entry_id, {})
 
     _LOGGER.info("Smart Climate Control unload completed for entry: %s", entry.entry_id)
     return unload_ok
