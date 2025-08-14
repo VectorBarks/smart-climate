@@ -179,3 +179,39 @@ class TestFeatureEngineering:
         assert result.day_of_week == 1
         assert result.indoor_humidity == 55.0
         assert result.outdoor_humidity == 45.0
+
+    def test_calculate_humidity_differential_valid_values(self, feature_engineer):
+        """Test humidity differential calculation with valid values."""
+        result = feature_engineer.calculate_humidity_differential(60.0, 40.0)
+        assert result == 20.0
+        
+        result = feature_engineer.calculate_humidity_differential(30.0, 50.0)
+        assert result == -20.0
+        
+        result = feature_engineer.calculate_humidity_differential(55.5, 55.5)
+        assert result == 0.0
+
+    def test_calculate_humidity_differential_none_values(self, feature_engineer):
+        """Test humidity differential calculation with None values."""
+        result = feature_engineer.calculate_humidity_differential(None, 40.0)
+        assert result is None
+        
+        result = feature_engineer.calculate_humidity_differential(60.0, None)
+        assert result is None
+        
+        result = feature_engineer.calculate_humidity_differential(None, None)
+        assert result is None
+
+    def test_calculate_humidity_differential_edge_cases(self, feature_engineer):
+        """Test humidity differential calculation with edge cases."""
+        # Zero humidity
+        result = feature_engineer.calculate_humidity_differential(0.0, 50.0)
+        assert result == -50.0
+        
+        # 100% humidity
+        result = feature_engineer.calculate_humidity_differential(100.0, 50.0)
+        assert result == 50.0
+        
+        # Float precision test
+        result = feature_engineer.calculate_humidity_differential(60.5, 40.2)
+        assert abs(result - 20.3) < 1e-10  # Allow for floating point precision

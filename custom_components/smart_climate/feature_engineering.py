@@ -90,6 +90,24 @@ class FeatureEngineering:
             # Handle mathematical errors gracefully
             return None
     
+    def calculate_humidity_differential(self, indoor_humidity: Optional[float], outdoor_humidity: Optional[float]) -> Optional[float]:
+        """Calculate the difference between indoor and outdoor humidity.
+        
+        Args:
+            indoor_humidity: Indoor relative humidity (0-100%)
+            outdoor_humidity: Outdoor relative humidity (0-100%)
+            
+        Returns:
+            Humidity differential (indoor - outdoor) or None if inputs missing
+        """
+        if indoor_humidity is None or outdoor_humidity is None:
+            return None
+        
+        try:
+            return float(indoor_humidity) - float(outdoor_humidity)
+        except (ValueError, TypeError):
+            return None
+    
     def enrich_features(self, data: OffsetInput) -> OffsetInput:
         """Add all derived metrics to OffsetInput.
         
@@ -99,11 +117,8 @@ class FeatureEngineering:
         Returns:
             OffsetInput instance with derived humidity features populated
         """
-        # Calculate humidity differential if both indoor and outdoor humidity are available
-        if data.indoor_humidity is not None and data.outdoor_humidity is not None:
-            data.humidity_differential = data.indoor_humidity - data.outdoor_humidity
-        else:
-            data.humidity_differential = None
+        # Calculate humidity differential using the dedicated method
+        data.humidity_differential = self.calculate_humidity_differential(data.indoor_humidity, data.outdoor_humidity)
         
         # Calculate indoor dew point
         data.indoor_dew_point = self.calculate_dew_point(data.room_temp, data.indoor_humidity)
