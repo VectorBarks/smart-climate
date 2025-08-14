@@ -1215,6 +1215,15 @@ class OffsetEngine:
                 else:
                     feature_vector.append(float(value))
         
+        # Log if humidity features are present in the feature vector
+        humidity_indices = [6, 7, 8, 9, 10, 11]  # Indices for humidity features: indoor, outdoor, diff, dew_in, dew_out, heat_index
+        humidity_values = [feature_vector[i] for i in humidity_indices if i < len(feature_vector)]
+        if humidity_values and any(not np.isnan(v) and v != 0 for v in humidity_values):
+            _LOGGER.debug(
+                "ML feature vector includes humidity data: [indoor=%.1f, outdoor=%.1f, diff=%.1f, dew_in=%.1f, dew_out=%.1f, heat=%.1f]",
+                *[v if not np.isnan(v) else 0.0 for v in humidity_values]
+            )
+        
         return feature_vector
     
     def record_feedback(

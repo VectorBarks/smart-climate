@@ -1680,6 +1680,18 @@ class SmartClimateEntity(ClimateEntity):
                 self._mode_manager.current_mode
             )
             
+            # Log humidity values if present
+            if any([indoor_humidity, outdoor_humidity, humidity_differential]):
+                _LOGGER.debug(
+                    "Humidity features included: indoor=%.1f%%, outdoor=%.1f%%, diff=%.1f%%, dew_in=%.1f°C, dew_out=%.1f°C, heat_idx=%.1f°C",
+                    indoor_humidity if indoor_humidity is not None else 0,
+                    outdoor_humidity if outdoor_humidity is not None else 0,
+                    humidity_differential if humidity_differential is not None else 0,
+                    indoor_dew_point if indoor_dew_point is not None else 0,
+                    outdoor_dew_point if outdoor_dew_point is not None else 0,
+                    heat_index if heat_index is not None else 0
+                )
+            
             # Calculate reactive offset
             offset_result = self._offset_engine.calculate_offset(offset_input)
             reactive_offset = offset_result.offset
