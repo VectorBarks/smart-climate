@@ -89,7 +89,7 @@ class TestDelayLearner:
         learner = DelayLearner(hass, "climate.test", "sensor.test_temp", store)
         learner.start_learning_cycle()
         
-        mock_tracker.assert_called_once_with(hass, learner._async_check_stability, CHECK_INTERVAL)
+        mock_tracker.assert_called_once_with(hass, learner._check_stability_sync, CHECK_INTERVAL)
         assert learner._cancel_listener is not None
         
         learner.stop_learning_cycle()

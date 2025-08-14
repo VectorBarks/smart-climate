@@ -2,6 +2,7 @@
 ABOUTME: DelayLearner class for adaptive feedback delays in Smart Climate Control.
 Learns optimal feedback delay timing based on AC temperature stabilization patterns.
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Tuple
@@ -256,7 +257,7 @@ class DelayLearner:
         
         # Start periodic temperature monitoring
         self._cancel_listener = async_track_time_interval(
-            self._hass, self._async_check_stability, CHECK_INTERVAL
+            self._hass, self._check_stability_sync, CHECK_INTERVAL
         )
     
     def stop_learning_cycle(self) -> None:
@@ -339,16 +340,18 @@ class DelayLearner:
         """
         return self._learned_delay_secs if self._learned_delay_secs is not None else 0
     
-    def _async_check_stability(self, now: datetime) -> None:
+    def _check_stability_sync(self, now: datetime) -> None:
         """Check if temperature has stabilized.
         
         Called periodically during learning cycle to monitor temperature changes.
         Stops learning and saves delay when temperature stabilizes or timeout occurs.
         
+        Note: This method runs in a SyncWorker thread, hence the '_sync' suffix.
+        
         Args:
             now: Current datetime from the timer
         """
-        _LOGGER.debug("[%s] _async_check_stability called with now=%s", self._entity_id, now)
+        _LOGGER.debug("[%s] _check_stability_sync called with now=%s", self._entity_id, now)
         # Timeout protection - stop if learning cycle exceeds maximum duration
         current_timeout = self._current_timeout or self._timeout
         try:
@@ -425,7 +428,7 @@ class DelayLearner:
                 )
                 
                 # Save the learned delay with EMA smoothing
-                self._hass.async_create_task(self.async_save(final_delay))
+                self._hass.async_run_coroutine_threadsafe(self.async_save(final_delay), self._hass.loop)
                 
                 # Stop the learning cycle
                 self.stop_learning_cycle()
@@ -449,7 +452,7 @@ class DelayLearner:
                         )
                         
                         # Save the learned delay with EMA smoothing
-                        self._hass.async_create_task(self.async_save(final_delay))
+                        self._hass.async_run_coroutine_threadsafe(self.async_save(final_delay), self._hass.loop)
                         
                         # Stop the learning cycle
                         self.stop_learning_cycle()
@@ -463,5 +466,5 @@ class DelayLearner:
                         self._entity_id, e
                     )
                     default_delay = 60  # 60 seconds as fallback
-                    self._hass.async_create_task(self.async_save(default_delay))
+                    self._hass.async_run_coroutine_threadsafe(self.async_save(default_delay), self._hass.loop)
                     self.stop_learning_cycle()
