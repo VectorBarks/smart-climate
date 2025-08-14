@@ -271,6 +271,9 @@ class OffsetEngine:
         # Add state for the last calculated offset (for dashboard data)
         self._last_offset: float = 0.0
         
+        # Add state for humidity contribution (for feature contribution tracking)
+        self._last_humidity_contribution: float = 0.0
+        
         # ML feedback loop prevention - track adjustment sources
         self._prediction_active: bool = False
         self._adjustment_source: Optional[str] = None  # Track if adjustment from prediction vs user
@@ -907,6 +910,9 @@ class OffsetEngine:
                         outdoor_humidity=input_data.outdoor_humidity
                     )
                     learning_confidence = 0.8  # High confidence for hysteresis-aware prediction
+                    
+                    # Calculate humidity contribution if humidity data is present
+                    self._calculate_humidity_contribution(input_data, hysteresis_state)
                     
                     _LOGGER.debug(
                         "Learning prediction: rule_based=%.2f°C, learned=%.2f°C, confidence=%.1f",
@@ -1551,6 +1557,92 @@ class OffsetEngine:
         
         return base_info
     
+    def _calculate_humidity_contribution(self, input_data: OffsetInput, hysteresis_state: str) -> None:
+        """Calculate the temperature contribution from humidity features.
+        
+        Makes two predictions: one with humidity data and one without, then calculates
+        the difference to determine humidity's contribution to the offset.
+        
+        Args:
+            input_data: Input data with humidity values
+            hysteresis_state: Current hysteresis state
+        """
+        # Reset contribution to 0.0 by default
+        self._last_humidity_contribution = 0.0
+        
+        # Only calculate if we have learner and humidity data
+        if not (self._learner and self._has_humidity_data(input_data)):
+            return
+            
+        try:
+            # Make prediction without humidity data
+            input_no_humidity = OffsetInput(
+                ac_internal_temp=input_data.ac_internal_temp,
+                room_temp=input_data.room_temp,
+                outdoor_temp=input_data.outdoor_temp,
+                mode=input_data.mode,
+                power_consumption=input_data.power_consumption,
+                time_of_day=input_data.time_of_day,
+                day_of_week=input_data.day_of_week,
+                hvac_mode=input_data.hvac_mode,
+                # Set humidity values to None
+                indoor_humidity=None,
+                outdoor_humidity=None,
+                humidity_differential=None,
+                indoor_dew_point=None,
+                outdoor_dew_point=None,
+                heat_index=None
+            )
+            
+            # Enrich the no-humidity input if feature_engineer available
+            if self._feature_engineer:
+                input_no_humidity = self._feature_engineer.enrich_features(input_no_humidity)
+            
+            # Make prediction without humidity
+            offset_without_humidity = self._learner.predict(
+                ac_temp=input_no_humidity.ac_internal_temp,
+                room_temp=input_no_humidity.room_temp,
+                outdoor_temp=input_no_humidity.outdoor_temp,
+                mode=input_no_humidity.mode,
+                power=input_no_humidity.power_consumption,
+                hysteresis_state=hysteresis_state,
+                indoor_humidity=None,
+                outdoor_humidity=None
+            )
+            
+            # The prediction with humidity was already made in calculate_offset
+            # We need to make it again here to get the exact value
+            offset_with_humidity = self._learner.predict(
+                ac_temp=input_data.ac_internal_temp,
+                room_temp=input_data.room_temp,
+                outdoor_temp=input_data.outdoor_temp,
+                mode=input_data.mode,
+                power=input_data.power_consumption,
+                hysteresis_state=hysteresis_state,
+                indoor_humidity=input_data.indoor_humidity,
+                outdoor_humidity=input_data.outdoor_humidity
+            )
+            
+            # Calculate the contribution (difference between predictions)
+            self._last_humidity_contribution = offset_with_humidity - offset_without_humidity
+            
+            _LOGGER.debug(
+                "Humidity contribution calculated: with_humidity=%.2f°C, without_humidity=%.2f°C, contribution=%.2f°C",
+                offset_with_humidity, offset_without_humidity, self._last_humidity_contribution
+            )
+            
+        except Exception as exc:
+            _LOGGER.debug("Error calculating humidity contribution: %s", exc)
+            self._last_humidity_contribution = 0.0
+    
+    def _has_humidity_data(self, input_data: OffsetInput) -> bool:
+        """Check if input data has any non-zero humidity values."""
+        return any([
+            input_data.indoor_humidity is not None and input_data.indoor_humidity != 0,
+            input_data.outdoor_humidity is not None and input_data.outdoor_humidity != 0,
+            input_data.humidity_differential is not None and input_data.humidity_differential != 0
+        ])
+
     def _generate_reason_with_learning(
         self,
         input_data: OffsetInput,
@@ -1610,7 +1702,7 @@ class OffsetEngine:
             else:
                 reasons.append("insufficient learning data")
         
-        # Humidity information
+        # Humidity information with contribution if significant
         humidity_parts = []
         if input_data.indoor_humidity is not None and input_data.indoor_humidity != 0:
             humidity_parts.append(f"indoor: {input_data.indoor_humidity:.1f}%")
@@ -1620,7 +1712,12 @@ class OffsetEngine:
             humidity_parts.append(f"diff: {input_data.humidity_differential:.1f}%")
         
         if humidity_parts:
-            reasons.append(f"humidity-adjusted ({', '.join(humidity_parts)})")
+            # Show contribution in °C if it's significant (>= 0.05°C)
+            if abs(self._last_humidity_contribution) >= 0.05:
+                contribution_sign = "+" if self._last_humidity_contribution > 0 else ""
+                reasons.append(f"humidity-adjusted ({contribution_sign}{self._last_humidity_contribution:.1f}°C from {', '.join(humidity_parts)})")
+            else:
+                reasons.append(f"humidity-adjusted ({', '.join(humidity_parts)})")
         
         # Mode-specific reasons
         if input_data.mode == "away":
@@ -2296,6 +2393,21 @@ class OffsetEngine:
                 "power_history_size": 0,
                 "has_sufficient_data": False
             }
+    
+    def get_feature_contribution(self, feature_name: str) -> float:
+        """Get the temperature contribution of a specific feature in °C.
+        
+        Args:
+            feature_name: Name of the feature ("humidity", etc.)
+            
+        Returns:
+            Temperature contribution in °C. Returns 0.0 for unknown features
+            or when no contribution has been calculated.
+        """
+        if feature_name == "humidity":
+            return self._last_humidity_contribution
+        else:
+            return 0.0
     
     def _get_outliers_detected_today(self) -> int:
         """Get number of outliers detected today.
