@@ -1712,12 +1712,17 @@ class OffsetEngine:
             humidity_parts.append(f"diff: {input_data.humidity_differential:.1f}%")
         
         if humidity_parts:
-            # Show contribution in °C if it's significant (>= 0.05°C)
-            if abs(self._last_humidity_contribution) >= 0.05:
-                contribution_sign = "+" if self._last_humidity_contribution > 0 else ""
-                reasons.append(f"humidity-adjusted ({contribution_sign}{self._last_humidity_contribution:.1f}°C from {', '.join(humidity_parts)})")
-            else:
-                reasons.append(f"humidity-adjusted ({', '.join(humidity_parts)})")
+            # Always show contribution in °C for transparency
+            contribution_sign = "+" if self._last_humidity_contribution > 0 else ""
+            contribution_text = f"humidity-adjusted ({contribution_sign}{self._last_humidity_contribution:.1f}°C from {', '.join(humidity_parts)})"
+            reasons.append(contribution_text)
+            
+            # Add debug logging for humidity contribution visibility
+            _LOGGER.debug(
+                "Humidity contribution displayed: %s (raw contribution: %.3f°C)", 
+                contribution_text, 
+                self._last_humidity_contribution
+            )
         
         # Mode-specific reasons
         if input_data.mode == "away":
