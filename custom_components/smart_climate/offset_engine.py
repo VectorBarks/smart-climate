@@ -972,6 +972,15 @@ class OffsetEngine:
             if learning_used:
                 factors.append(f"learning({learning_confidence:.1f})")
             
+            # Add humidity contribution if present
+            humidity_contributing = any([
+                input_data.indoor_humidity is not None and input_data.indoor_humidity != 0,
+                input_data.outdoor_humidity is not None and input_data.outdoor_humidity != 0,
+                input_data.humidity_differential is not None and input_data.humidity_differential != 0
+            ])
+            if humidity_contributing:
+                factors.append("humidity")
+            
             if factors:
                 _LOGGER.debug("Contributing factors: %s", ", ".join(factors))
             else:
@@ -1600,6 +1609,18 @@ class OffsetEngine:
                 reasons.append("learning available but low confidence")
             else:
                 reasons.append("insufficient learning data")
+        
+        # Humidity information
+        humidity_parts = []
+        if input_data.indoor_humidity is not None and input_data.indoor_humidity != 0:
+            humidity_parts.append(f"indoor: {input_data.indoor_humidity:.1f}%")
+        if input_data.outdoor_humidity is not None and input_data.outdoor_humidity != 0:
+            humidity_parts.append(f"outdoor: {input_data.outdoor_humidity:.1f}%")
+        if input_data.humidity_differential is not None and input_data.humidity_differential != 0:
+            humidity_parts.append(f"diff: {input_data.humidity_differential:.1f}%")
+        
+        if humidity_parts:
+            reasons.append(f"humidity-adjusted ({', '.join(humidity_parts)})")
         
         # Mode-specific reasons
         if input_data.mode == "away":
