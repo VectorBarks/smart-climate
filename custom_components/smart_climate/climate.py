@@ -2526,8 +2526,8 @@ class SmartClimateEntity(ClimateEntity):
                 return 0.0
             
             # Extract temperature and offset pairs
-            temperatures = [item[0] for item in temp_data]
-            offsets = [item[1] for item in temp_data]
+            temperatures = [item["outdoor_temp"] for item in temp_data]
+            offsets = [item["offset"] for item in temp_data]
             
             # Calculate correlation coefficient
             try:
