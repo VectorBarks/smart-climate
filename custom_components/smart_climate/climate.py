@@ -3013,15 +3013,20 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
         await validate_configuration(hass, config)
         
         # Create all components with dependencies following architecture Section 4.1
-        _LOGGER.debug("Creating SensorManager with sensors: room=%s, outdoor=%s, power=%s", 
-                      config["room_sensor"], config.get("outdoor_sensor"), config.get("power_sensor"))
-        
-        sensor_manager = SensorManager(
-            hass,
-            config["room_sensor"],
-            config.get("outdoor_sensor"),
-            config.get("power_sensor")
-        )
+        # Retrieve the shared SensorManager instance created in __init__.py
+        # This instance is fully configured with all sensors, including humidity
+        try:
+            sensor_manager = hass.data[DOMAIN][config_entry.entry_id]["sensor_manager"]
+            _LOGGER.debug("Retrieved shared SensorManager instance for climate entity setup")
+        except KeyError:
+            # Fallback: create a new SensorManager if not found (but this should not happen)
+            _LOGGER.error("Could not find shared SensorManager instance. This is a setup error. Creating a fallback.")
+            sensor_manager = SensorManager(
+                hass,
+                config["room_sensor"],
+                config.get("outdoor_sensor"),
+                config.get("power_sensor")
+            )
         
         _LOGGER.debug("Creating ModeManager with config")
         mode_manager = ModeManager(config)
