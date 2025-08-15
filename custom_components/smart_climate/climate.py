@@ -3259,6 +3259,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
         # Create entity with all dependencies
         _LOGGER.debug("Creating SmartClimateEntity with wrapped entity: %s", config["climate_entity"])
         
+        # Add entry_id to config for thermal manager access
+        config["entry_id"] = config_entry.entry_id
+        
         entity = SmartClimateEntity(
             hass,
             config,
