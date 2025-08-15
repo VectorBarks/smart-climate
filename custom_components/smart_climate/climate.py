@@ -1744,18 +1744,26 @@ class SmartClimateEntity(ClimateEntity):
                 # Access thermal manager via hass.data pattern (architecture §18.3.4)
                 entry_id = self._config.get('entry_id')
                 if entry_id and self.hass.data.get(DOMAIN, {}).get(entry_id, {}).get("thermal_components"):
-                    thermal_manager = self.hass.data[DOMAIN][entry_id]["thermal_components"].get(self._wrapped_entity_id)
+                    # FIX: Use self.entity_id instead of self._wrapped_entity_id
+                    # Thermal managers are stored by Smart Climate entity ID, not wrapped entity ID
+                    thermal_manager = self.hass.data[DOMAIN][entry_id]["thermal_components"].get(self.entity_id)
                     if thermal_manager:
                         thermal_state = thermal_manager.current_state
                         _LOGGER.debug(
                             "Retrieved thermal state: %s for entity %s",
                             thermal_state.name if thermal_state else "None",
-                            self._wrapped_entity_id
+                            self.entity_id
                         )
                     else:
-                        _LOGGER.debug("No thermal manager found for entity %s", self._wrapped_entity_id)
+                        # Improved debug logging to show available keys when lookup fails
+                        available_keys = list(self.hass.data[DOMAIN][entry_id]["thermal_components"].keys())
+                        _LOGGER.debug(
+                            "No thermal manager found for entity %s. Available thermal manager keys: %s",
+                            self.entity_id,
+                            available_keys
+                        )
                 else:
-                    _LOGGER.debug("No thermal components data structure found")
+                    _LOGGER.debug("No thermal components data structure found for entry_id: %s", entry_id)
             except Exception as exc:
                 _LOGGER.warning("Error accessing thermal state: %s", exc)
                 thermal_state = None
