@@ -1744,21 +1744,28 @@ class SmartClimateEntity(ClimateEntity):
                 # Access thermal manager via hass.data pattern (architecture §18.3.4)
                 entry_id = self._config.get('entry_id')
                 if entry_id and self.hass.data.get(DOMAIN, {}).get(entry_id, {}).get("thermal_components"):
-                    # Thermal managers are stored by wrapped entity ID (original A/C entity)
-                    thermal_manager = self.hass.data[DOMAIN][entry_id]["thermal_components"].get(self._wrapped_entity_id)
-                    if thermal_manager:
-                        thermal_state = thermal_manager.current_state
-                        _LOGGER.debug(
-                            "Retrieved thermal state: %s for entity %s",
-                            thermal_state.name if thermal_state else "None",
-                            self._wrapped_entity_id
-                        )
+                    # Thermal managers are stored by entity ID as component dictionary
+                    thermal_components = self.hass.data[DOMAIN][entry_id]["thermal_components"].get(self.entity_id)
+                    if thermal_components and isinstance(thermal_components, dict):
+                        thermal_manager = thermal_components.get("thermal_manager")
+                        if thermal_manager:
+                            thermal_state = thermal_manager.current_state
+                            _LOGGER.debug(
+                                "Retrieved thermal state: %s for entity %s",
+                                thermal_state.name if thermal_state else "None",
+                                self.entity_id
+                            )
+                        else:
+                            _LOGGER.debug(
+                                "No thermal_manager found in thermal_components for entity %s",
+                                self.entity_id
+                            )
                     else:
                         # Improved debug logging to show available keys when lookup fails
                         available_keys = list(self.hass.data[DOMAIN][entry_id]["thermal_components"].keys())
                         _LOGGER.debug(
-                            "No thermal manager found for entity %s. Available thermal manager keys: %s",
-                            self._wrapped_entity_id,
+                            "No thermal components found for entity %s. Available thermal entity keys: %s",
+                            self.entity_id,
                             available_keys
                         )
                 else:
