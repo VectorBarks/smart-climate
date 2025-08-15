@@ -43,6 +43,7 @@ class ModeAdjustments:
     offset_adjustment: float  # Additional offset for night mode
     update_interval_override: Optional[int]  # Different update frequency
     boost_offset: float  # Extra cooling for boost mode
+    force_operation: bool = False  # Signal override for priority resolution
 
 
 @dataclass

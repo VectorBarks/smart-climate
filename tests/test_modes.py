@@ -157,3 +157,65 @@ class TestModeManager:
         manager.set_mode("boost")
         adjustments = manager.get_adjustments()
         assert adjustments.boost_offset == -2.0  # Default boost offset
+
+    def test_boost_mode_sets_force_operation_true(self):
+        """Test that boost mode sets force_operation=True."""
+        config = {"boost_offset": -2.0}
+        manager = ModeManager(config)
+        manager.set_mode("boost")
+        
+        adjustments = manager.get_adjustments()
+        assert adjustments.force_operation is True
+
+    def test_non_boost_modes_force_operation_false(self):
+        """Test that non-boost modes set force_operation=False."""
+        config = {}
+        manager = ModeManager(config)
+        
+        non_boost_modes = ["none", "away", "sleep"]
+        for mode in non_boost_modes:
+            manager.set_mode(mode)
+            adjustments = manager.get_adjustments()
+            assert adjustments.force_operation is False, f"Mode {mode} should have force_operation=False"
+
+    def test_boost_mode_retains_existing_boost_offset(self):
+        """Test that boost mode retains existing boost_offset behavior."""
+        config = {"boost_offset": -3.0}
+        manager = ModeManager(config)
+        manager.set_mode("boost")
+        
+        adjustments = manager.get_adjustments()
+        assert adjustments.boost_offset == -3.0
+        assert adjustments.force_operation is True
+        assert adjustments.temperature_override is None
+        assert adjustments.offset_adjustment == 0.0
+
+    def test_away_mode_force_operation_false(self):
+        """Test that away mode specifically sets force_operation=False."""
+        config = {"away_temperature": 22.0}
+        manager = ModeManager(config)
+        manager.set_mode("away")
+        
+        adjustments = manager.get_adjustments()
+        assert adjustments.force_operation is False
+        assert adjustments.temperature_override == 22.0
+
+    def test_sleep_mode_force_operation_false(self):
+        """Test that sleep mode specifically sets force_operation=False."""
+        config = {"sleep_offset": 2.0}
+        manager = ModeManager(config)
+        manager.set_mode("sleep")
+        
+        adjustments = manager.get_adjustments()
+        assert adjustments.force_operation is False
+        assert adjustments.offset_adjustment == 2.0
+
+    def test_none_mode_force_operation_false(self):
+        """Test that none mode specifically sets force_operation=False."""
+        config = {}
+        manager = ModeManager(config)
+        manager.set_mode("none")
+        
+        adjustments = manager.get_adjustments()
+        assert adjustments.force_operation is False
+        assert adjustments.offset_adjustment == 0.0

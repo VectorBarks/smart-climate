@@ -46,28 +46,32 @@ class ModeManager:
                 temperature_override=None,
                 offset_adjustment=0.0,
                 update_interval_override=None,
-                boost_offset=0.0
+                boost_offset=0.0,
+                force_operation=False
             )
         elif self._current_mode == "away":
             return ModeAdjustments(
                 temperature_override=self._config.get("away_temperature", 19.0),
                 offset_adjustment=0.0,
                 update_interval_override=None,
-                boost_offset=0.0
+                boost_offset=0.0,
+                force_operation=False
             )
         elif self._current_mode == "sleep":
             return ModeAdjustments(
                 temperature_override=None,
                 offset_adjustment=self._config.get("sleep_offset", 1.0),
                 update_interval_override=None,
-                boost_offset=0.0
+                boost_offset=0.0,
+                force_operation=False
             )
         elif self._current_mode == "boost":
             return ModeAdjustments(
                 temperature_override=None,
                 offset_adjustment=0.0,
                 update_interval_override=None,
-                boost_offset=self._config.get("boost_offset", -2.0)
+                boost_offset=self._config.get("boost_offset", -2.0),
+                force_operation=True
             )
         else:
             # Fallback to none mode
@@ -75,7 +79,8 @@ class ModeManager:
                 temperature_override=None,
                 offset_adjustment=0.0,
                 update_interval_override=None,
-                boost_offset=0.0
+                boost_offset=0.0,
+                force_operation=False
             )
     
     def register_mode_change_callback(self, callback: Callable) -> None:

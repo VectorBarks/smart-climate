@@ -17,7 +17,8 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.exceptions import HomeAssistantError
 
-from .models import OffsetInput, OffsetResult
+from .models import OffsetInput, OffsetResult, ModeAdjustments
+from .thermal_models import ThermalState
 from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
@@ -1730,13 +1731,56 @@ class SmartClimateEntity(ClimateEntity):
             mode_adjustments = self._mode_manager.get_adjustments()
             
             _LOGGER.debug(
-                "Mode adjustments: temp_override=%s, offset_adj=%.2f°C, boost=%.2f°C",
+                "Mode adjustments: temp_override=%s, offset_adj=%.2f°C, boost=%.2f°C, force_op=%s",
                 mode_adjustments.temperature_override,
                 mode_adjustments.offset_adjustment,
-                mode_adjustments.boost_offset
+                mode_adjustments.boost_offset,
+                mode_adjustments.force_operation
             )
             
-            # Apply total offset and limits
+            # Get thermal state from thermal manager (if available)
+            thermal_state = None
+            try:
+                # Access thermal manager via hass.data pattern (architecture §18.3.4)
+                entry_id = self._config.get('entry_id')
+                if entry_id and self.hass.data.get(DOMAIN, {}).get(entry_id, {}).get("thermal_components"):
+                    thermal_manager = self.hass.data[DOMAIN][entry_id]["thermal_components"].get(self._wrapped_entity_id)
+                    if thermal_manager:
+                        thermal_state = thermal_manager.current_state
+                        _LOGGER.debug(
+                            "Retrieved thermal state: %s for entity %s",
+                            thermal_state.name if thermal_state else "None",
+                            self._wrapped_entity_id
+                        )
+                    else:
+                        _LOGGER.debug("No thermal manager found for entity %s", self._wrapped_entity_id)
+                else:
+                    _LOGGER.debug("No thermal components data structure found")
+            except Exception as exc:
+                _LOGGER.warning("Error accessing thermal state: %s", exc)
+                thermal_state = None
+            
+            # Resolve target temperature using priority hierarchy (architecture §18.3.4)
+            if thermal_state is not None:
+                resolved_target = self._resolve_target_temperature(
+                    target_temp,          # base_target_temp
+                    room_temp,           # current_room_temp  
+                    thermal_state,       # thermal_state
+                    mode_adjustments     # mode_adjustments
+                )
+                _LOGGER.debug(
+                    "Priority resolver: target=%.1f°C -> resolved=%.1f°C (thermal_state=%s, force_op=%s)",
+                    target_temp,
+                    resolved_target,
+                    thermal_state.name,
+                    mode_adjustments.force_operation
+                )
+                # Use resolved target for further processing
+                target_temp = resolved_target
+            else:
+                _LOGGER.debug("Thermal state not available, using standard offset logic")
+            
+            # Apply total offset and limits (using resolved target if available)
             adjusted_temp = self._temperature_controller.apply_offset_and_limits(
                 target_temp,
                 total_offset,
@@ -2953,6 +2997,83 @@ class SmartClimateEntity(ClimateEntity):
         # Always update the state to reflect the latest sensor values from the coordinator
         self.async_write_ha_state()
         _LOGGER.debug("=== Coordinator update complete ===")
+
+    def _resolve_target_temperature(
+        self,
+        base_target_temp: float,
+        current_room_temp: float,
+        thermal_state: ThermalState,
+        mode_adjustments: ModeAdjustments,
+    ) -> float:
+        """Single source of truth for operational target temperature.
+        
+        Implements priority hierarchy for thermal state + mode integration:
+        PRIORITY 1: Mode Override (force_operation=True) 
+        PRIORITY 2: Thermal State Directive (DRIFTING state)
+        PRIORITY 3: Standard Operation (normal offset logic)
+        
+        Args:
+            base_target_temp: Base target temperature from user or mode
+            current_room_temp: Current room temperature from sensor
+            thermal_state: Current thermal state from ThermalManager
+            mode_adjustments: Mode-specific adjustments from ModeManager
+            
+        Returns:
+            float: Resolved target temperature for AC control
+        """
+        # PRIORITY 1: Mode Override (boost mode with force_operation=True)
+        if mode_adjustments.force_operation:
+            target = base_target_temp + mode_adjustments.boost_offset
+            self._log_priority_decision(
+                f"Mode override active (force_operation=True). Target: {target:.1f}, "
+                f"ignoring thermal state: {thermal_state.name}"
+            )
+            return target
+        
+        # PRIORITY 2: Thermal State Directive (DRIFTING state requires A/C off)
+        if thermal_state == ThermalState.DRIFTING:
+            target = current_room_temp + 3.0  # Turn A/C off for thermal learning
+            self._log_priority_decision(
+                f"Thermal state directive active ({thermal_state.name}). "
+                f"Target: {target:.1f} (room + 3.0°C)"
+            )
+            return target
+        
+        # PRIORITY 3: Standard Operation (normal offset-based control)
+        target = self._apply_standard_offset_logic(base_target_temp, mode_adjustments)
+        self._log_priority_decision(
+            f"Standard operation. Target: {target:.1f} (from offset logic)"
+        )
+        return target
+
+    def _apply_standard_offset_logic(
+        self, 
+        base_target_temp: float, 
+        mode_adjustments: ModeAdjustments
+    ) -> float:
+        """Apply standard offset-based temperature control logic.
+        
+        This method handles normal temperature adjustment using the offset engine
+        and mode-specific adjustments when no overrides are active.
+        
+        Args:
+            base_target_temp: Base target temperature 
+            mode_adjustments: Mode-specific adjustments to apply
+            
+        Returns:
+            float: Target temperature with standard offset logic applied
+        """
+        # For now, return the base temperature with mode adjustments
+        # This will be enhanced to integrate with the existing offset engine logic
+        return base_target_temp + mode_adjustments.offset_adjustment
+
+    def _log_priority_decision(self, message: str) -> None:
+        """Log priority resolution decisions for debugging.
+        
+        Args:
+            message: Decision message to log
+        """
+        _LOGGER.debug("Priority Resolution: %s", message)
     
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
