@@ -1,7 +1,8 @@
 """ABOUTME: Thermal efficiency models and enums for Smart Climate Control.
 Data structures for thermal state machine, probe results, and user preferences."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -28,7 +29,7 @@ class ThermalConstants:
     recovery_duration: int = 1800  # 30 minutes for mode change recovery
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProbeResult:
     """Result of thermal time constant probing.
     
@@ -41,12 +42,14 @@ class ProbeResult:
         duration: Duration of probe experiment (seconds)
         fit_quality: Quality of exponential fit (0.0-1.0)
         aborted: Whether the probe was aborted early
+        timestamp: When the probe was created (UTC)
     """
     tau_value: float
     confidence: float
     duration: int
     fit_quality: float
     aborted: bool
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ThermalState(Enum):

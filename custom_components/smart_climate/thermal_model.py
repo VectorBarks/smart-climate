@@ -3,19 +3,32 @@
 
 import math
 from typing import List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProbeResult:
-    """Result from thermal probing operation."""
+    """Result from thermal probing operation.
+    
+    Contains the measured thermal time constant and quality metrics
+    from active thermal probing experiments.
+    
+    Args:
+        tau_value: Measured thermal time constant (minutes)
+        confidence: Statistical confidence in measurement (0.0-1.0)
+        duration: Duration of probe experiment (seconds)
+        fit_quality: Quality of exponential fit (0.0-1.0)
+        aborted: Whether the probe was aborted early
+        timestamp: When the probe was created (UTC)
+    """
     tau_value: float
     confidence: float
     duration: int
     fit_quality: float
     aborted: bool
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class PassiveThermalModel:

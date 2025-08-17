@@ -4,7 +4,7 @@ Coordinates thermal states, operating window calculations, and AC control decisi
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Optional, Any, Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from homeassistant.core import HomeAssistant
 
 from .thermal_models import ThermalState, ThermalConstants
@@ -410,7 +410,7 @@ class ThermalManager:
                     "duration": probe.duration,
                     "fit_quality": probe.fit_quality,
                     "aborted": probe.aborted,
-                    "timestamp": datetime.now().isoformat()  # Current timestamp for serialization
+                    "timestamp": probe.timestamp.isoformat()  # Read existing timestamp
                 }
                 probe_history.append(probe_data)
 
@@ -662,12 +662,25 @@ class ThermalManager:
                                     isinstance(confidence, (int, float)) and 0.0 <= confidence <= 1.0 and
                                     isinstance(fit_quality, (int, float)) and 0.0 <= fit_quality <= 1.0):
                                     
+                                    # Parse timestamp or use fallback for legacy data
+                                    timestamp_str = probe_dict.get("timestamp")
+                                    if timestamp_str:
+                                        try:
+                                            timestamp = datetime.fromisoformat(timestamp_str)
+                                        except (ValueError, TypeError) as e:
+                                            _LOGGER.debug("Invalid timestamp '%s', using current time: %s", timestamp_str, e)
+                                            timestamp = datetime.now(timezone.utc)
+                                            self._corruption_recovery_count += 1
+                                    else:
+                                        timestamp = datetime.now(timezone.utc)  # Legacy fallback
+                                    
                                     probe = ProbeResult(
                                         tau_value=float(probe_dict["tau_value"]),
                                         confidence=float(confidence),
                                         duration=int(duration),
                                         fit_quality=float(fit_quality),
-                                        aborted=bool(probe_dict["aborted"])
+                                        aborted=bool(probe_dict["aborted"]),
+                                        timestamp=timestamp  # Pass the restored timestamp
                                     )
                                     restored_probes.append(probe)
                                     _LOGGER.debug("Restored probe: tau=%.1f, confidence=%.2f", 

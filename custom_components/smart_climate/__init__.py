@@ -424,9 +424,25 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                 pref_level_str = config.get("preference_level", DEFAULT_PREFERENCE_LEVEL)
                 pref_level = PreferenceLevel[pref_level_str.upper()]
                 
+                # Map preference level to appropriate comfort band
+                comfort_band_mapping = {
+                    PreferenceLevel.MAX_COMFORT: 0.5,
+                    PreferenceLevel.COMFORT_PRIORITY: 0.8,
+                    PreferenceLevel.BALANCED: 1.5,
+                    PreferenceLevel.SAVINGS_PRIORITY: 2.0,
+                    PreferenceLevel.MAX_SAVINGS: 2.5
+                }
+                
+                # Use mapped comfort band or fall back to configured/default value
+                mapped_comfort_band = comfort_band_mapping.get(pref_level, 1.5)
+                actual_comfort_band = config.get("comfort_band", mapped_comfort_band)
+                
+                _LOGGER.info("[DEBUG] Preference level '%s' mapped to comfort band: %.1f°C", 
+                           pref_level_str, actual_comfort_band)
+                
                 user_preferences = UserPreferences(
                     level=pref_level,
-                    comfort_band=config.get("comfort_band", 1.5),
+                    comfort_band=actual_comfort_band,
                     confidence_threshold=config.get("confidence_threshold", 0.7),
                     probe_drift=config.get("probe_drift", 2.0)
                 )

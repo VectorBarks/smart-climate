@@ -14,6 +14,7 @@ Welcome to the Smart Climate Control documentation hub. This integration brings 
 
 ### Technical Reference  
 - [Technical Reference](technical-reference.md) - Architecture, algorithms, and advanced features
+- [Probe Timestamp Migration Guide](probe-timestamp-migration-guide.md) - Timestamp persistence system verification and migration
 
 ## Project Overview
 
