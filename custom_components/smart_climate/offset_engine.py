@@ -461,6 +461,59 @@ class OffsetEngine:
             _LOGGER.warning("Error during feedback validation: %s", exc)
             return False
     
+    def _sanitize_float(self, value: any, param_name: str) -> Optional[float]:
+        """Sanitize a value to a float, handling non-numeric sensor values gracefully.
+        
+        Args:
+            value: The value to sanitize (can be float, int, string, or None)
+            param_name: Name of the parameter for logging purposes
+            
+        Returns:
+            Float value if valid, None if invalid or out of range
+        """
+        if value is None:
+            return None
+        
+        # Handle string values
+        if isinstance(value, str):
+            # Handle empty strings
+            if not value.strip():
+                return None
+            
+            # Handle common non-numeric states from Home Assistant sensors
+            if value.lower() in ['unavailable', 'unknown', 'none', 'null', '']:
+                return None
+            
+            # Try to convert numeric strings
+            try:
+                value = float(value)
+            except (ValueError, TypeError):
+                _LOGGER.warning(
+                    "Failed to convert %s value '%s' to float - treating as unavailable",
+                    param_name, value
+                )
+                return None
+        
+        # Convert to float if not already
+        try:
+            float_value = float(value)
+        except (ValueError, TypeError):
+            _LOGGER.warning(
+                "Failed to convert %s value '%s' to float - treating as unavailable", 
+                param_name, value
+            )
+            return None
+        
+        # Apply sanity checks for reasonable sensor ranges
+        if float_value < -10000 or float_value > 10000:
+            _LOGGER.warning(
+                "Rejecting %s value %.2f - outside reasonable range (-10000 to 10000)",
+                param_name, float_value
+            )
+            return None
+        
+        return float_value
+    
     def _validate_learning_data(self, input_data: OffsetInput) -> bool:
         """Validate learning data using outlier detection to prevent ML model corruption.
         
@@ -1336,6 +1389,14 @@ class OffsetEngine:
             )
             return
         
+        # Sanitize humidity values to handle non-numeric sensor states gracefully
+        sanitized_indoor_humidity = self._sanitize_float(input_data.indoor_humidity, "indoor_humidity")
+        sanitized_outdoor_humidity = self._sanitize_float(input_data.outdoor_humidity, "outdoor_humidity")
+        
+        # Also sanitize other optional numeric values for robustness
+        sanitized_outdoor_temp = self._sanitize_float(input_data.outdoor_temp, "outdoor_temp")
+        sanitized_power = self._sanitize_float(input_data.power_consumption, "power_consumption")
+        
         try:
             # Get hysteresis state for enhanced learning
             if not self._hysteresis_enabled:
@@ -1347,32 +1408,59 @@ class OffsetEngine:
             else:
                 # Power sensor configured with sufficient data
                 try:
-                    current_power_state = self._get_power_state(input_data.power_consumption or 0)
+                    current_power_state = self._get_power_state(sanitized_power or 0)
                     hysteresis_state = self._hysteresis_learner.get_hysteresis_state(
                         current_power_state, input_data.room_temp
                     )
                 except Exception:
                     hysteresis_state = "learning_hysteresis"  # Graceful fallback
             
-            # Record sample with hysteresis context and humidity data
+            # Create validated OffsetInput for outlier detection with sanitized values
+            validated_input = OffsetInput(
+                ac_internal_temp=input_data.ac_internal_temp,
+                room_temp=input_data.room_temp,
+                outdoor_temp=sanitized_outdoor_temp,
+                mode=input_data.mode,
+                power_consumption=sanitized_power,
+                time_of_day=input_data.time_of_day,
+                day_of_week=input_data.day_of_week,
+                hvac_mode=getattr(input_data, 'hvac_mode', None),
+                indoor_humidity=sanitized_indoor_humidity,
+                outdoor_humidity=sanitized_outdoor_humidity
+            )
+            
+            # Record sample with hysteresis context and sanitized humidity data
             self._learner.add_sample(
                 predicted=predicted_offset,
                 actual=actual_offset,
                 ac_temp=input_data.ac_internal_temp,
                 room_temp=input_data.room_temp,
-                outdoor_temp=input_data.outdoor_temp,
+                outdoor_temp=sanitized_outdoor_temp,
                 mode=input_data.mode,
-                power=input_data.power_consumption,
+                power=sanitized_power,
                 hysteresis_state=hysteresis_state,
-                indoor_humidity=input_data.indoor_humidity,
-                outdoor_humidity=input_data.outdoor_humidity
+                indoor_humidity=sanitized_indoor_humidity,
+                outdoor_humidity=sanitized_outdoor_humidity
             )
             _LOGGER.debug(
-                "Recorded enhanced learning sample: predicted=%.2f, actual=%.2f, hysteresis_state=%s, source=%s",
-                predicted_offset, actual_offset, hysteresis_state, getattr(self, '_adjustment_source', 'unknown')
+                "Recorded enhanced learning sample: predicted=%.2f, actual=%.2f, hysteresis_state=%s, source=%s, "
+                "indoor_humidity=%s, outdoor_humidity=%s",
+                predicted_offset, actual_offset, hysteresis_state, getattr(self, '_adjustment_source', 'unknown'),
+                sanitized_indoor_humidity, sanitized_outdoor_humidity
             )
         except Exception as exc:
-            _LOGGER.warning("Failed to record learning sample: %s", exc)
+            _LOGGER.error(
+                "Failed to record learning sample: %s - Input data types: ac_temp=%s(%s), room_temp=%s(%s), "
+                "outdoor_temp=%s(%s), indoor_humidity=%s(%s), outdoor_humidity=%s(%s), power=%s(%s)",
+                exc,
+                input_data.ac_internal_temp, type(input_data.ac_internal_temp).__name__,
+                input_data.room_temp, type(input_data.room_temp).__name__,
+                input_data.outdoor_temp, type(input_data.outdoor_temp).__name__,
+                input_data.indoor_humidity, type(input_data.indoor_humidity).__name__,
+                input_data.outdoor_humidity, type(input_data.outdoor_humidity).__name__,
+                input_data.power_consumption, type(input_data.power_consumption).__name__,
+                exc_info=True
+            )
     
     def _calculate_enhanced_confidence(self, stats: "LearningStats") -> float:
         """Calculate enhanced confidence score based on multiple factors.
