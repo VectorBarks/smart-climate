@@ -832,14 +832,14 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         return entities
 
     def _get_options_schema(self) -> vol.Schema:
-        """Return options schema with properly optional entities."""
+        """Return ProbeScheduler options schema only."""
         current_options = self.config_entry.options
         
         return vol.Schema({
             # ProbeScheduler Configuration
             vol.Optional(
                 "probe_scheduler_enabled",
-                description={"suggested_value": current_options.get("probe_scheduler_enabled", True)}
+                description={"suggested_value": current_options.get("probe_scheduler_enabled", False)}
             ): bool,
             vol.Optional(
                 CONF_LEARNING_PROFILE,
@@ -873,7 +873,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 CONF_CALENDAR_ENTITY_ID,
                 description={"suggested_value": current_options.get(CONF_CALENDAR_ENTITY_ID)}
             ): vol.Any(
-                "",  # Allow empty string from UI - THIS IS THE KEY FIX
+                "",  # Allow empty string from UI
                 selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain="calendar",
@@ -885,7 +885,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 CONF_MANUAL_OVERRIDE_ENTITY_ID,
                 description={"suggested_value": current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID)}
             ): vol.Any(
-                "",  # Allow empty string from UI - THIS IS THE KEY FIX
+                "",  # Allow empty string from UI
                 selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain="input_boolean",
