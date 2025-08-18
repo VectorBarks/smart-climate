@@ -832,53 +832,96 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         return entities
 
     def _get_options_schema(self) -> vol.Schema:
-        """Return options schema with properly optional entities."""
+        """Return ProbeScheduler options schema using SelectSelector patterns."""
         current_options = self.config_entry.options
+        
+        # Build calendar entity options (following humidity sensor pattern)
+        calendar_options = [
+            selector.SelectOptionDict(value="", label="(Optional) None")
+        ]
+        calendar_entities = [
+            selector.SelectOptionDict(value=entity_id, label=entity_id)
+            for entity_id in self.hass.states.async_entity_ids("calendar")
+        ]
+        calendar_options.extend(sorted(calendar_entities, key=lambda d: d['label']))
+        
+        # Build manual override entity options  
+        override_options = [
+            selector.SelectOptionDict(value="", label="(Optional) None")
+        ]
+        input_boolean_entities = [
+            selector.SelectOptionDict(value=entity_id, label=entity_id)
+            for entity_id in self.hass.states.async_entity_ids("input_boolean")
+        ]
+        override_options.extend(sorted(input_boolean_entities, key=lambda d: d['label']))
+        
+        # Build presence entity options
+        presence_options = [
+            selector.SelectOptionDict(value="", label="(Optional) None")
+        ]
+        presence_entities = []
+        for domain in ["binary_sensor", "person", "device_tracker"]:
+            domain_entities = [
+                selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({domain})")
+                for entity_id in self.hass.states.async_entity_ids(domain)
+            ]
+            presence_entities.extend(domain_entities)
+        presence_options.extend(sorted(presence_entities, key=lambda d: d['label']))
+        
+        # Build weather entity options
+        weather_options = [
+            selector.SelectOptionDict(value="", label="(Optional) None")
+        ]
+        weather_entities = [
+            selector.SelectOptionDict(value=entity_id, label=entity_id)
+            for entity_id in self.hass.states.async_entity_ids("weather")
+        ]
+        weather_options.extend(sorted(weather_entities, key=lambda d: d['label']))
         
         return vol.Schema({
             # ProbeScheduler Configuration
             vol.Optional(
                 "probe_scheduler_enabled",
-                default=current_options.get("probe_scheduler_enabled", True)
+                default=current_options.get("probe_scheduler_enabled", False)
             ): bool,
             vol.Optional(
-                CONF_LEARNING_PROFILE, 
+                CONF_LEARNING_PROFILE,
                 default=current_options.get(CONF_LEARNING_PROFILE, DEFAULT_LEARNING_PROFILE)
             ): vol.In(["comfort", "balanced", "aggressive", "custom"]),
             vol.Optional(
                 CONF_PRESENCE_ENTITY_ID,
-                default=current_options.get(CONF_PRESENCE_ENTITY_ID, "")  # Empty string default
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain=["binary_sensor", "person", "device_tracker"],
-                    multiple=False
+                default=current_options.get(CONF_PRESENCE_ENTITY_ID, "")
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=presence_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Optional(
                 CONF_WEATHER_ENTITY_ID,
                 default=current_options.get(CONF_WEATHER_ENTITY_ID, "weather.home")
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="weather",
-                    multiple=False
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=weather_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Optional(
                 CONF_CALENDAR_ENTITY_ID,
-                default=current_options.get(CONF_CALENDAR_ENTITY_ID, "")  # Empty string default
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="calendar",
-                    multiple=False
+                default=current_options.get(CONF_CALENDAR_ENTITY_ID, "")
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=calendar_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
             vol.Optional(
                 CONF_MANUAL_OVERRIDE_ENTITY_ID,
-                default=current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID, "")  # Empty string default
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="input_boolean",
-                    multiple=False
+                default=current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID, "")
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=override_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
         })
