@@ -450,11 +450,39 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             
                 # Phase 2: State machine and manager
                 _LOGGER.info("[DEBUG] Creating thermal manager for entity: %s", entity_id)
+                # Create ProbeScheduler if enabled in options (v1.5.3-beta)
+                probe_scheduler = None
+                options = entry.options or {}
+                if options.get("probe_scheduler_enabled", False):
+                    try:
+                        from .probe_scheduler import ProbeScheduler, LearningProfile
+                        
+                        # Get learning profile
+                        profile_str = options.get("learning_profile", "balanced")
+                        learning_profile = LearningProfile(profile_str)
+                        
+                        probe_scheduler = ProbeScheduler(
+                            hass=hass,
+                            thermal_model=thermal_model,
+                            presence_entity_id=options.get("presence_entity_id"),
+                            weather_entity_id=options.get("weather_entity_id", "weather.home"),
+                            calendar_entity_id=options.get("calendar_entity_id"),
+                            manual_override_entity_id=options.get("manual_override_entity_id"),
+                            learning_profile=learning_profile
+                        )
+                        _LOGGER.info("ProbeScheduler created with profile: %s", profile_str)
+                    except Exception as e:
+                        _LOGGER.error("Failed to create ProbeScheduler: %s", e)
+                        probe_scheduler = None
+                else:
+                    _LOGGER.debug("ProbeScheduler disabled in options")
+                
                 thermal_manager = ThermalManager(
                     hass=hass,
                     thermal_model=thermal_model,
                     preferences=user_preferences,
-                    config=config
+                    config=config,
+                    probe_scheduler=probe_scheduler  # Pass the ProbeScheduler instance
                 )
                 _LOGGER.info("[DEBUG] Thermal manager created successfully")
                 
