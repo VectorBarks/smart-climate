@@ -5,7 +5,7 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
-> 🚀 **v1.5.3-alpha Released**: Thermal model enhancements with 75-probe history for seasonal adaptation, exponential decay weighting, and enhanced confidence calculation. [Download pre-release](https://github.com/VectorBarks/smart-climate/releases/tag/v1.5.3-alpha)
+> 🚀 **v1.5.3-beta Coming Soon**: Intelligent Probe Scheduler solves the 30-day confidence problem with context-aware thermal calibration. [Current: v1.5.3-alpha](https://github.com/VectorBarks/smart-climate/releases/tag/v1.5.3-alpha)
 
 Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
 
@@ -24,6 +24,25 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Key Features
 
+**COMING IN v1.5.3-beta: Intelligent Probe Scheduler**
+- **Context-Aware Probing**: Only probes when you're away - zero comfort impact
+  - Presence detection hierarchy: sensors → calendar → manual override → quiet hours
+  - Opportunistic scheduling based on user activity and system stability
+  - Intelligent abort conditions protect against disruption
+- **Information Gain Analysis**: Prioritizes unexplored temperature conditions
+  - Temperature bin coverage tracking for optimal data diversity
+  - Enhanced confidence calculation: base confidence + diversity bonus (up to 100%)
+  - Faster learning: reach 80%+ confidence in days instead of weeks
+- **Learning Profiles**: Four profiles balance comfort vs. learning speed
+  - **Comfort**: 24h intervals, presence required, high confidence threshold
+  - **Balanced**: 12h intervals, opportunistic, standard confidence (default)
+  - **Aggressive**: 6h intervals, may ignore presence, rapid learning
+  - **Custom**: Full user control over all parameters and thresholds
+- **Advanced Integration**: Weather, calendar, and manual override support
+  - Outdoor temperature monitoring for adaptive bins and abort conditions
+  - Calendar integration for predictable away periods
+  - Manual override entities for user control and emergency scheduling
+
 **NEW in v1.4.0: Thermal Efficiency System (15-30% Energy Savings)**
 - **6-State Thermal Management**: Intelligent state machine (PRIMING, DRIFTING, CORRECTING, RECOVERY, PROBING, CALIBRATING)
   - State-aware learning protocol prevents conflicts between thermal and offset engines
@@ -33,11 +52,11 @@ Smart Climate Control creates a virtual climate entity that:
   - Asymmetric heating/cooling behavior based on preference level
   - Extreme weather compensation with gradual band adjustment
   - Shadow mode (default) for observation-only deployment before active control
-- **Advanced Learning & Probing**: Weighted 5-probe history with confidence metrics
+- **Advanced Learning & Probing**: Weighted 75-probe history with confidence metrics
   - Active and passive thermal characteristic measurement
   - AI-driven insights engine for energy-saving recommendations
   - Cycle health monitoring to prevent equipment damage
-- **Comprehensive Testing**: 420 tests ensure production-ready reliability
+- **Comprehensive Testing**: 420+ tests ensure production-ready reliability
 
 **NEW in v1.3.1: Advanced Outlier Detection & Data Quality Protection**
 - **Outlier Detection System**: Statistical analysis using Modified Z-Score with Median Absolute Deviation (MAD)
@@ -130,19 +149,36 @@ Smart Climate Control creates a virtual climate entity that:
 - Backward-compatible persistence schema
 - Comprehensive debug logging for troubleshooting
 
-## Latest Release: v1.5.3-alpha
+## Latest Releases
 
-**🚀 Pre-Release Available**: [v1.5.3-alpha](https://github.com/VectorBarks/smart-climate/releases/tag/v1.5.3-alpha) - Thermal Model Enhancements
+### v1.5.3-beta (Coming Soon): Intelligent Probe Scheduler
+**🚀 Next Release**: Context-aware thermal calibration that solves the 30-day confidence problem
 
-### What's New in v1.5.3-alpha
+#### Revolutionary Features
+- **Zero Comfort Impact**: Only probes when you're away using presence detection
+- **Faster Learning**: Reach 80%+ confidence in days instead of weeks
+- **Intelligent Scheduling**: Combines opportunity, information gain, and system stability
+- **Learning Profiles**: Choose from Comfort, Balanced, Aggressive, or Custom profiles
+- **Advanced Integration**: Weather monitoring, calendar integration, manual overrides
+
+#### ProbeScheduler Benefits
+- **No More Fixed Intervals**: End disruptive 24-hour probe schedules
+- **Smart Diversity**: Prioritizes unexplored temperature conditions for maximum learning value
+- **Graceful Degradation**: Works with minimal sensors, scales with available integrations
+- **Equipment Protection**: Respects HVAC recovery time and prevents excessive cycling
+
+### v1.5.3-alpha (Current): Thermal Model Enhancements
+**📊 Foundation Release**: [Download now](https://github.com/VectorBarks/smart-climate/releases/tag/v1.5.3-alpha)
+
+#### Enhanced Learning System
 - **75-Probe History**: Expanded from 5 to 75 samples for seasonal adaptation (1.5-2.5 months of data)
 - **Exponential Decay Weighting**: Time-based probe weighting (0.98^days) with 34.3-day half-life
 - **Enhanced Confidence**: Statistical threshold-based calculation enabling 95%+ confidence
 - **Full Backward Compatibility**: Automatic migration preserves existing probe data
 
-### Performance Validated
+#### Performance Validated
 - 75-probe operations: <1ms
-- Memory usage: <50KB
+- Memory usage: <50KB additional overhead
 - Serialization: <50ms
 
 ## Quick Start
@@ -172,6 +208,7 @@ Smart Climate Control creates a virtual climate entity that:
    - Update intervals and adaptive adjustment rates
    - Weather integration settings for predictive strategies
    - Seasonal adaptation parameters and outdoor temperature buckets
+   - **NEW in v1.5.3-beta**: Intelligent Probe Scheduler with learning profiles
    - Default target temperature (16-30°C)
 
 That's it! Your new smart climate entity is ready to use. No YAML editing required!
@@ -207,14 +244,17 @@ That's it! Your new smart climate entity is ready to use. No YAML editing requir
 ## Documentation
 
 **Setup & Configuration**
-- [Installation Guide](docs/installation.md) - Detailed installation instructions
-- [Configuration Guide](docs/configuration.md) - All configuration options explained
-- [Sensor Setup](docs/sensors.md) - Sensor requirements and best practices
+- [Installation Guide](docs/installation-guide.md) - Detailed installation instructions
+- [Configuration Guide](docs/configuration-guide.md) - All configuration options explained
+- [Sensor Reference](docs/sensor-reference.md) - Complete sensor documentation and placement guide
+
+**NEW in v1.5.3-beta**
+- [Probe Scheduler Guide](docs/probe_scheduler.md) - **NEW!** Intelligent thermal calibration system
 
 **Usage & Features**
-- [Usage Guide](docs/usage.md) - How to use all features effectively
-- [Dashboard Setup](docs/dashboard-setup.md) - **NEW!** Visualization dashboard blueprint
-- [Learning System](docs/learning-system.md) - Understanding the intelligent learning
+- [User Guide](docs/user-guide.md) - How to use all features effectively
+- [Dashboard Setup](docs/dashboard-setup.md) - Visualization dashboard blueprint
+- [Technical Reference](docs/technical-reference.md) - Architecture, algorithms, and advanced features
 - [Troubleshooting](docs/troubleshooting.md) - Solving common issues
 
 **Technical & Development**
@@ -234,6 +274,13 @@ smart_climate:
     room_sensor: sensor.living_room_temperature
     power_sensor: sensor.ac_power  # Optional: enables HysteresisLearner
     default_target_temperature: 24  # Optional: your preferred default (16-30°C)
+    
+    # NEW in v1.5.3-beta: Intelligent Probe Scheduler
+    probe_scheduler:
+      learning_profile: balanced  # comfort|balanced|aggressive|custom
+      presence_entity_id: binary_sensor.home_occupied  # Optimal probing when away
+      weather_entity_id: weather.home  # Weather-aware scheduling
+      calendar_entity_id: calendar.work_schedule  # Optional: work schedule integration
 ```
 
 ## Requirements
@@ -251,7 +298,9 @@ smart_climate:
 
 ## Project Status
 
-**Version 1.3.0 Released**: Advanced predictive intelligence with multi-layered learning algorithms!
+**Version 1.5.3-beta Coming Soon**: Revolutionary Intelligent Probe Scheduler for context-aware thermal calibration!
+
+**Latest: v1.5.3-alpha Released**: Enhanced thermal model with 75-probe history and exponential weighting
 
 **New in v1.3.0:**
 - **Adaptive Feedback Delays**: ML-powered AC response timing optimization with exponential smoothing

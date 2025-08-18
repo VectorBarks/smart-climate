@@ -9,6 +9,7 @@ from custom_components.smart_climate.thermal_models import (
     ProbeResult,
     ThermalState,
     PreferenceLevel,
+    PassiveObservation,
 )
 
 
@@ -257,3 +258,77 @@ class TestModelValidation:
         assert result_low.tau_value == 0.1
         assert result_low.confidence == 0.01
         assert result_low.fit_quality == 0.01
+
+
+class TestPassiveObservation:
+    """Test PassiveObservation dataclass validation and functionality."""
+
+    def test_passive_observation_creation(self):
+        """Test basic PassiveObservation creation."""
+        obs = PassiveObservation(
+            tau_measured=95.5,
+            fit_quality=0.85,
+            duration_seconds=3600,
+            is_cooling=True,
+            outdoor_temp=25.0
+        )
+        
+        assert obs.tau_measured == 95.5
+        assert obs.fit_quality == 0.85
+        assert obs.duration_seconds == 3600
+        assert obs.is_cooling is True
+        assert obs.outdoor_temp == 25.0
+
+    def test_passive_observation_without_outdoor_temp(self):
+        """Test PassiveObservation creation without outdoor temperature."""
+        obs = PassiveObservation(
+            tau_measured=120.0,
+            fit_quality=0.75,
+            duration_seconds=1800,
+            is_cooling=False
+        )
+        
+        assert obs.tau_measured == 120.0
+        assert obs.fit_quality == 0.75
+        assert obs.duration_seconds == 1800
+        assert obs.is_cooling is False
+        assert obs.outdoor_temp is None
+
+    def test_passive_observation_quality_bounds(self):
+        """Test that fit_quality values are within expected bounds."""
+        # Test minimum quality
+        obs_min = PassiveObservation(
+            tau_measured=90.0,
+            fit_quality=0.0,
+            duration_seconds=600,
+            is_cooling=True
+        )
+        assert obs_min.fit_quality == 0.0
+        
+        # Test maximum quality
+        obs_max = PassiveObservation(
+            tau_measured=90.0,
+            fit_quality=1.0,
+            duration_seconds=600,
+            is_cooling=True
+        )
+        assert obs_max.fit_quality == 1.0
+
+    def test_passive_observation_cooling_warming(self):
+        """Test both cooling and warming observations."""
+        cooling_obs = PassiveObservation(
+            tau_measured=85.0,
+            fit_quality=0.9,
+            duration_seconds=2400,
+            is_cooling=True
+        )
+        
+        warming_obs = PassiveObservation(
+            tau_measured=155.0,
+            fit_quality=0.8,
+            duration_seconds=2100,
+            is_cooling=False
+        )
+        
+        assert cooling_obs.is_cooling is True
+        assert warming_obs.is_cooling is False

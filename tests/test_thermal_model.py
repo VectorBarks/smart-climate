@@ -7,6 +7,7 @@ from unittest.mock import Mock
 from collections import deque
 
 from custom_components.smart_climate.thermal_model import PassiveThermalModel, ProbeResult
+from custom_components.smart_climate.thermal_models import PassiveObservation
 
 
 class TestPassiveThermalModel:
@@ -164,6 +165,148 @@ class TestPassiveThermalModel:
         confidence1 = self.model.get_confidence()
         confidence2 = self.model.get_confidence()
         assert confidence1 == confidence2 == 0.0
+
+    def test_enhanced_confidence_base_calculation(self):
+        """Test enhanced confidence base calculation with logarithmic scaling."""
+        from datetime import datetime, timezone
+        
+        # Add probes with different counts to test base confidence
+        # 1 probe should give ~0.2 base confidence
+        probe1 = ProbeResult(
+            tau_value=90.0, confidence=0.9, duration=3600, 
+            fit_quality=0.8, aborted=False,
+            timestamp=datetime.now(timezone.utc),
+            outdoor_temp=20.0
+        )
+        self.model._probe_history.append(probe1)
+        
+        confidence = self.model.get_confidence()
+        # log(1+1) / log(16) ≈ 0.23, capped at 80%
+        expected_base = min(math.log(2) / math.log(16), 0.8)
+        # With single bin, diversity is 1/6 * 0.2 = 0.033
+        expected = min(expected_base + (1/6 * 0.2), 1.0)
+        assert abs(confidence - expected) < 0.01
+
+    def test_enhanced_confidence_probe_count_scaling(self):
+        """Test confidence scaling with probe count up to 80% base."""
+        from datetime import datetime, timezone
+        
+        # Add 15 probes (should reach ~80% base confidence)
+        for i in range(15):
+            probe = ProbeResult(
+                tau_value=90.0 + i, confidence=0.9, duration=3600, 
+                fit_quality=0.8, aborted=False,
+                timestamp=datetime.now(timezone.utc),
+                outdoor_temp=20.0  # Same temperature bin
+            )
+            self.model._probe_history.append(probe)
+        
+        confidence = self.model.get_confidence()
+        # log(15+1) / log(16) = log(16) / log(16) = 1.0, capped at 0.8
+        expected_base = 0.8
+        # Single bin diversity: 1/6 * 0.2 = 0.033
+        expected = min(expected_base + (1/6 * 0.2), 1.0)
+        assert abs(confidence - expected) < 0.01
+
+    def test_enhanced_confidence_diversity_bonus(self):
+        """Test diversity bonus calculation with multiple temperature bins."""
+        from datetime import datetime, timezone
+        
+        # Add probes across different temperature bins
+        outdoor_temps = [-5, 5, 15, 25, 35]  # 5 different bins out of 6 total
+        for temp in outdoor_temps:
+            probe = ProbeResult(
+                tau_value=90.0, confidence=0.9, duration=3600, 
+                fit_quality=0.8, aborted=False,
+                timestamp=datetime.now(timezone.utc),
+                outdoor_temp=temp
+            )
+            self.model._probe_history.append(probe)
+        
+        confidence = self.model.get_confidence()
+        # Base: log(5+1) / log(16) ≈ 0.65
+        expected_base = min(math.log(6) / math.log(16), 0.8)
+        # Diversity: 5/6 bins covered * 0.2 = 0.167
+        expected_diversity = (5/6) * 0.2
+        expected = min(expected_base + expected_diversity, 1.0)
+        assert abs(confidence - expected) < 0.01
+
+    def test_enhanced_confidence_maximum_caps(self):
+        """Test confidence caps: 80% base, 20% diversity, 100% total."""
+        from datetime import datetime, timezone
+        
+        # Add many probes across all temperature bins
+        outdoor_temps = [-15, -5, 5, 15, 25, 35]  # All 6 bins
+        for i in range(20):  # Lots of probes
+            temp = outdoor_temps[i % len(outdoor_temps)]
+            probe = ProbeResult(
+                tau_value=90.0, confidence=0.9, duration=3600, 
+                fit_quality=0.8, aborted=False,
+                timestamp=datetime.now(timezone.utc),
+                outdoor_temp=temp
+            )
+            self.model._probe_history.append(probe)
+        
+        confidence = self.model.get_confidence()
+        # Base should cap at 80%, diversity at 20%, total at 100%
+        assert confidence <= 1.0
+        assert confidence >= 0.98  # Should be very close to 100%
+
+    def test_enhanced_confidence_empty_history(self):
+        """Test confidence returns 0.0 with empty probe history."""
+        confidence = self.model.get_confidence()
+        assert confidence == 0.0
+
+    def test_enhanced_confidence_single_bin(self):
+        """Test confidence with probes all in single temperature bin."""
+        from datetime import datetime, timezone
+        
+        # Add multiple probes in same temperature bin
+        for i in range(10):
+            probe = ProbeResult(
+                tau_value=90.0 + i, confidence=0.9, duration=3600, 
+                fit_quality=0.8, aborted=False,
+                timestamp=datetime.now(timezone.utc),
+                outdoor_temp=22.0  # All same bin
+            )
+            self.model._probe_history.append(probe)
+        
+        confidence = self.model.get_confidence()
+        # Base: log(10+1) / log(16) ≈ 0.87, capped at 0.8  
+        expected_base = 0.8
+        # Diversity: 1/6 * 0.2 = 0.033
+        expected_diversity = (1/6) * 0.2
+        expected = expected_base + expected_diversity
+        assert abs(confidence - expected) < 0.01
+
+    def test_enhanced_confidence_missing_outdoor_temp(self):
+        """Test confidence calculation handles missing outdoor_temp values."""
+        from datetime import datetime, timezone
+        
+        # Add probes with missing outdoor_temp
+        probe1 = ProbeResult(
+            tau_value=90.0, confidence=0.9, duration=3600, 
+            fit_quality=0.8, aborted=False,
+            timestamp=datetime.now(timezone.utc),
+            outdoor_temp=None  # Missing outdoor temp
+        )
+        probe2 = ProbeResult(
+            tau_value=92.0, confidence=0.9, duration=3600, 
+            fit_quality=0.8, aborted=False,
+            timestamp=datetime.now(timezone.utc),
+            outdoor_temp=25.0  # Has outdoor temp
+        )
+        self.model._probe_history.extend([probe1, probe2])
+        
+        confidence = self.model.get_confidence()
+        # Should handle gracefully and only count valid temperatures for diversity
+        # Base: log(2+1) / log(16) ≈ 0.4
+        expected_base = min(math.log(3) / math.log(16), 0.8)
+        # Diversity: 1/6 (only one valid temp) * 0.2 = 0.033
+        expected_diversity = (1/6) * 0.2
+        expected = expected_base + expected_diversity
+        assert abs(confidence - expected) < 0.01
+        assert confidence > 0.0
         
     def test_probe_history_initialized_empty(self):
         """Test probe history is initialized as empty deque."""
@@ -488,3 +631,208 @@ class TestPassiveThermalModelLearning:
         # weighted_tau = 100.0 * 0.4 = 40.0
         expected_tau = 100.0 * 0.4
         assert abs(self.model._tau_cooling - expected_tau) < 0.001
+
+class TestPassiveThermalModelRefinement:
+    """Test passive tau refinement functionality in PassiveThermalModel."""
+
+    def setup_method(self):
+        """Set up test fixture with PassiveThermalModel."""
+        from custom_components.smart_climate.thermal_models import PassiveObservation
+        self.model = PassiveThermalModel(tau_cooling=90.0, tau_warming=150.0)
+        self.PassiveObservation = PassiveObservation
+
+    def test_refine_tau_passively_quality_weighting_calculation(self):
+        """Test quality weighting calculation: fit_quality * normalized_duration."""
+        # Test case 1: 1 hour duration, 0.8 fit_quality
+        obs = self.PassiveObservation(
+            tau_measured=95.0,
+            fit_quality=0.8,
+            duration_seconds=3600,  # 1 hour
+            is_cooling=True
+        )
+        
+        initial_tau = self.model._tau_cooling
+        self.model.refine_tau_passively(obs)
+        
+        # Expected: normalized_duration = 3600/3600.0 = 1.0
+        # quality_score = 0.8 * 1.0 = 0.8
+        # alpha = 0.1 * 0.8 = 0.08
+        # new_tau = (0.08 * 95.0) + (0.92 * 90.0) = 7.6 + 82.8 = 90.4
+        expected_tau = (0.08 * 95.0) + (0.92 * initial_tau)
+        assert abs(self.model._tau_cooling - expected_tau) < 0.01
+
+    def test_refine_tau_passively_duration_normalization(self):
+        """Test duration normalization: duration_seconds / 3600.0 with max 1.0."""
+        # Test case 1: 30 minutes = 0.5 normalized
+        obs_30min = self.PassiveObservation(
+            tau_measured=100.0,
+            fit_quality=1.0,
+            duration_seconds=1800,  # 30 minutes  
+            is_cooling=True
+        )
+        
+        initial_tau = self.model._tau_cooling
+        self.model.refine_tau_passively(obs_30min)
+        
+        # Expected: normalized_duration = 1800/3600.0 = 0.5
+        # quality_score = 1.0 * 0.5 = 0.5
+        # alpha = 0.1 * 0.5 = 0.05
+        expected_tau = (0.05 * 100.0) + (0.95 * initial_tau)
+        assert abs(self.model._tau_cooling - expected_tau) < 0.01
+
+    def test_refine_tau_passively_duration_normalization_cap(self):
+        """Test that normalized duration is capped at 1.0 for long observations."""
+        # Test with 2 hours duration (should be capped at 1.0)
+        obs_2hours = self.PassiveObservation(
+            tau_measured=110.0,
+            fit_quality=0.6,
+            duration_seconds=7200,  # 2 hours
+            is_cooling=True
+        )
+        
+        initial_tau = self.model._tau_cooling
+        self.model.refine_tau_passively(obs_2hours)
+        
+        # Expected: normalized_duration = min(7200/3600.0, 1.0) = 1.0
+        # quality_score = 0.6 * 1.0 = 0.6
+        # alpha = 0.1 * 0.6 = 0.06
+        expected_tau = (0.06 * 110.0) + (0.94 * initial_tau)
+        assert abs(self.model._tau_cooling - expected_tau) < 0.01
+
+    def test_refine_tau_passively_alpha_stability_limit(self):
+        """Test that alpha is capped at 0.1 for stability."""
+        # Perfect quality and long duration should still cap alpha at 0.1
+        obs_perfect = self.PassiveObservation(
+            tau_measured=120.0,
+            fit_quality=1.0,
+            duration_seconds=7200,  # 2 hours
+            is_cooling=True
+        )
+        
+        initial_tau = self.model._tau_cooling
+        self.model.refine_tau_passively(obs_perfect)
+        
+        # Expected: normalized_duration = 1.0, quality_score = 1.0
+        # alpha = 0.1 * 1.0 = 0.1 (maximum allowed)
+        expected_tau = (0.1 * 120.0) + (0.9 * initial_tau)
+        assert abs(self.model._tau_cooling - expected_tau) < 0.01
+
+    def test_refine_tau_passively_cooling_vs_warming_separation(self):
+        """Test that cooling and warming tau values are updated independently."""
+        initial_cooling_tau = self.model._tau_cooling
+        initial_warming_tau = self.model._tau_warming
+        
+        # Apply cooling observation
+        cooling_obs = self.PassiveObservation(
+            tau_measured=85.0,
+            fit_quality=0.8,
+            duration_seconds=3600,
+            is_cooling=True
+        )
+        self.model.refine_tau_passively(cooling_obs)
+        
+        # Only cooling tau should change
+        assert self.model._tau_cooling != initial_cooling_tau
+        assert self.model._tau_warming == initial_warming_tau
+        
+        # Store updated cooling tau
+        updated_cooling_tau = self.model._tau_cooling
+        
+        # Apply warming observation
+        warming_obs = self.PassiveObservation(
+            tau_measured=160.0,
+            fit_quality=0.7,
+            duration_seconds=3600,
+            is_cooling=False
+        )
+        self.model.refine_tau_passively(warming_obs)
+        
+        # Only warming tau should change from its initial value
+        # Cooling tau should remain at its previously updated value
+        assert self.model._tau_cooling == updated_cooling_tau
+        assert self.model._tau_warming != initial_warming_tau
+
+    def test_refine_tau_passively_edge_case_zero_quality(self):
+        """Test edge case with zero fit quality."""
+        initial_tau = self.model._tau_cooling
+        
+        obs_zero_quality = self.PassiveObservation(
+            tau_measured=100.0,
+            fit_quality=0.0,  # Zero quality
+            duration_seconds=3600,
+            is_cooling=True
+        )
+        
+        self.model.refine_tau_passively(obs_zero_quality)
+        
+        # Expected: quality_score = 0.0 * 1.0 = 0.0
+        # alpha = 0.1 * 0.0 = 0.0
+        # new_tau = (0.0 * 100.0) + (1.0 * 90.0) = 90.0 (unchanged)
+        assert self.model._tau_cooling == initial_tau
+
+    def test_refine_tau_passively_edge_case_short_duration(self):
+        """Test edge case with very short duration."""
+        initial_tau = self.model._tau_cooling
+        
+        obs_short_duration = self.PassiveObservation(
+            tau_measured=100.0,
+            fit_quality=1.0,
+            duration_seconds=300,  # 5 minutes
+            is_cooling=True
+        )
+        
+        self.model.refine_tau_passively(obs_short_duration)
+        
+        # Expected: normalized_duration = 300/3600.0 = 0.083
+        # quality_score = 1.0 * 0.083 = 0.083
+        # alpha = 0.1 * 0.083 = 0.0083
+        expected_tau = (0.0083 * 100.0) + (0.9917 * initial_tau)
+        assert abs(self.model._tau_cooling - expected_tau) < 0.01
+
+    def test_refine_tau_passively_perfect_quality_long_duration(self):
+        """Test case with perfect quality and long duration."""
+        initial_tau = self.model._tau_warming
+        
+        obs_perfect = self.PassiveObservation(
+            tau_measured=180.0,
+            fit_quality=1.0,
+            duration_seconds=5400,  # 1.5 hours
+            is_cooling=False
+        )
+        
+        self.model.refine_tau_passively(obs_perfect)
+        
+        # Expected: normalized_duration = min(5400/3600.0, 1.0) = 1.0
+        # quality_score = 1.0 * 1.0 = 1.0
+        # alpha = 0.1 * 1.0 = 0.1 (max alpha)
+        expected_tau = (0.1 * 180.0) + (0.9 * initial_tau)
+        assert abs(self.model._tau_warming - expected_tau) < 0.01
+
+    def test_refine_tau_passively_multiple_observations(self):
+        """Test multiple consecutive passive observations."""
+        initial_cooling_tau = self.model._tau_cooling
+        
+        # First observation
+        obs1 = self.PassiveObservation(
+            tau_measured=85.0,
+            fit_quality=0.8,
+            duration_seconds=3600,
+            is_cooling=True
+        )
+        self.model.refine_tau_passively(obs1)
+        tau_after_first = self.model._tau_cooling
+        
+        # Second observation on the updated tau
+        obs2 = self.PassiveObservation(
+            tau_measured=95.0,
+            fit_quality=0.9,
+            duration_seconds=1800,  # 30 minutes
+            is_cooling=True
+        )
+        self.model.refine_tau_passively(obs2)
+        final_tau = self.model._tau_cooling
+        
+        # Both should be different and show cumulative effect
+        assert tau_after_first != initial_cooling_tau
+        assert final_tau != tau_after_first
+        assert final_tau != initial_cooling_tau

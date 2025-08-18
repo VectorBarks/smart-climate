@@ -98,6 +98,19 @@ CONF_DEW_POINT_CRITICAL = "dew_point_critical"
 CONF_DIFFERENTIAL_SIGNIFICANT = "differential_significant"
 CONF_DIFFERENTIAL_EXTREME = "differential_extreme"
 CONF_HUMIDITY_LOG_LEVEL = "humidity_log_level"
+# Probe Scheduler configuration keys (v1.5.3-beta)
+CONF_LEARNING_PROFILE = "learning_profile"
+CONF_PRESENCE_ENTITY_ID = "presence_entity_id"
+CONF_WEATHER_ENTITY_ID = "weather_entity_id"  
+CONF_CALENDAR_ENTITY_ID = "calendar_entity_id"
+CONF_MANUAL_OVERRIDE_ENTITY_ID = "manual_override_entity_id"
+
+# Advanced Probe Scheduler settings
+CONF_MIN_PROBE_INTERVAL = "min_probe_interval_hours"
+CONF_MAX_PROBE_INTERVAL = "max_probe_interval_days"
+CONF_QUIET_HOURS_START = "quiet_hours_start"
+CONF_QUIET_HOURS_END = "quiet_hours_end"
+CONF_INFO_GAIN_THRESHOLD = "information_gain_threshold"
 
 # Default values
 DEFAULT_MAX_OFFSET = 5.0
@@ -207,6 +220,13 @@ DEFAULT_DEW_POINT_CRITICAL = 1.0  # °C buffer
 DEFAULT_DIFFERENTIAL_SIGNIFICANT = 25.0  # percent
 DEFAULT_DIFFERENTIAL_EXTREME = 40.0  # percent
 DEFAULT_HUMIDITY_LOG_LEVEL = "DEBUG"  # Default log level
+# Probe Scheduler default values (v1.5.3-beta)
+DEFAULT_LEARNING_PROFILE = "balanced"
+DEFAULT_MIN_PROBE_INTERVAL = 12  # hours
+DEFAULT_MAX_PROBE_INTERVAL = 7   # days
+DEFAULT_QUIET_HOURS_START = "22:00"
+DEFAULT_QUIET_HOURS_END = "07:00"
+DEFAULT_INFO_GAIN_THRESHOLD = 0.5
 
 # Preference level options
 PREFERENCE_LEVELS = [

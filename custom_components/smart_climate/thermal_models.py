@@ -80,3 +80,25 @@ class PreferenceLevel(Enum):
     BALANCED = "balanced"                 # Equal comfort and savings priority  
     SAVINGS_PRIORITY = "savings_priority" # Savings-focused with acceptable comfort
     MAX_SAVINGS = "max_savings"           # Maximum energy savings
+
+
+@dataclass
+class PassiveObservation:
+    """Passive observation data for continuous tau refinement.
+    
+    Contains measurements from passive temperature drift observations
+    used for continuous refinement of thermal time constants between
+    active probe sessions.
+    
+    Args:
+        tau_measured: Measured thermal time constant from passive observation (minutes)
+        fit_quality: Quality of curve fit (0.0-1.0, where 1.0 is perfect fit)
+        duration_seconds: Duration of the passive observation (seconds)
+        is_cooling: True if observation was during cooling, False for warming
+        outdoor_temp: Outdoor temperature during observation (°C), optional
+    """
+    tau_measured: float
+    fit_quality: float  # 0.0 to 1.0
+    duration_seconds: int
+    is_cooling: bool
+    outdoor_temp: Optional[float] = None

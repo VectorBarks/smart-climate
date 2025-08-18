@@ -4,7 +4,7 @@ Coordinates thermal states, operating window calculations, and AC control decisi
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Optional, Any, Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 from homeassistant.core import HomeAssistant
 
 from .thermal_models import ThermalState, ThermalConstants
@@ -82,9 +82,19 @@ class ThermalManager:
         thermal_model: PassiveThermalModel,
         preferences: UserPreferences,
         config: Optional[Dict[str, Any]] = None,
-        persistence_callback: Optional[Callable[[], None]] = None
+        persistence_callback: Optional[Callable[[], None]] = None,
+        probe_scheduler: Optional['ProbeScheduler'] = None
     ):
-        """Initialize ThermalManager."""
+        """Initialize ThermalManager.
+        
+        Args:
+            hass: Home Assistant instance
+            thermal_model: PassiveThermalModel instance
+            preferences: UserPreferences instance
+            config: Optional configuration dictionary
+            persistence_callback: Optional callback for data persistence
+            probe_scheduler: Optional ProbeScheduler for intelligent probe scheduling
+        """
         self._hass = hass
         self._model = thermal_model
         self._preferences = preferences
@@ -96,6 +106,9 @@ class ThermalManager:
         self._setpoint = 24.0  # Default setpoint
         self._last_transition: Optional[datetime] = None
         self._last_probe_time: Optional[datetime] = None  # Track when last probe occurred
+        
+        # ProbeScheduler integration for intelligent probe scheduling (v1.5.3-beta)
+        self.probe_scheduler = probe_scheduler
         
         # Diagnostic properties per §10.2.3
         self._thermal_data_last_saved: Optional[datetime] = None
@@ -124,7 +137,8 @@ class ThermalManager:
         # Initialize state handlers registry
         self._initialize_state_handlers()
         
-        _LOGGER.debug("ThermalManager initialized in %s state", self._current_state.value)
+        _LOGGER.debug("ThermalManager initialized in %s state with probe_scheduler=%s", 
+                     self._current_state.value, "enabled" if self.probe_scheduler else "disabled")
 
     def _initialize_state_handlers(self) -> None:
         """Initialize state handlers registry with actual implementations."""
@@ -386,11 +400,57 @@ class ThermalManager:
         return self._corruption_recovery_count
 
     # Persistence methods per §10.2.3
+    def _serialize_probe_scheduler_config(self) -> Dict[str, Any]:
+        """Serialize probe scheduler configuration.
+        
+        Returns probe scheduler configuration for persistence including
+        learning profile and advanced settings per architecture Section 20.9.
+        
+        Returns:
+            Dict containing probe scheduler configuration
+        """
+        if not hasattr(self, 'probe_scheduler') or not self.probe_scheduler:
+            return {"enabled": False}
+        
+        try:
+            # Get learning profile
+            profile_value = self.probe_scheduler._learning_profile.value
+        except (AttributeError, ValueError):
+            profile_value = "balanced"  # Default fallback
+        
+        config = {
+            "enabled": True,
+            "learning_profile": profile_value
+        }
+        
+        # Serialize advanced settings if available
+        if hasattr(self.probe_scheduler, '_profile_config') and self.probe_scheduler._profile_config:
+            try:
+                advanced_config = self.probe_scheduler._profile_config
+                config["advanced_settings"] = {
+                    "min_probe_interval_hours": getattr(advanced_config, 'min_probe_interval_hours', 12),
+                    "max_probe_interval_days": getattr(advanced_config, 'max_probe_interval_days', 7),
+                    "quiet_hours_start": getattr(advanced_config, 'quiet_hours_start', time(22, 0)).isoformat(),
+                    "quiet_hours_end": getattr(advanced_config, 'quiet_hours_end', time(7, 0)).isoformat(),
+                    "information_gain_threshold": getattr(advanced_config, 'information_gain_threshold', 0.5),
+                    "temperature_bins": getattr(advanced_config, 'temperature_bins', [-10, 0, 10, 20, 30]),
+                    "presence_override_enabled": getattr(advanced_config, 'presence_override_enabled', False),
+                    "outdoor_temp_change_threshold": getattr(advanced_config, 'outdoor_temp_change_threshold', 5.0),
+                    "min_probe_duration_minutes": getattr(advanced_config, 'min_probe_duration_minutes', 15)
+                }
+            except Exception as e:
+                _LOGGER.debug("Could not serialize advanced settings, using defaults: %s", e)
+                # Include minimal advanced settings as fallback
+                config["advanced_settings"] = {}
+        
+        return config
+
     def serialize(self) -> Dict[str, Any]:
         """Serialize thermal manager state for persistence.
         
         Returns complete thermal data structure per c_architecture.md §10.2.3
-        including version, state, model, probe_history, confidence, and metadata.
+        including version, state, model, probe_history, confidence, metadata,
+        and probe_scheduler_config (v2.1 enhancement).
         
         Returns:
             Dict containing serialized thermal data
@@ -447,7 +507,7 @@ class ThermalManager:
                             priming_data['current_phase'], priming_data['controlled_drift_state'], priming_data['controlled_drift_attempted'])
 
         return {
-            "version": "1.0",
+            "version": "2.1",  # Updated for probe scheduler support
             "state": {
                 "current_state": self._current_state.value,
                 "last_transition": self._last_transition.isoformat() if self._last_transition else datetime.now().isoformat(),
@@ -466,18 +526,103 @@ class ThermalManager:
             "probe_history": probe_history,
             "confidence": self._model.get_confidence() if hasattr(self._model, 'get_confidence') else 0.0,
             "stability_detector": stability_data,
+            "probe_scheduler_config": self._serialize_probe_scheduler_config(),  # NEW - v2.1
             "metadata": {
                 "saves_count": self._saves_count,
                 "corruption_recoveries": self._corruption_recovery_count,
-                "schema_version": "1.0"
+                "schema_version": "2.1"  # Updated schema version
             }
         }
+
+    def _restore_probe_scheduler_config(self, config_data: Dict[str, Any]) -> None:
+        """Restore probe scheduler configuration.
+        
+        Restores probe scheduler learning profile and advanced settings 
+        from persistence data per architecture Section 20.9.
+        
+        Args:
+            config_data: Dictionary containing probe scheduler configuration
+        """
+        if not config_data.get("enabled", False):
+            _LOGGER.debug("Probe scheduler disabled in persistence data")
+            return  # No probe scheduler to restore
+            
+        if not hasattr(self, 'probe_scheduler') or not self.probe_scheduler:
+            _LOGGER.debug("No probe scheduler available for configuration restoration")
+            return
+            
+        try:
+            # Restore learning profile
+            profile_str = config_data.get("learning_profile", "balanced")
+            try:
+                from .probe_scheduler import LearningProfile
+                profile = LearningProfile(profile_str)
+                if hasattr(self.probe_scheduler, '_update_profile'):
+                    self.probe_scheduler._update_profile(profile)
+                    _LOGGER.debug("Restored probe scheduler learning profile: %s", profile_str)
+                else:
+                    # Fallback: set profile directly
+                    self.probe_scheduler._learning_profile = profile
+            except (ValueError, AttributeError) as e:
+                _LOGGER.debug("Invalid learning profile '%s', using default: %s", profile_str, e)
+                # Use default profile - no action needed
+            
+            # Restore advanced settings if present
+            if "advanced_settings" in config_data:
+                try:
+                    settings_data = config_data["advanced_settings"]
+                    if isinstance(settings_data, dict):
+                        from .probe_scheduler import AdvancedSettings
+                        
+                        # Parse time strings safely
+                        def parse_time(time_str, default_time):
+                            try:
+                                if isinstance(time_str, str):
+                                    # Parse ISO time format (HH:MM:SS)
+                                    time_parts = time_str.split(':')
+                                    if len(time_parts) >= 2:
+                                        hour = int(time_parts[0])
+                                        minute = int(time_parts[1])
+                                        second = int(time_parts[2]) if len(time_parts) > 2 else 0
+                                        return time(hour, minute, second)
+                                return default_time
+                            except (ValueError, IndexError):
+                                return default_time
+                        
+                        # Build advanced settings with validation
+                        settings = AdvancedSettings(
+                            min_probe_interval_hours=int(settings_data.get("min_probe_interval_hours", 12)),
+                            max_probe_interval_days=int(settings_data.get("max_probe_interval_days", 7)),
+                            quiet_hours_start=parse_time(settings_data.get("quiet_hours_start"), time(22, 0)),
+                            quiet_hours_end=parse_time(settings_data.get("quiet_hours_end"), time(7, 0)),
+                            information_gain_threshold=float(settings_data.get("information_gain_threshold", 0.5)),
+                            temperature_bins=list(settings_data.get("temperature_bins", [-10, 0, 10, 20, 30])),
+                            presence_override_enabled=bool(settings_data.get("presence_override_enabled", False)),
+                            outdoor_temp_change_threshold=float(settings_data.get("outdoor_temp_change_threshold", 5.0)),
+                            min_probe_duration_minutes=int(settings_data.get("min_probe_duration_minutes", 15))
+                        )
+                        
+                        if hasattr(self.probe_scheduler, 'apply_advanced_settings'):
+                            self.probe_scheduler.apply_advanced_settings(settings)
+                            _LOGGER.debug("Restored probe scheduler advanced settings")
+                        else:
+                            # Fallback: set profile config directly
+                            self.probe_scheduler._profile_config = settings
+                        
+                except (ValueError, TypeError, AttributeError) as e:
+                    _LOGGER.debug("Could not restore advanced settings, using defaults: %s", e)
+                    self._corruption_recovery_count += 1
+                    
+        except Exception as e:
+            _LOGGER.debug("Error restoring probe scheduler configuration: %s", e)
+            self._corruption_recovery_count += 1
 
     def restore(self, data: Dict[str, Any]) -> None:
         """Restore thermal manager state from persistence data.
         
         Performs field-level validation and recovery per c_architecture.md §10.4.1.
         Uses defaults for invalid fields and logs debug information for each recovery.
+        Supports schema migration from v2.0 to v2.1 for probe scheduler support.
         
         Args:
             data: Dictionary containing thermal persistence data
@@ -486,6 +631,11 @@ class ThermalManager:
         recovery_count_start = self._corruption_recovery_count
 
         try:
+            # Handle schema migration - detect data version
+            data_version = data.get("version", "1.0")
+            schema_version = data.get("metadata", {}).get("schema_version", data_version)
+            _LOGGER.debug("Restoring thermal data from schema version: %s", schema_version)
+
             # Restore state section with validation
             if "state" in data:
                 state_data = data["state"]
@@ -728,6 +878,13 @@ class ThermalManager:
                     _LOGGER.debug("Invalid confidence %.2f, model will calculate", confidence)
                     self._corruption_recovery_count += 1
 
+            # Restore probe scheduler configuration (v2.1+ feature)
+            if "probe_scheduler_config" in data:
+                self._restore_probe_scheduler_config(data["probe_scheduler_config"])
+            elif schema_version in ["2.0", "1.0"]:
+                # Backward compatibility: missing probe_scheduler_config is expected in older versions
+                _LOGGER.debug("No probe scheduler config in schema version %s (expected)", schema_version)
+
             # Restore metadata
             if "metadata" in data:
                 metadata = data["metadata"]
@@ -767,16 +924,16 @@ class ThermalManager:
         
         This method should be called periodically by the coordinator to:
         1. Execute current state handler logic
-        2. Check for calibration hour transitions regardless of current state
+        2. Check for probe scheduling from stable states (DRIFTING/CORRECTING)
         3. Handle state transitions returned by handlers
+        4. Perform passive learning during PRIMING state
         
         Args:
             current_temp: Current room temperature
             outdoor_temp: Current outdoor temperature 
             hvac_mode: Current HVAC mode (cool/heat/auto)
         
-        Fixes the critical bug where thermal states never transition because
-        no periodic check was happening.
+        Enhanced with ProbeScheduler integration per architecture Section 20.11.
         """
         _LOGGER.debug("ThermalManager.update_state() called - current state: %s", self._current_state.value)
         
@@ -787,6 +944,11 @@ class ThermalManager:
                           self._current_state.value, 
                           self._last_transition.isoformat() if self._last_transition else "Never")
             
+            # Phase 1: Passive learning during PRIMING (no active probing)
+            if self._current_state == ThermalState.PRIMING:
+                self._handle_passive_learning()
+                return
+            
             # Update stability detector with current conditions
             if hasattr(self, 'stability_detector') and self.stability_detector:
                 ac_state, temperature = self._get_current_conditions()
@@ -796,6 +958,7 @@ class ThermalManager:
             
             # Execute current state handler logic
             current_handler = self._state_handlers.get(self._current_state)
+            handler_next_state = None
             if current_handler:
                 try:
                     _LOGGER.debug("Executing state handler for %s", self._current_state.value)
@@ -812,18 +975,42 @@ class ThermalManager:
                                     current_temp, outdoor_temp, hvac_mode)
                     
                     # Call state handler with temperature and operating window parameters
-                    next_state = current_handler.execute(self, current_temp, operating_window)
-                    if next_state is not None and next_state != self._current_state:
-                        _LOGGER.info("Thermal state transition triggered: %s -> %s", 
-                                     self._current_state.value, next_state.value)
-                        self.transition_to(next_state)
+                    handler_next_state = current_handler.execute(self, current_temp, operating_window)
+                    if handler_next_state is not None and handler_next_state != self._current_state:
+                        _LOGGER.info("State handler transition triggered: %s -> %s", 
+                                     self._current_state.value, handler_next_state.value)
+                        self.transition_to(handler_next_state)
+                        return  # Handler transition takes priority, exit early
                     else:
-                        _LOGGER.debug("No thermal state transition needed, staying in %s", self._current_state.value)
+                        _LOGGER.debug("State handler requires no transition, staying in %s", self._current_state.value)
                 except Exception as e:
                     _LOGGER.error("Error executing state handler for %s: %s", 
                                 self._current_state.value, e)
             else:
                 _LOGGER.warning("No state handler found for state %s", self._current_state.value)
+            
+            # Phase 2: Opportunistic probing from stable states (only if handler didn't transition)
+            if (handler_next_state is None and 
+                self._current_state in [ThermalState.DRIFTING, ThermalState.CORRECTING] and
+                self.probe_scheduler is not None):
+                
+                try:
+                    _LOGGER.debug("Checking probe scheduler for opportunistic probing from %s state", 
+                                 self._current_state.value)
+                    
+                    if self.probe_scheduler.should_probe_now():
+                        _LOGGER.info("ProbeScheduler approved opportunistic probing from %s state", 
+                                   self._current_state.value)
+                        self.transition_to(ThermalState.PROBING)
+                        return
+                    else:
+                        _LOGGER.debug("ProbeScheduler declined probing opportunity from %s state", 
+                                    self._current_state.value)
+                except Exception as e:
+                    _LOGGER.error("Error checking probe scheduler: %s", e)
+                    # Continue gracefully - probe scheduling failure should not break state machine
+            elif self.probe_scheduler is None:
+                _LOGGER.debug("No probe scheduler configured, skipping opportunistic probing")
                 
         except Exception as e:
             _LOGGER.error("Error in thermal state update: %s", e)

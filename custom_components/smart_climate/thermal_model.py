@@ -104,32 +104,71 @@ class PassiveThermalModel:
         return current + temperature_change
     
     def get_confidence(self) -> float:
-        """Get confidence level based on probe history using statistical threshold."""
-        from .const import CONFIDENCE_REQUIRED_SAMPLES
+        """Confidence based on count AND diversity."""
+        import math
         
         if not self._probe_history:
             return 0.0
-        
-        # Calculate average confidence of all probes
-        total_confidence = sum(
-            probe.confidence for probe in self._probe_history 
-            if probe.confidence is not None
-        )
+            
+        # Base confidence from probe count (up to 80%)
         probe_count = len(self._probe_history)
+        base_confidence = min(math.log(probe_count + 1) / math.log(16), 0.8)
         
-        if probe_count == 0:
+        # Diversity bonus (up to 20%)
+        diversity_score = self._calculate_diversity_score()
+        diversity_bonus = diversity_score * 0.2
+        
+        return min(base_confidence + diversity_bonus, 1.0)
+
+    def _calculate_diversity_score(self) -> float:
+        """Calculate diversity score based on temperature bin coverage.
+        
+        Returns:
+            Diversity score as ratio of covered bins to total bins (0.0-1.0)
+        """
+        # Import here to avoid circular imports
+        from .probe_scheduler import OUTDOOR_TEMP_BINS
+        
+        if not self._probe_history:
             return 0.0
             
-        avg_confidence = total_confidence / probe_count
+        # Count unique temperature bins represented in probe history
+        covered_bins = set()
         
-        # Apply statistical formula: scale by sample count up to threshold
-        sample_factor = min(probe_count / CONFIDENCE_REQUIRED_SAMPLES, 1.0)
+        for probe in self._probe_history:
+            if probe.outdoor_temp is not None:
+                bin_index = self._get_temperature_bin_index(probe.outdoor_temp)
+                covered_bins.add(bin_index)
         
-        # Combined confidence
-        confidence = avg_confidence * sample_factor
+        # Total possible bins (including below first and above last)
+        total_bins = len(OUTDOOR_TEMP_BINS) + 1
         
-        # Clamp to valid range [0.0, 1.0]
-        return max(0.0, min(1.0, confidence))
+        # Return ratio of covered bins to total bins
+        return len(covered_bins) / total_bins if total_bins > 0 else 0.0
+    
+    def _get_temperature_bin_index(self, temperature: float) -> int:
+        """Get temperature bin index for given temperature.
+        
+        Args:
+            temperature: Outdoor temperature in Celsius
+            
+        Returns:
+            Bin index (0-based)
+        """
+        # Import here to avoid circular imports
+        from .probe_scheduler import OUTDOOR_TEMP_BINS
+        
+        # Below first bin
+        if temperature < OUTDOOR_TEMP_BINS[0]:
+            return 0
+        
+        # Find appropriate bin
+        for i, boundary in enumerate(OUTDOOR_TEMP_BINS):
+            if temperature < boundary:
+                return i
+                
+        # Above last bin
+        return len(OUTDOOR_TEMP_BINS)
 
     
     def get_probe_count(self) -> int:
@@ -139,6 +178,41 @@ class PassiveThermalModel:
             Number of probes currently stored in history
         """
         return len(self._probe_history)
+
+    def get_probe_history(self) -> List[ProbeResult]:
+        """Get probe history for ProbeScheduler analysis.
+        
+        Returns:
+            Immutable copy of probe history in chronological order
+        """
+        return list(self._probe_history)
+    
+    def get_last_probe_time(self) -> Optional[datetime]:
+        """Get timestamp of most recent probe.
+        
+        Returns:
+            Timestamp of most recent probe, or None if no probes
+        """
+        if not self._probe_history:
+            return None
+        return max(probe.timestamp for probe in self._probe_history)
+    
+    def add_probe_result(self, probe_result: ProbeResult) -> None:
+        """Add probe result to history (for testing/external integration).
+        
+        Args:
+            probe_result: ProbeResult object to add to history
+            
+        Raises:
+            TypeError: If probe_result is not a ProbeResult instance
+        """
+        if not isinstance(probe_result, ProbeResult):
+            raise TypeError(f"Expected ProbeResult, got {type(probe_result)}")
+        
+        self._probe_history.append(probe_result)
+        
+        # Update last modified timestamp when probe added
+        self._tau_last_modified = datetime.now(timezone.utc)
     
     @property
     def tau_last_modified(self) -> Optional[datetime]:
@@ -216,3 +290,32 @@ class PassiveThermalModel:
             if abs(new_tau - original_tau_warming) > 0.01:  # Small tolerance for float comparison
                 self._tau_warming = new_tau
                 self._tau_last_modified = datetime.now()
+
+    def refine_tau_passively(self, passive_observation) -> None:
+        """Apply exponential moving average for continuous tau refinement.
+        
+        Provides continuous passive refinement of thermal time constants
+        between active probe sessions using quality-weighted observations
+        from natural temperature drift periods.
+        
+        Uses a two-tier system where active probes provide primary calibration
+        and passive refinement provides small adjustments for accuracy.
+        
+        Args:
+            passive_observation: PassiveObservation containing tau measurement,
+                                fit quality, duration, and cooling/warming flag
+        """
+        from .thermal_models import PassiveObservation
+        
+        # Quality-weighted alpha calculation (max 0.1 for stability)
+        normalized_duration = min(passive_observation.duration_seconds / 3600.0, 1.0)
+        quality_score = passive_observation.fit_quality * normalized_duration
+        alpha = 0.1 * quality_score
+        
+        # Exponential Moving Average (EMA) update
+        if passive_observation.is_cooling:
+            new_tau = (alpha * passive_observation.tau_measured) + ((1 - alpha) * self._tau_cooling)
+            self._tau_cooling = new_tau
+        else:
+            new_tau = (alpha * passive_observation.tau_measured) + ((1 - alpha) * self._tau_warming)
+            self._tau_warming = new_tau

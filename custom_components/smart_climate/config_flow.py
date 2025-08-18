@@ -136,6 +136,23 @@ from .const import (
     DEFAULT_DIFFERENTIAL_SIGNIFICANT,
     DEFAULT_DIFFERENTIAL_EXTREME,
     DEFAULT_HUMIDITY_LOG_LEVEL,
+    # Probe Scheduler imports (v1.5.3-beta)
+    CONF_LEARNING_PROFILE,
+    CONF_PRESENCE_ENTITY_ID,
+    CONF_WEATHER_ENTITY_ID,
+    CONF_CALENDAR_ENTITY_ID,
+    CONF_MANUAL_OVERRIDE_ENTITY_ID,
+    CONF_MIN_PROBE_INTERVAL,
+    CONF_MAX_PROBE_INTERVAL,
+    CONF_QUIET_HOURS_START,
+    CONF_QUIET_HOURS_END,
+    CONF_INFO_GAIN_THRESHOLD,
+    DEFAULT_LEARNING_PROFILE,
+    DEFAULT_MIN_PROBE_INTERVAL,
+    DEFAULT_MAX_PROBE_INTERVAL,
+    DEFAULT_QUIET_HOURS_START,
+    DEFAULT_QUIET_HOURS_END,
+    DEFAULT_INFO_GAIN_THRESHOLD,
     # Entity availability waiting imports
     CONF_STARTUP_TIMEOUT,
     STARTUP_TIMEOUT_SEC,
@@ -753,6 +770,10 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class SmartClimateOptionsFlow(config_entries.OptionsFlow):
     """Handle Smart Climate Control options."""
     
+    def __init__(self, config_entry: config_entries.ConfigEntry = None) -> None:
+        """Initialize options flow."""
+        self._basic_settings: Optional[Dict[str, Any]] = None
+    
     def _add_power_threshold_fields_options(self, schema: vol.Schema, current_config: dict, current_options: dict) -> vol.Schema:
         """Add power threshold fields to the options schema."""
         schema_dict = dict(schema.schema)
@@ -810,18 +831,130 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         
         return entities
 
+    def _get_options_schema(self) -> vol.Schema:
+        """Return options schema."""
+        current_options = self.config_entry.options
+        
+        return vol.Schema({
+            # ProbeScheduler Configuration
+            vol.Optional(
+                "probe_scheduler_enabled",
+                default=current_options.get("probe_scheduler_enabled", True)
+            ): bool,
+            vol.Optional(
+                CONF_LEARNING_PROFILE, 
+                default=current_options.get(CONF_LEARNING_PROFILE, DEFAULT_LEARNING_PROFILE)
+            ): vol.In(["comfort", "balanced", "aggressive", "custom"]),
+            vol.Optional(
+                CONF_PRESENCE_ENTITY_ID,
+                default=current_options.get(CONF_PRESENCE_ENTITY_ID)
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain=["binary_sensor", "person", "device_tracker"],
+                    multiple=False
+                )
+            ),
+            vol.Optional(
+                CONF_WEATHER_ENTITY_ID,
+                default=current_options.get(CONF_WEATHER_ENTITY_ID, "weather.home")
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain="weather",
+                    multiple=False
+                )
+            ),
+            vol.Optional(
+                CONF_CALENDAR_ENTITY_ID,
+                default=current_options.get(CONF_CALENDAR_ENTITY_ID)
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain="calendar",
+                    multiple=False
+                )
+            ),
+            vol.Optional(
+                CONF_MANUAL_OVERRIDE_ENTITY_ID,
+                default=current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID)  
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain="input_boolean",
+                    multiple=False
+                )
+            ),
+        })
+
+    def _get_advanced_schema(self) -> vol.Schema:
+        """Return advanced settings schema for custom profile."""
+        current_options = self.config_entry.options
+        
+        return vol.Schema({
+            vol.Optional(
+                CONF_MIN_PROBE_INTERVAL,
+                default=current_options.get(CONF_MIN_PROBE_INTERVAL, DEFAULT_MIN_PROBE_INTERVAL)
+            ): vol.All(vol.Coerce(int), vol.Range(min=6, max=24)),
+            vol.Optional(
+                CONF_MAX_PROBE_INTERVAL, 
+                default=current_options.get(CONF_MAX_PROBE_INTERVAL, DEFAULT_MAX_PROBE_INTERVAL)
+            ): vol.All(vol.Coerce(int), vol.Range(min=3, max=14)),
+            vol.Optional(
+                CONF_QUIET_HOURS_START,
+                default=current_options.get(CONF_QUIET_HOURS_START, DEFAULT_QUIET_HOURS_START)
+            ): str,
+            vol.Optional(
+                CONF_QUIET_HOURS_END,
+                default=current_options.get(CONF_QUIET_HOURS_END, DEFAULT_QUIET_HOURS_END)  
+            ): str,
+            vol.Optional(
+                CONF_INFO_GAIN_THRESHOLD,
+                default=current_options.get(CONF_INFO_GAIN_THRESHOLD, DEFAULT_INFO_GAIN_THRESHOLD)
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=0.9)),
+        })
+
+    def _get_description_placeholders(self) -> Dict[str, str]:
+        """Get description placeholders for UI."""
+        return {
+            "probe_scheduler_info": (
+                "Enable intelligent context-aware probe scheduling. "
+                "Reduces 30-day learning period to days with zero comfort impact."
+            ),
+            "learning_profiles": (
+                "Comfort: 24h intervals, minimal disruption\n"
+                "Balanced: 12h intervals, standard learning\n" 
+                "Aggressive: 6h intervals, fastest learning\n"
+                "Custom: Configure all parameters manually"
+            ),
+            "presence_sensor_info": (
+                "Optional: Presence sensor for away detection. "
+                "Without this, system uses conservative quiet hours only."
+            ),
+            "fallback_behavior": (
+                "System works without presence sensor using quiet hours + maximum interval forcing. "
+                "Probes only when absolutely necessary (every 7 days max)."
+            )
+        }
+
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle options flow."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
+            if user_input.get(CONF_LEARNING_PROFILE) == "custom":
+                # Store basic settings and move to advanced
+                self._basic_settings = user_input
+                return await self.async_step_advanced()
+            else:
+                # Direct save for non-custom profiles
+                return self.async_create_entry(title="", data=user_input)
+        
         current_config = self.config_entry.data
         current_options = self.config_entry.options
         
         # Get available humidity sensors for selectors
         humidity_sensors = await self._get_humidity_sensors()
         
-        data_schema = vol.Schema({
+        # Create the combined schema with existing options + ProbeScheduler options
+        probe_scheduler_schema = self._get_options_schema()
+        
+        # Build existing configuration schema
+        existing_schema = vol.Schema({
             vol.Optional(
                 CONF_MAX_OFFSET,
                 default=current_options.get(CONF_MAX_OFFSET, current_config.get(CONF_MAX_OFFSET, DEFAULT_MAX_OFFSET))
@@ -1312,6 +1445,11 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ): selector.BooleanSelector(),
         })
         
+        # Combine the schemas
+        combined_schema_dict = dict(existing_schema.schema)
+        combined_schema_dict.update(probe_scheduler_schema.schema)
+        data_schema = vol.Schema(combined_schema_dict)
+        
         # Add thermal efficiency advanced options if thermal efficiency is enabled
         thermal_enabled = current_options.get(CONF_THERMAL_EFFICIENCY_ENABLED, current_config.get(CONF_THERMAL_EFFICIENCY_ENABLED, DEFAULT_THERMAL_EFFICIENCY_ENABLED))
         if thermal_enabled:
@@ -1416,4 +1554,22 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=data_schema,
+            description_placeholders=self._get_description_placeholders()
+        )
+
+    async def async_step_advanced(self, user_input: Optional[Dict[str, Any]] = None):
+        """Handle advanced settings for custom profile."""
+        if user_input is not None:
+            # Combine basic and advanced settings
+            if self._basic_settings:
+                combined_settings = {**self._basic_settings, **user_input}
+            else:
+                # Fallback if basic settings missing
+                combined_settings = user_input
+            return self.async_create_entry(title="", data=combined_settings)
+            
+        return self.async_show_form(
+            step_id="advanced",
+            data_schema=self._get_advanced_schema(),
+            description_placeholders=self._get_description_placeholders()
         )
