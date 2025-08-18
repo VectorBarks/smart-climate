@@ -537,22 +537,25 @@ class ThermalManager:
     def _restore_probe_scheduler_config(self, config_data: Dict[str, Any]) -> None:
         """Restore probe scheduler configuration.
         
-        Restores probe scheduler learning profile and advanced settings 
-        from persistence data per architecture Section 20.9.
+        CRITICAL FIX: Prioritize live configuration over persistence data.
+        When user changes ProbeScheduler settings via options flow,
+        use current config_entry.options instead of stale persistence data.
         
         Args:
             config_data: Dictionary containing probe scheduler configuration
         """
-        if not config_data.get("enabled", False):
-            _LOGGER.debug("Probe scheduler disabled in persistence data")
-            return  # No probe scheduler to restore
-            
+        # CRITICAL: Check live configuration first (options flow takes priority)
+        # The probe_scheduler should already be created if enabled in current config
         if not hasattr(self, 'probe_scheduler') or not self.probe_scheduler:
-            _LOGGER.debug("No probe scheduler available for configuration restoration")
+            _LOGGER.debug("No probe scheduler available - live config has it disabled or failed to create")
             return
             
+        # If we have a probe_scheduler, it means live config enabled it
+        # Don't let stale persistence data disable it
+        _LOGGER.debug("Probe scheduler exists - applying stored configuration (not enabled/disabled state)")
+            
         try:
-            # Restore learning profile
+            # Restore learning profile (if valid)
             profile_str = config_data.get("learning_profile", "balanced")
             try:
                 from .probe_scheduler import LearningProfile
@@ -564,10 +567,10 @@ class ThermalManager:
                     # Fallback: set profile directly
                     self.probe_scheduler._learning_profile = profile
             except (ValueError, AttributeError) as e:
-                _LOGGER.debug("Invalid learning profile '%s', using default: %s", profile_str, e)
-                # Use default profile - no action needed
+                _LOGGER.debug("Invalid learning profile '%s', keeping current: %s", profile_str, e)
+                # Keep current profile - don't break on invalid stored profile
             
-            # Restore advanced settings if present
+            # Restore advanced settings if present (but not enabled/disabled state)
             if "advanced_settings" in config_data:
                 try:
                     settings_data = config_data["advanced_settings"]
@@ -610,7 +613,7 @@ class ThermalManager:
                             self.probe_scheduler._profile_config = settings
                         
                 except (ValueError, TypeError, AttributeError) as e:
-                    _LOGGER.debug("Could not restore advanced settings, using defaults: %s", e)
+                    _LOGGER.debug("Could not restore advanced settings, keeping current: %s", e)
                     self._corruption_recovery_count += 1
                     
         except Exception as e:
