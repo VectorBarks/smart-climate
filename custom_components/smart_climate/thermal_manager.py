@@ -399,10 +399,11 @@ class ThermalManager:
         self._saves_count += 1
         self._thermal_data_last_saved = datetime.now()
         
-        # Get probe history from thermal model (max 5 entries)
+        # Get probe history from thermal model (v1.5.3: up to 75 entries)
         probe_history = []
         if hasattr(self._model, '_probe_history'):
-            probes = list(self._model._probe_history)[-5:]  # Take most recent 5
+            from .const import MAX_PROBE_HISTORY_SIZE
+            probes = list(self._model._probe_history)[-MAX_PROBE_HISTORY_SIZE:]  # Take most recent
             for probe in probes:
                 probe_data = {
                     "tau_value": probe.tau_value,
@@ -410,7 +411,8 @@ class ThermalManager:
                     "duration": probe.duration,
                     "fit_quality": probe.fit_quality,
                     "aborted": probe.aborted,
-                    "timestamp": probe.timestamp.isoformat()  # Read existing timestamp
+                    "timestamp": probe.timestamp.isoformat(),  # Read existing timestamp
+                    "outdoor_temp": probe.outdoor_temp  # v1.5.3 enhancement - None for legacy probes
                 }
                 probe_history.append(probe_data)
 
@@ -457,7 +459,7 @@ class ThermalManager:
                 "tau_warming": getattr(self._model, '_tau_warming', 150.0), 
                 "last_modified": (
                     self._model.tau_last_modified.isoformat() 
-                    if hasattr(self._model, 'tau_last_modified') and self._model.tau_last_modified 
+                    if hasattr(self._model, 'tau_last_modified') and self._model.tau_last_modified and hasattr(self._model.tau_last_modified, 'isoformat')
                     else datetime.now().isoformat()
                 )
             },
@@ -635,15 +637,16 @@ class ThermalManager:
                             self._model._tau_last_modified = None
                         self._corruption_recovery_count += 1
 
-            # Restore probe history with validation
+            # Restore probe history with validation (v1.5.3: up to 75 probes)
             if "probe_history" in data and hasattr(self._model, '_probe_history'):
                 probe_data = data["probe_history"]
                 if isinstance(probe_data, list):
                     from collections import deque
-                    from .thermal_models import ProbeResult
+                    from .thermal_model import ProbeResult
+                    from .const import MAX_PROBE_HISTORY_SIZE
                     
-                    restored_probes = deque(maxlen=5)
-                    for probe_dict in probe_data[-5:]:  # Take most recent 5
+                    restored_probes = deque(maxlen=MAX_PROBE_HISTORY_SIZE)
+                    for probe_dict in probe_data[-MAX_PROBE_HISTORY_SIZE:]:  # Take most recent based on constant
                         try:
                             # Validate probe fields
                             if (isinstance(probe_dict, dict) and
@@ -674,13 +677,24 @@ class ThermalManager:
                                     else:
                                         timestamp = datetime.now(timezone.utc)  # Legacy fallback
                                     
+                                    # Handle outdoor_temp - v1.5.3 enhancement
+                                    outdoor_temp = None
+                                    if "outdoor_temp" in probe_dict:
+                                        outdoor_temp_value = probe_dict["outdoor_temp"]
+                                        if isinstance(outdoor_temp_value, (int, float)):
+                                            outdoor_temp = float(outdoor_temp_value)
+                                        elif outdoor_temp_value is not None:
+                                            _LOGGER.debug("Invalid outdoor_temp type: %s", type(outdoor_temp_value))
+                                    # If no outdoor_temp field, leave as None (legacy v1.5.2 behavior)
+                                    
                                     probe = ProbeResult(
                                         tau_value=float(probe_dict["tau_value"]),
                                         confidence=float(confidence),
                                         duration=int(duration),
                                         fit_quality=float(fit_quality),
                                         aborted=bool(probe_dict["aborted"]),
-                                        timestamp=timestamp  # Pass the restored timestamp
+                                        timestamp=timestamp,  # Pass the restored timestamp
+                                        outdoor_temp=outdoor_temp  # v1.5.3 enhancement
                                     )
                                     restored_probes.append(probe)
                                     _LOGGER.debug("Restored probe: tau=%.1f, confidence=%.2f", 
@@ -695,14 +709,17 @@ class ThermalManager:
                             _LOGGER.debug("Error restoring probe, discarding: %s", e)
                             self._corruption_recovery_count += 1
                     
-                    # Extend existing probe history with restored probes (don't overwrite!)
+                    # Replace probe history with restored probes (proper restoration behavior)
                     if restored_probes:
+                        self._model._probe_history.clear()  # Clear existing history for proper restore
                         for probe in restored_probes:
                             self._model._probe_history.append(probe)
-                        _LOGGER.debug("Extended probe history with %d restored probes, total now: %d", 
-                                     len(restored_probes), len(self._model._probe_history))
+                        _LOGGER.debug("Restored probe history with %d probes", 
+                                     len(restored_probes))
                     else:
-                        _LOGGER.debug("No valid probes to restore")
+                        # Clear history if no valid probes to restore
+                        self._model._probe_history.clear()
+                        _LOGGER.debug("No valid probes to restore, cleared history")
 
             # Restore confidence (informational, validated by model)
             if "confidence" in data:
@@ -831,10 +848,11 @@ class ThermalManager:
         if hasattr(self._model, '_tau_last_modified'):
             self._model._tau_last_modified = None
         
-        # Clear probe history
+        # Clear probe history (v1.5.3: 75-probe capacity)
         if hasattr(self._model, '_probe_history'):
             from collections import deque
-            self._model._probe_history = deque(maxlen=5)
+            from .const import MAX_PROBE_HISTORY_SIZE
+            self._model._probe_history = deque(maxlen=MAX_PROBE_HISTORY_SIZE)
         
         _LOGGER.debug("Thermal manager reset complete: state=%s, tau_cooling=90.0, tau_warming=150.0",
                      self._current_state.value)

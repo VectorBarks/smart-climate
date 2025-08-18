@@ -226,3 +226,21 @@ THERMAL_EFFICIENCY_VERSION = "1.4.0"
 DEFAULT_SHADOW_MODE = True  # Override - safe default for observation only 
 INSIGHTS_UPDATE_INTERVAL = 3600  # 1 hour insights generation interval
 MAX_PROBE_DURATION = 7200  # 2 hours maximum probe duration
+
+# Thermal Model v1.5.3 Enhancement Constants
+# Enhanced thermal model supporting 75-probe history, exponential decay weighting,
+# and temperature-dependent tau calculation for improved seasonal adaptation
+
+# Probe History Management (v1.5.3)
+MAX_PROBE_HISTORY_SIZE = 75  # Seasonal adaptation window (1.5-2.5 months)
+CONFIDENCE_REQUIRED_SAMPLES = 30  # Minimum samples for statistical validity (CLT)
+
+# Exponential Decay Weighting (v1.5.3) 
+DECAY_RATE_PER_DAY = 0.98  # Daily decay multiplier for time-based weighting
+DECAY_HALF_LIFE_DAYS = 34.3  # Half-life for exponential decay (~5 weeks)
+
+# Temperature-Dependent Tau Model (v1.5.3)
+TAU_MIN_CLAMP = 30.0  # Physical minimum tau (minutes) - prevents extreme predictions
+TAU_MAX_CLAMP = 300.0  # Physical maximum tau (minutes) - prevents extreme predictions
+MIN_SAMPLES_FOR_REGRESSION = 20  # Minimum data points for linear regression model
+MIN_R2_FOR_MODEL_TRUST = 0.4  # R² threshold for trusting regression predictions

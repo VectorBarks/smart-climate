@@ -22,6 +22,7 @@ class ProbeResult:
         fit_quality: Quality of exponential fit (0.0-1.0)
         aborted: Whether the probe was aborted early
         timestamp: When the probe was created (UTC)
+        outdoor_temp: Outdoor temperature during probe (°C) - v1.5.3 enhancement
     """
     tau_value: float
     confidence: float
@@ -29,6 +30,7 @@ class ProbeResult:
     fit_quality: float
     aborted: bool
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    outdoor_temp: Optional[float] = field(default=None)
 
 
 class PassiveThermalModel:
@@ -49,9 +51,11 @@ class PassiveThermalModel:
             tau_cooling: Time constant for cooling (minutes)
             tau_warming: Time constant for warming (minutes)
         """
+        from .const import MAX_PROBE_HISTORY_SIZE
+        
         self._tau_cooling = tau_cooling
         self._tau_warming = tau_warming
-        self._probe_history: deque = deque(maxlen=5)
+        self._probe_history: deque = deque(maxlen=MAX_PROBE_HISTORY_SIZE)
         self._tau_last_modified: Optional[datetime] = None
         
     def predict_drift(
@@ -100,25 +104,41 @@ class PassiveThermalModel:
         return current + temperature_change
     
     def get_confidence(self) -> float:
-        """
-        Get confidence level for thermal predictions.
+        """Get confidence level based on probe history using statistical threshold."""
+        from .const import CONFIDENCE_REQUIRED_SAMPLES
         
-        Calculates confidence based on probe history quality and quantity:
-        confidence = mean(probe.confidence for probe in history) * (len(history) / 5)
-        
-        Returns:
-            Confidence level (0.0 to 1.0)
-        """
         if not self._probe_history:
             return 0.0
+        
+        # Calculate average confidence of all probes
+        total_confidence = sum(
+            probe.confidence for probe in self._probe_history 
+            if probe.confidence is not None
+        )
+        probe_count = len(self._probe_history)
+        
+        if probe_count == 0:
+            return 0.0
             
-        # Average confidence from all probes in history
-        avg_confidence = sum(probe.confidence for probe in self._probe_history) / len(self._probe_history)
+        avg_confidence = total_confidence / probe_count
         
-        # Multiply by fullness ratio (how many of 5 slots are filled)
-        fullness_ratio = len(self._probe_history) / 5
+        # Apply statistical formula: scale by sample count up to threshold
+        sample_factor = min(probe_count / CONFIDENCE_REQUIRED_SAMPLES, 1.0)
         
-        return avg_confidence * fullness_ratio
+        # Combined confidence
+        confidence = avg_confidence * sample_factor
+        
+        # Clamp to valid range [0.0, 1.0]
+        return max(0.0, min(1.0, confidence))
+
+    
+    def get_probe_count(self) -> int:
+        """Get the current number of probes in history.
+        
+        Returns:
+            Number of probes currently stored in history
+        """
+        return len(self._probe_history)
     
     @property
     def tau_last_modified(self) -> Optional[datetime]:
@@ -130,12 +150,45 @@ class PassiveThermalModel:
         """
         return self._tau_last_modified
     
+    def _calculate_weighted_tau(self, is_cooling: bool) -> float:
+        """Calculate weighted tau using exponential decay based on probe age."""
+        from datetime import datetime, timezone
+        from .const import DECAY_RATE_PER_DAY
+        
+        if not self._probe_history:
+            return self._tau_cooling if is_cooling else self._tau_warming
+        
+        now = datetime.now(timezone.utc)
+        total_weighted_value = 0.0
+        total_weight = 0.0
+        
+        for probe in self._probe_history:
+            # Calculate age in days
+            age_days = (now - probe.timestamp).total_seconds() / 86400
+            
+            # Apply exponential decay
+            time_weight = DECAY_RATE_PER_DAY ** age_days
+            
+            # Apply confidence weight (default to 1.0 if None)
+            confidence_weight = probe.confidence if probe.confidence is not None else 1.0
+            
+            # Combined weight
+            final_weight = time_weight * confidence_weight
+            
+            total_weighted_value += probe.tau_value * final_weight
+            total_weight += final_weight
+        
+        if total_weight > 0:
+            return total_weighted_value / total_weight
+        else:
+            return self._tau_cooling if is_cooling else self._tau_warming
+
     def update_tau(self, probe_result: ProbeResult, is_cooling: bool) -> None:
         """
         Update time constants based on probe results.
         
-        Uses weighted average of probe history with weights [0.4, 0.3, 0.15, 0.1, 0.05]
-        applied to most recent probes first. Maintains max 5 probe history entries.
+        Uses exponential decay weighting based on probe age with DECAY_RATE_PER_DAY = 0.98.
+        Maintains max 75 probe history entries for seasonal adaptation.
         Only updates tau_last_modified timestamp when tau values actually change.
         
         Args:
@@ -146,37 +199,20 @@ class PassiveThermalModel:
         original_tau_cooling = self._tau_cooling
         original_tau_warming = self._tau_warming
         
-        # Add to probe history (deque automatically handles maxlen=5)
+        # Add to probe history (deque automatically handles maxlen=75)
         self._probe_history.append(probe_result)
         
-        # Define weights for most recent to oldest probes
-        weights = [0.4, 0.3, 0.15, 0.1, 0.05]
-        
-        # Get relevant probes for this tau type (cooling or warming)
-        relevant_probes = [probe for probe in self._probe_history]
-        
-        if not relevant_probes:
-            return
-            
-        # Calculate weighted average using most recent probes first
-        # Reverse to get newest first, then zip with weights
-        recent_probes = list(reversed(relevant_probes))
-        weighted_sum = 0.0
-        
-        for i, probe in enumerate(recent_probes):
-            if i < len(weights):  # Only use as many weights as we have
-                weighted_sum += probe.tau_value * weights[i]
+        # Calculate new tau using exponential decay weighting
+        new_tau = self._calculate_weighted_tau(is_cooling)
         
         # Update the appropriate tau
         if is_cooling:
-            new_tau_cooling = weighted_sum
             # Only update timestamp if value actually changed
-            if abs(new_tau_cooling - original_tau_cooling) > 0.01:  # Small tolerance for float comparison
-                self._tau_cooling = new_tau_cooling
+            if abs(new_tau - original_tau_cooling) > 0.01:  # Small tolerance for float comparison
+                self._tau_cooling = new_tau
                 self._tau_last_modified = datetime.now()
         else:
-            new_tau_warming = weighted_sum
             # Only update timestamp if value actually changed
-            if abs(new_tau_warming - original_tau_warming) > 0.01:  # Small tolerance for float comparison
-                self._tau_warming = new_tau_warming
+            if abs(new_tau - original_tau_warming) > 0.01:  # Small tolerance for float comparison
+                self._tau_warming = new_tau
                 self._tau_last_modified = datetime.now()

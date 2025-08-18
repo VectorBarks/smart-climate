@@ -4,6 +4,7 @@ Data structures for thermal state machine, probe results, and user preferences."
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Optional
 
 
 @dataclass
@@ -43,6 +44,7 @@ class ProbeResult:
         fit_quality: Quality of exponential fit (0.0-1.0)
         aborted: Whether the probe was aborted early
         timestamp: When the probe was created (UTC)
+        outdoor_temp: Outdoor temperature during probe (°C) - v1.5.3 enhancement
     """
     tau_value: float
     confidence: float
@@ -50,6 +52,7 @@ class ProbeResult:
     fit_quality: float
     aborted: bool
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    outdoor_temp: Optional[float] = field(default=None)
 
 
 class ThermalState(Enum):
