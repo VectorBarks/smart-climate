@@ -832,7 +832,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         return entities
 
     def _get_options_schema(self) -> vol.Schema:
-        """Return options schema."""
+        """Return options schema with properly optional entities."""
         current_options = self.config_entry.options
         
         return vol.Schema({
@@ -847,7 +847,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ): vol.In(["comfort", "balanced", "aggressive", "custom"]),
             vol.Optional(
                 CONF_PRESENCE_ENTITY_ID,
-                default=current_options.get(CONF_PRESENCE_ENTITY_ID)
+                default=current_options.get(CONF_PRESENCE_ENTITY_ID, "")  # Empty string default
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain=["binary_sensor", "person", "device_tracker"],
@@ -865,7 +865,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_CALENDAR_ENTITY_ID,
-                default=current_options.get(CONF_CALENDAR_ENTITY_ID)
+                default=current_options.get(CONF_CALENDAR_ENTITY_ID, "")  # Empty string default
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain="calendar",
@@ -874,7 +874,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_MANUAL_OVERRIDE_ENTITY_ID,
-                default=current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID)  
+                default=current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID, "")  # Empty string default
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     domain="input_boolean",
@@ -882,6 +882,21 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 )
             ),
         })
+
+    def _clean_entity_ids(self, user_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean empty string entity IDs to None for optional entities."""
+        cleaned = user_input.copy()
+        optional_entities = [
+            CONF_PRESENCE_ENTITY_ID,
+            CONF_CALENDAR_ENTITY_ID, 
+            CONF_MANUAL_OVERRIDE_ENTITY_ID
+        ]
+        
+        for entity_key in optional_entities:
+            if entity_key in cleaned and cleaned[entity_key] == "":
+                cleaned[entity_key] = None
+                
+        return cleaned
 
     def _get_advanced_schema(self) -> vol.Schema:
         """Return advanced settings schema for custom profile."""
@@ -936,13 +951,16 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle options flow."""
         if user_input is not None:
-            if user_input.get(CONF_LEARNING_PROFILE) == "custom":
+            # Clean up empty string entity IDs to None
+            cleaned_input = self._clean_entity_ids(user_input)
+            
+            if cleaned_input.get(CONF_LEARNING_PROFILE) == "custom":
                 # Store basic settings and move to advanced
-                self._basic_settings = user_input
+                self._basic_settings = cleaned_input
                 return await self.async_step_advanced()
             else:
                 # Direct save for non-custom profiles
-                return self.async_create_entry(title="", data=user_input)
+                return self.async_create_entry(title="", data=cleaned_input)
         
         current_config = self.config_entry.data
         current_options = self.config_entry.options
@@ -1566,7 +1584,10 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             else:
                 # Fallback if basic settings missing
                 combined_settings = user_input
-            return self.async_create_entry(title="", data=combined_settings)
+            
+            # Clean up empty string entity IDs to None
+            cleaned_settings = self._clean_entity_ids(combined_settings)
+            return self.async_create_entry(title="", data=cleaned_settings)
             
         return self.async_show_form(
             step_id="advanced",
