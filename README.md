@@ -1,11 +1,11 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.4.2--beta4-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.3--alpha-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
-> 🚀 **v1.4.2-beta4 Released**: Fixed weather strategies checking current conditions correctly. Pre-cooling now works BEFORE hot/sunny periods, not DURING.
+> 🚀 **v1.5.3-alpha Released**: Thermal model enhancements with 75-probe history for seasonal adaptation, exponential decay weighting, and enhanced confidence calculation. [Download pre-release](https://github.com/VectorBarks/smart-climate/releases/tag/v1.5.3-alpha)
 
 Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
 
@@ -129,6 +129,21 @@ Smart Climate Control creates a virtual climate entity that:
 - Save diagnostics and monitoring in Home Assistant UI
 - Backward-compatible persistence schema
 - Comprehensive debug logging for troubleshooting
+
+## Latest Release: v1.5.3-alpha
+
+**🚀 Pre-Release Available**: [v1.5.3-alpha](https://github.com/VectorBarks/smart-climate/releases/tag/v1.5.3-alpha) - Thermal Model Enhancements
+
+### What's New in v1.5.3-alpha
+- **75-Probe History**: Expanded from 5 to 75 samples for seasonal adaptation (1.5-2.5 months of data)
+- **Exponential Decay Weighting**: Time-based probe weighting (0.98^days) with 34.3-day half-life
+- **Enhanced Confidence**: Statistical threshold-based calculation enabling 95%+ confidence
+- **Full Backward Compatibility**: Automatic migration preserves existing probe data
+
+### Performance Validated
+- 75-probe operations: <1ms
+- Memory usage: <50KB
+- Serialization: <50ms
 
 ## Quick Start
 
