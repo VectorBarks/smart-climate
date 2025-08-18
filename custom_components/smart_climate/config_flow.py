@@ -839,47 +839,59 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             # ProbeScheduler Configuration
             vol.Optional(
                 "probe_scheduler_enabled",
-                default=current_options.get("probe_scheduler_enabled", True)
+                description={"suggested_value": current_options.get("probe_scheduler_enabled", True)}
             ): bool,
             vol.Optional(
-                CONF_LEARNING_PROFILE, 
-                default=current_options.get(CONF_LEARNING_PROFILE, DEFAULT_LEARNING_PROFILE)
+                CONF_LEARNING_PROFILE,
+                description={"suggested_value": current_options.get(CONF_LEARNING_PROFILE, DEFAULT_LEARNING_PROFILE)}
             ): vol.In(["comfort", "balanced", "aggressive", "custom"]),
             vol.Optional(
                 CONF_PRESENCE_ENTITY_ID,
-                default=current_options.get(CONF_PRESENCE_ENTITY_ID, "")  # Empty string default
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain=["binary_sensor", "person", "device_tracker"],
-                    multiple=False
-                )
+                description={"suggested_value": current_options.get(CONF_PRESENCE_ENTITY_ID)}
+            ): vol.Any(
+                "",  # Allow empty string from UI
+                selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain=["binary_sensor", "person", "device_tracker"],
+                        multiple=False
+                    )
+                ),
             ),
             vol.Optional(
                 CONF_WEATHER_ENTITY_ID,
-                default=current_options.get(CONF_WEATHER_ENTITY_ID, "weather.home")
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="weather",
-                    multiple=False
-                )
+                description={"suggested_value": current_options.get(CONF_WEATHER_ENTITY_ID, "weather.home")}
+            ): vol.Any(
+                "",  # Allow empty string from UI
+                selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="weather",
+                        multiple=False
+                    )
+                ),
             ),
             vol.Optional(
                 CONF_CALENDAR_ENTITY_ID,
-                default=current_options.get(CONF_CALENDAR_ENTITY_ID, "")  # Empty string default
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="calendar",
-                    multiple=False
-                )
+                description={"suggested_value": current_options.get(CONF_CALENDAR_ENTITY_ID)}
+            ): vol.Any(
+                "",  # Allow empty string from UI - THIS IS THE KEY FIX
+                selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="calendar",
+                        multiple=False
+                    )
+                ),
             ),
             vol.Optional(
                 CONF_MANUAL_OVERRIDE_ENTITY_ID,
-                default=current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID, "")  # Empty string default
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="input_boolean",
-                    multiple=False
-                )
+                description={"suggested_value": current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID)}
+            ): vol.Any(
+                "",  # Allow empty string from UI - THIS IS THE KEY FIX
+                selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="input_boolean",
+                        multiple=False
+                    )
+                ),
             ),
         })
 
