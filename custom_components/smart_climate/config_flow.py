@@ -144,14 +144,12 @@ from .const import (
     CONF_MANUAL_OVERRIDE_ENTITY_ID,
     CONF_MIN_PROBE_INTERVAL,
     CONF_MAX_PROBE_INTERVAL,
-    CONF_QUIET_HOURS_START,
-    CONF_QUIET_HOURS_END,
+
     CONF_INFO_GAIN_THRESHOLD,
     DEFAULT_LEARNING_PROFILE,
     DEFAULT_MIN_PROBE_INTERVAL,
     DEFAULT_MAX_PROBE_INTERVAL,
-    DEFAULT_QUIET_HOURS_START,
-    DEFAULT_QUIET_HOURS_END,
+
     DEFAULT_INFO_GAIN_THRESHOLD,
     # Entity availability waiting imports
     CONF_STARTUP_TIMEOUT,
@@ -890,7 +888,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ): vol.In(["comfort", "balanced", "aggressive", "custom"]),
             vol.Optional(
                 CONF_PRESENCE_ENTITY_ID,
-                default=current_options.get(CONF_PRESENCE_ENTITY_ID, "")
+                default=current_options.get(CONF_PRESENCE_ENTITY_ID, None) or ""
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=presence_options,
@@ -899,7 +897,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_WEATHER_ENTITY_ID,
-                default=current_options.get(CONF_WEATHER_ENTITY_ID, "weather.home")
+                default=current_options.get(CONF_WEATHER_ENTITY_ID, None) or "weather.home"
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=weather_options,
@@ -908,7 +906,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_CALENDAR_ENTITY_ID,
-                default=current_options.get(CONF_CALENDAR_ENTITY_ID, "")
+                default=current_options.get(CONF_CALENDAR_ENTITY_ID, None) or ""
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=calendar_options,
@@ -917,7 +915,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_MANUAL_OVERRIDE_ENTITY_ID,
-                default=current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID, "")
+                default=current_options.get(CONF_MANUAL_OVERRIDE_ENTITY_ID, None) or ""
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=override_options,
@@ -931,6 +929,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         cleaned = user_input.copy()
         optional_entities = [
             CONF_PRESENCE_ENTITY_ID,
+            CONF_WEATHER_ENTITY_ID,
             CONF_CALENDAR_ENTITY_ID, 
             CONF_MANUAL_OVERRIDE_ENTITY_ID
         ]
@@ -954,14 +953,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 CONF_MAX_PROBE_INTERVAL, 
                 default=current_options.get(CONF_MAX_PROBE_INTERVAL, DEFAULT_MAX_PROBE_INTERVAL)
             ): vol.All(vol.Coerce(int), vol.Range(min=3, max=14)),
-            vol.Optional(
-                CONF_QUIET_HOURS_START,
-                default=current_options.get(CONF_QUIET_HOURS_START, DEFAULT_QUIET_HOURS_START)
-            ): str,
-            vol.Optional(
-                CONF_QUIET_HOURS_END,
-                default=current_options.get(CONF_QUIET_HOURS_END, DEFAULT_QUIET_HOURS_END)  
-            ): str,
+
             vol.Optional(
                 CONF_INFO_GAIN_THRESHOLD,
                 default=current_options.get(CONF_INFO_GAIN_THRESHOLD, DEFAULT_INFO_GAIN_THRESHOLD)
@@ -983,10 +975,10 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             "presence_sensor_info": (
                 "Optional: Presence sensor for away detection. "
-                "Without this, system uses conservative quiet hours only."
+                "Without this, system uses maximum interval forcing only."
             ),
             "fallback_behavior": (
-                "System works without presence sensor using quiet hours + maximum interval forcing. "
+                "System works without presence sensor using maximum interval forcing only. "
                 "Probes only when absolutely necessary (every 7 days max)."
             )
         }

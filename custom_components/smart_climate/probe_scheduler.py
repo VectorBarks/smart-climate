@@ -18,8 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 # Configuration constants from architecture specification
 MIN_PROBE_INTERVAL = timedelta(hours=12)  # System recovery time
 MAX_PROBE_INTERVAL = timedelta(days=7)    # Force probe if exceeded
-QUIET_HOURS_START = time(22, 0)           # No probes during sleep
-QUIET_HOURS_END = time(7, 0)              # Resume after wake time
+
 OUTDOOR_TEMP_BINS = [-10, 0, 10, 20, 30]  # Adaptive based on climate
 
 
@@ -28,8 +27,7 @@ class AdvancedSettings:
     """Advanced configuration settings for probe scheduling."""
     min_probe_interval_hours: int = 12    # 6-24 hours range
     max_probe_interval_days: int = 7      # 3-14 days range
-    quiet_hours_start: time = time(22, 0) # Customizable start time
-    quiet_hours_end: time = time(7, 0)    # Customizable end time  
+
     information_gain_threshold: float = 0.5  # 0.1-0.9 range
     temperature_bins: List[int] = field(default_factory=lambda: [-10, 0, 10, 20, 30])
     presence_override_enabled: bool = False  # Ignore presence detection
@@ -63,10 +61,7 @@ def validate_advanced_settings(settings: AdvancedSettings) -> Tuple[bool, List[s
     if min_hours >= max_hours:
         errors.append("max_probe_interval must be greater than min_probe_interval")
     
-    # Quiet hours validation
-    if settings.quiet_hours_start == settings.quiet_hours_end:
-        errors.append("quiet_hours_start and quiet_hours_end must be different")
-    
+
     # Temperature bins validation
     if settings.temperature_bins != sorted(settings.temperature_bins):
         errors.append("temperature_bins must be sorted in ascending order")
@@ -96,7 +91,7 @@ class ProfileConfig:
     max_probe_interval_days: int
     presence_required: bool
     information_gain_threshold: float
-    quiet_hours_enabled: bool
+
     outdoor_temp_bins: List[int]
 
 
@@ -148,30 +143,7 @@ class ProbeScheduler:
         self._logger.debug("ProbeScheduler initialized with presence=%s, weather=%s, calendar=%s, manual=%s, profile=%s",
                           presence_entity_id, weather_entity_id, calendar_entity_id, manual_override_entity_id, learning_profile.value)
         
-    def _is_quiet_hours(self, current_time: Optional[datetime] = None) -> bool:
-        """Check if current time is within quiet hours.
-        
-        Quiet hours are defined as 22:00-07:00 to avoid sleep disruption.
-        Handles overnight span correctly (22:00 to 07:00 next day).
-        
-        Args:
-            current_time: Optional datetime to check. If None, uses datetime.now()
-            
-        Returns:
-            True if within quiet hours (22:00-07:00), False otherwise
-        """
-        if current_time is None:
-            current_time = datetime.now()
-        
-        # Get just the time component for comparison
-        check_time = current_time.time()
-        
-        # Handle overnight quiet hours: 22:00 to 07:00 next day
-        # This means: time >= 22:00 OR time < 07:00
-        if QUIET_HOURS_START > QUIET_HOURS_END:  # Overnight span
-            return check_time >= QUIET_HOURS_START or check_time < QUIET_HOURS_END
-        else:  # Same-day span (not currently used, but robust)
-            return QUIET_HOURS_START <= check_time < QUIET_HOURS_END
+
 
     def _check_presence_entity(self) -> Optional[bool]:
         """Check presence entity state if configured.
@@ -242,10 +214,9 @@ class ProbeScheduler:
         Implements decision tree from architecture specification with profile-aware logic:
         1. Force probe if maximum interval exceeded
         2. Block if minimum interval not met
-        3. Block during quiet hours (if enabled in profile)
-        4. Block if not opportune time (only if presence_required in profile)
-        5. Block if low information gain
-        6. Approve if all conditions favorable
+        3. Block if not opportune time (only if presence_required in profile)
+        4. Block if low information gain
+        5. Approve if all conditions favorable
         
         Returns:
             True if conditions are ideal for thermal probing
@@ -261,19 +232,15 @@ class ProbeScheduler:
                 self._logger.debug("Probe blocked: minimum interval not met")
                 return False
             
-            # Step 3: Block during quiet hours (if enabled in profile)
-            if self._profile_config.quiet_hours_enabled and self._is_quiet_hours():
-                self._logger.debug("Probe blocked: quiet hours (profile: %s)", self._learning_profile.value)
-                return False
             
-            # Step 4: Block if not opportune time (only if presence required in profile)
+            # Step 3: Block if not opportune time (only if presence required in profile)
             if self._profile_config.presence_required and not self._is_opportune_time():
                 self._logger.debug("Probe blocked: user present (profile: %s requires presence)", self._learning_profile.value)
                 return False
             elif not self._profile_config.presence_required:
                 self._logger.debug("Presence check skipped (profile: %s allows probing regardless)", self._learning_profile.value)
             
-            # Step 5: Block if low information gain
+            # Step 4: Block if low information gain
             # Get current outdoor temperature for information gain analysis
             current_outdoor_temp = self._get_current_outdoor_temperature()
             probe_history = self._get_probe_history()
@@ -682,10 +649,7 @@ class ProbeScheduler:
         if self._check_maximum_interval_exceeded():
             return True
             
-        # Block during quiet hours
-        if self._is_quiet_hours():
-            return False
-            
+        
         # Otherwise very conservative - no probe unless forced
         return False
 
@@ -1123,7 +1087,7 @@ class ProbeScheduler:
                 max_probe_interval_days=7,
                 presence_required=True,       # Must be away
                 information_gain_threshold=0.6,  # Higher threshold
-                quiet_hours_enabled=True,
+
                 outdoor_temp_bins=[-10, 0, 10, 20, 30]  # Standard
             )
         elif profile == LearningProfile.BALANCED:
@@ -1132,7 +1096,7 @@ class ProbeScheduler:
                 max_probe_interval_days=7,
                 presence_required=True,       # Opportunistic
                 information_gain_threshold=0.5,  # Standard
-                quiet_hours_enabled=True,
+
                 outdoor_temp_bins=[-10, 0, 10, 20, 30]  # Standard
             )
         elif profile == LearningProfile.AGGRESSIVE:
@@ -1141,7 +1105,6 @@ class ProbeScheduler:
                 max_probe_interval_days=3,    # Force more frequently
                 presence_required=False,      # May ignore presence
                 information_gain_threshold=0.3,  # Lower threshold
-                quiet_hours_enabled=True,     # Respect sleep
                 outdoor_temp_bins=[-15, -5, 5, 15, 25, 35]  # Finer resolution
             )
         elif profile == LearningProfile.CUSTOM:
@@ -1151,7 +1114,7 @@ class ProbeScheduler:
                 max_probe_interval_days=7,
                 presence_required=True,
                 information_gain_threshold=0.5,
-                quiet_hours_enabled=True,
+
                 outdoor_temp_bins=[-10, 0, 10, 20, 30]
             )
         else:
@@ -1188,8 +1151,7 @@ class ProbeScheduler:
         # Update internal configuration from advanced settings
         self._min_probe_interval = timedelta(hours=settings.min_probe_interval_hours)
         self._max_probe_interval = timedelta(days=settings.max_probe_interval_days)
-        self._quiet_hours_start = settings.quiet_hours_start
-        self._quiet_hours_end = settings.quiet_hours_end
+
         self._information_gain_threshold = settings.information_gain_threshold
         self._temperature_bins = settings.temperature_bins.copy()  # Copy to avoid shared references
         self._presence_override_enabled = settings.presence_override_enabled

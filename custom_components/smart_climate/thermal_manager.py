@@ -430,8 +430,6 @@ class ThermalManager:
                 config["advanced_settings"] = {
                     "min_probe_interval_hours": getattr(advanced_config, 'min_probe_interval_hours', 12),
                     "max_probe_interval_days": getattr(advanced_config, 'max_probe_interval_days', 7),
-                    "quiet_hours_start": getattr(advanced_config, 'quiet_hours_start', time(22, 0)).isoformat(),
-                    "quiet_hours_end": getattr(advanced_config, 'quiet_hours_end', time(7, 0)).isoformat(),
                     "information_gain_threshold": getattr(advanced_config, 'information_gain_threshold', 0.5),
                     "temperature_bins": getattr(advanced_config, 'temperature_bins', [-10, 0, 10, 20, 30]),
                     "presence_override_enabled": getattr(advanced_config, 'presence_override_enabled', False),
@@ -596,8 +594,6 @@ class ThermalManager:
                         settings = AdvancedSettings(
                             min_probe_interval_hours=int(settings_data.get("min_probe_interval_hours", 12)),
                             max_probe_interval_days=int(settings_data.get("max_probe_interval_days", 7)),
-                            quiet_hours_start=parse_time(settings_data.get("quiet_hours_start"), time(22, 0)),
-                            quiet_hours_end=parse_time(settings_data.get("quiet_hours_end"), time(7, 0)),
                             information_gain_threshold=float(settings_data.get("information_gain_threshold", 0.5)),
                             temperature_bins=list(settings_data.get("temperature_bins", [-10, 0, 10, 20, 30])),
                             presence_override_enabled=bool(settings_data.get("presence_override_enabled", False)),

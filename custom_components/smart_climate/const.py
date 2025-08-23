@@ -108,8 +108,7 @@ CONF_MANUAL_OVERRIDE_ENTITY_ID = "manual_override_entity_id"
 # Advanced Probe Scheduler settings
 CONF_MIN_PROBE_INTERVAL = "min_probe_interval_hours"
 CONF_MAX_PROBE_INTERVAL = "max_probe_interval_days"
-CONF_QUIET_HOURS_START = "quiet_hours_start"
-CONF_QUIET_HOURS_END = "quiet_hours_end"
+
 CONF_INFO_GAIN_THRESHOLD = "information_gain_threshold"
 
 # Default values
@@ -224,8 +223,7 @@ DEFAULT_HUMIDITY_LOG_LEVEL = "DEBUG"  # Default log level
 DEFAULT_LEARNING_PROFILE = "balanced"
 DEFAULT_MIN_PROBE_INTERVAL = 12  # hours
 DEFAULT_MAX_PROBE_INTERVAL = 7   # days
-DEFAULT_QUIET_HOURS_START = "22:00"
-DEFAULT_QUIET_HOURS_END = "07:00"
+
 DEFAULT_INFO_GAIN_THRESHOLD = 0.5
 
 # Preference level options

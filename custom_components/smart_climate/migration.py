@@ -16,15 +16,13 @@ from .const import (
     CONF_MANUAL_OVERRIDE_ENTITY_ID,
     CONF_MIN_PROBE_INTERVAL,  # This is "min_probe_interval_hours"
     CONF_MAX_PROBE_INTERVAL,  # This is "max_probe_interval_days" 
-    CONF_QUIET_HOURS_START,
-    CONF_QUIET_HOURS_END,
+
     CONF_INFO_GAIN_THRESHOLD,  # This is "information_gain_threshold"
     # Default values
     DEFAULT_LEARNING_PROFILE,
     DEFAULT_MIN_PROBE_INTERVAL,
     DEFAULT_MAX_PROBE_INTERVAL,
-    DEFAULT_QUIET_HOURS_START,
-    DEFAULT_QUIET_HOURS_END,
+
     DEFAULT_INFO_GAIN_THRESHOLD,
 )
 
@@ -213,8 +211,8 @@ class MigrationManager:
         # Advanced settings - conservative for existing users
         migrated_data[CONF_MIN_PROBE_INTERVAL] = 24  # Less disruptive than 12h default
         migrated_data[CONF_MAX_PROBE_INTERVAL] = 7     # Standard maximum
-        migrated_data[CONF_QUIET_HOURS_START] = "22:00"     # Conservative quiet hours
-        migrated_data[CONF_QUIET_HOURS_END] = "07:00"
+
+
         migrated_data[CONF_INFO_GAIN_THRESHOLD] = 0.6  # Higher threshold for existing users
         
         # Add migration metadata
@@ -331,8 +329,7 @@ def create_default_v153_config(base_config: Dict[str, Any]) -> Dict[str, Any]:
     config[CONF_MANUAL_OVERRIDE_ENTITY_ID] = None
     config[CONF_MIN_PROBE_INTERVAL] = DEFAULT_MIN_PROBE_INTERVAL  # 12h standard default
     config[CONF_MAX_PROBE_INTERVAL] = DEFAULT_MAX_PROBE_INTERVAL  # 7 days
-    config[CONF_QUIET_HOURS_START] = DEFAULT_QUIET_HOURS_START
-    config[CONF_QUIET_HOURS_END] = DEFAULT_QUIET_HOURS_END
+
     config[CONF_INFO_GAIN_THRESHOLD] = DEFAULT_INFO_GAIN_THRESHOLD  # 0.5 standard
     
     return config

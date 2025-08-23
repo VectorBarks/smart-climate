@@ -293,9 +293,7 @@ class SmartClimateStatusSensor(SensorEntity):
                     return "Ready"
             
             # Determine the blocking condition
-            if probe_scheduler._is_quiet_hours():
-                return "Blocked - Quiet Hours"
-            elif probe_scheduler._check_presence_entity():
+            if probe_scheduler._check_presence_entity():
                 return "Blocked - User Present"
             elif not probe_scheduler._enforce_minimum_interval():
                 return "Blocked - Min Interval"
@@ -340,14 +338,6 @@ class SmartClimateStatusSensor(SensorEntity):
                     # Minimum interval is 12 hours
                     next_time = last_probe_time + timedelta(hours=12)
                     return next_time.isoformat()
-            
-            # Check quiet hours constraint
-            if probe_scheduler._is_quiet_hours():
-                # Next eligible is 7:00 AM
-                next_day = now.replace(hour=7, minute=0, second=0, microsecond=0)
-                if next_day <= now:
-                    next_day += timedelta(days=1)
-                return next_day.isoformat()
             
             # For other blocks, assume eligible in near future
             return (now + timedelta(hours=1)).isoformat()
