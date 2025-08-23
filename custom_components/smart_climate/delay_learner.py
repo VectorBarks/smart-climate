@@ -428,7 +428,7 @@ class DelayLearner:
                 )
                 
                 # Save the learned delay with EMA smoothing
-                self._hass.async_run_coroutine_threadsafe(self.async_save(final_delay), self._hass.loop)
+                asyncio.run_coroutine_threadsafe(self.async_save(final_delay), self._hass.loop)
                 
                 # Stop the learning cycle
                 self.stop_learning_cycle()
@@ -452,7 +452,7 @@ class DelayLearner:
                         )
                         
                         # Save the learned delay with EMA smoothing
-                        self._hass.async_run_coroutine_threadsafe(self.async_save(final_delay), self._hass.loop)
+                        asyncio.run_coroutine_threadsafe(self.async_save(final_delay), self._hass.loop)
                         
                         # Stop the learning cycle
                         self.stop_learning_cycle()
@@ -466,5 +466,5 @@ class DelayLearner:
                         self._entity_id, e
                     )
                     default_delay = 60  # 60 seconds as fallback
-                    self._hass.async_run_coroutine_threadsafe(self.async_save(default_delay), self._hass.loop)
+                    asyncio.run_coroutine_threadsafe(self.async_save(default_delay), self._hass.loop)
                     self.stop_learning_cycle()
