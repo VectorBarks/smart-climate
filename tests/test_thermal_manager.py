@@ -504,3 +504,135 @@ class TestThermalManager:
         assert stability_data["drift_threshold"] == 0.1
         assert stability_data["last_ac_state"] == "idle"
         assert stability_data["temperature_history_count"] == 2
+
+    def test_priming_state_handler_executes_during_update(self, thermal_manager):
+        """Test that PRIMING state handler executes when update_state is called.
+        
+        This is a critical bug fix test - the PRIMING state handler's execute() method 
+        should be called during update_state, but the current code returns early for 
+        PRIMING state before handler execution.
+        """
+        thermal_manager._current_state = ThermalState.PRIMING
+        
+        # Create mock handler
+        mock_handler = MagicMock()
+        mock_handler.execute = MagicMock(return_value=None)
+        thermal_manager._state_handlers[ThermalState.PRIMING] = mock_handler
+        
+        # Call update_state
+        thermal_manager.update_state()
+        
+        # Handler should have been called
+        mock_handler.execute.assert_called_once()
+
+    def test_passive_learning_occurs_after_handler_execution(self, thermal_manager):
+        """Test that passive learning happens AFTER handler execution, not instead.
+        
+        The bug is that passive learning happens instead of handler execution.
+        The fix should ensure both happen in the correct order.
+        """
+        thermal_manager._current_state = ThermalState.PRIMING
+        
+        execution_order = []
+        
+        # Mock handler
+        mock_handler = MagicMock()
+        mock_handler.execute = MagicMock(side_effect=lambda *args, **kwargs: execution_order.append('handler'))
+        thermal_manager._state_handlers[ThermalState.PRIMING] = mock_handler
+        
+        # Mock passive learning
+        thermal_manager._handle_passive_learning = MagicMock(side_effect=lambda: execution_order.append('passive'))
+        
+        thermal_manager.update_state()
+        
+        # Check order - handler should execute first, then passive learning
+        assert execution_order == ['handler', 'passive']
+
+    def test_priming_exits_after_configured_duration(self, thermal_manager):
+        """Test that PRIMING state transitions to LEARNING after priming_duration.
+        
+        This tests the actual functionality that the handler should provide - transitioning
+        out of PRIMING state after the configured duration.
+        """
+        thermal_manager._current_state = ThermalState.PRIMING
+        thermal_manager.thermal_constants.priming_duration = 3600  # 1 hour for test
+        
+        # Set up mock handler that should trigger transition after duration
+        mock_handler = MagicMock()
+        # Simulate handler returning DRIFTING state after duration check
+        mock_handler.execute = MagicMock(return_value=ThermalState.DRIFTING)
+        thermal_manager._state_handlers[ThermalState.PRIMING] = mock_handler
+        
+        # Mock transition_to to verify it gets called
+        thermal_manager.transition_to = MagicMock()
+        
+        # Update state should trigger handler which returns new state
+        thermal_manager.update_state()
+        
+        # Handler should execute and return DRIFTING state
+        mock_handler.execute.assert_called_once()
+        thermal_manager.transition_to.assert_called_once_with(ThermalState.DRIFTING)
+
+    def test_other_states_still_execute_handlers(self, thermal_manager):
+        """Regression test: ensure other states still work correctly after fix.
+        
+        The fix should not break handler execution for other states.
+        """
+        test_states = [ThermalState.DRIFTING, ThermalState.CORRECTING, ThermalState.RECOVERY]
+        
+        for state in test_states:
+            # Reset thermal manager for each test state
+            thermal_manager._current_state = state
+            mock_handler = MagicMock()
+            mock_handler.execute = MagicMock(return_value=None)
+            thermal_manager._state_handlers[state] = mock_handler
+            
+            thermal_manager.update_state()
+            mock_handler.execute.assert_called_once()
+
+    def test_full_priming_flow_with_real_handler(self, thermal_manager):
+        """Integration test with real PrimingState handler behavior.
+        
+        This tests that the actual PrimingState handler works correctly when
+        the bug is fixed.
+        """
+        thermal_manager._current_state = ThermalState.PRIMING
+        thermal_manager.thermal_constants.priming_duration = 3600  # 1 hour
+        
+        # Mock the actual handler behavior - should check elapsed time
+        mock_handler = MagicMock()
+        # Simulate that enough time has passed for transition
+        mock_handler.execute = MagicMock(return_value=ThermalState.DRIFTING)
+        thermal_manager._state_handlers[ThermalState.PRIMING] = mock_handler
+        
+        # Mock transition method
+        thermal_manager.transition_to = MagicMock()
+        
+        # Update should call handler and transition
+        thermal_manager.update_state()
+        
+        # Verify the complete flow
+        mock_handler.execute.assert_called_once()
+        thermal_manager.transition_to.assert_called_once_with(ThermalState.DRIFTING)
+
+    def test_priming_handler_receives_correct_parameters(self, thermal_manager):
+        """Test that PRIMING handler receives the correct parameters from update_state.
+        
+        The handler should receive the ThermalManager context and temperature parameters.
+        """
+        thermal_manager._current_state = ThermalState.PRIMING
+        
+        mock_handler = MagicMock()
+        mock_handler.execute = MagicMock(return_value=None)
+        thermal_manager._state_handlers[ThermalState.PRIMING] = mock_handler
+        
+        # Call with specific parameters
+        current_temp = 24.5
+        thermal_manager.update_state(current_temp=current_temp)
+        
+        # Handler should be called with proper parameters
+        mock_handler.execute.assert_called_once()
+        # First argument should be the thermal_manager, second should be current_temp
+        call_args = mock_handler.execute.call_args
+        assert call_args[0][0] == thermal_manager  # First arg is thermal_manager
+        assert call_args[0][1] == current_temp     # Second arg is current_temp

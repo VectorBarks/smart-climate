@@ -947,11 +947,6 @@ class ThermalManager:
                           self._current_state.value, 
                           self._last_transition.isoformat() if self._last_transition else "Never")
             
-            # Phase 1: Passive learning during PRIMING (no active probing)
-            if self._current_state == ThermalState.PRIMING:
-                self._handle_passive_learning()
-                return
-            
             # Update stability detector with current conditions
             if hasattr(self, 'stability_detector') and self.stability_detector:
                 ac_state, temperature = self._get_current_conditions()
@@ -959,7 +954,7 @@ class ThermalManager:
                     self.stability_detector.update(ac_state, temperature)
                     _LOGGER.debug("Updated stability detector: ac_state=%s, temp=%.1f°C", ac_state, temperature)
             
-            # Execute current state handler logic
+            # Execute current state handler logic (for ALL states including PRIMING)
             current_handler = self._state_handlers.get(self._current_state)
             handler_next_state = None
             if current_handler:
@@ -991,6 +986,12 @@ class ThermalManager:
                                 self._current_state.value, e)
             else:
                 _LOGGER.warning("No state handler found for state %s", self._current_state.value)
+            
+            # Phase 1: Passive learning during PRIMING (AFTER handler execution)
+            if self._current_state == ThermalState.PRIMING:
+                self._handle_passive_learning()
+            
+
             
             # Phase 2: Opportunistic probing from stable states (only if handler didn't transition)
             if (handler_next_state is None and 
