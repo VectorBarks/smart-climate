@@ -1027,9 +1027,8 @@ class ThermalManager:
         """
         _LOGGER.info("Resetting thermal manager to defaults")
         
-        # Reset state to PRIMING (safest default)
-        self._current_state = ThermalState.PRIMING
-        self._last_transition = datetime.now()
+        # Reset state to PRIMING using proper transition to initialize handler
+        self.transition_to(ThermalState.PRIMING)
         
         # Reset thermal model to defaults
         if hasattr(self._model, '_tau_cooling'):
