@@ -78,11 +78,19 @@ class PrimingState(StateHandler):
         try:
             current_time = datetime.now()
             
-            # Handle missing start time (should be set in on_enter or restored from persistence)
+            # CRITICAL FIX: Robust start time handling to prevent infinite PRIMING
             if self._start_time is None:
-                _LOGGER.warning("Missing start time in PrimingState, initializing to current time")
-                self._start_time = current_time
-                # Also trigger persistence to save this start time
+                # Try to use last_transition timestamp as fallback instead of resetting
+                if hasattr(context, '_last_transition') and context._last_transition:
+                    self._start_time = context._last_transition
+                    _LOGGER.warning("Missing start time in PrimingState, using last_transition: %s", 
+                                  context._last_transition.isoformat())
+                else:
+                    # Absolute last resort - use current time (will restart 24h timer)
+                    self._start_time = current_time
+                    _LOGGER.warning("Missing start time in PrimingState, initializing to current time (24h timer reset)")
+                
+                # Trigger persistence to save the recovered start time
                 if hasattr(context, '_persistence_callback') and context._persistence_callback:
                     try:
                         context._persistence_callback()
@@ -103,6 +111,17 @@ class PrimingState(StateHandler):
             
             priming_duration = context.thermal_constants.priming_duration
             elapsed_hours = elapsed_time / 3600.0
+            
+            # SAFETY EXIT: Force exit after 72 hours to prevent indefinite priming
+            max_priming_duration = priming_duration * 3.0  # 3x normal duration (72 hours default)
+            if elapsed_time >= max_priming_duration:
+                _LOGGER.warning("Maximum priming duration %.1f hours exceeded (%.1f hours elapsed), forcing exit to DRIFTING",
+                              max_priming_duration / 3600.0, elapsed_hours)
+                return ThermalState.DRIFTING
+            
+            # Enhanced debug logging to track priming lifecycle
+            _LOGGER.debug("Priming state execution: start_time=%s, elapsed=%.1f hours, phase=%s", 
+                         self._start_time.isoformat(), elapsed_hours, self._current_phase)
             
             # Collect temperature history continuously
             if current_temp is not None:
@@ -439,7 +458,14 @@ class PrimingState(StateHandler):
         Args:
             context: ThermalManager instance
         """
-        self._start_time = datetime.now()
+        # CRITICAL FIX: Use last_transition if available for consistent timing
+        if hasattr(context, '_last_transition') and context._last_transition:
+            self._start_time = context._last_transition
+            _LOGGER.debug("Setting priming start time to last_transition: %s", context._last_transition.isoformat())
+        else:
+            self._start_time = datetime.now()
+            _LOGGER.debug("Setting priming start time to current time: %s", self._start_time.isoformat())
+        
         self._current_phase = 'passive'  # Always start in passive phase
         self._controlled_drift_state = 'inactive'
         self._controlled_drift_attempted = False
@@ -455,7 +481,8 @@ class PrimingState(StateHandler):
         except (AttributeError, TypeError):
             pass
         
-        _LOGGER.info("Entering PRIMING state - enhanced two-phase learning for %.1f hours", duration_hours)
+        _LOGGER.info("Entering PRIMING state - enhanced two-phase learning for %.1f hours (start: %s)", 
+                   duration_hours, self._start_time.isoformat())
 
     def on_exit(self, context: "ThermalManager") -> None:
         """Called when exiting PRIMING state.
