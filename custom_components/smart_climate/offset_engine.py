@@ -1132,18 +1132,18 @@ class OffsetEngine:
             
             # Check for transitions if we have a previous state
             if self._last_power_state is not None and self._last_power_state != current_power_state:
-                # Detect transitions from idle/low to moderate/high (AC starting)
-                if (self._last_power_state in ("idle", "low") and 
-                    current_power_state in ("moderate", "high")):
+                # Detect AC starting: any transition from idle to a higher power state
+                if (self._last_power_state == "idle" and 
+                    current_power_state in ("low", "moderate", "high")):
                     self._hysteresis_learner.record_transition('start', input_data.room_temp)
                     _LOGGER.debug(
                         "Hysteresis transition detected: %s -> %s (start at %.1f°C)",
                         self._last_power_state, current_power_state, input_data.room_temp
                     )
                 
-                # Detect transitions from moderate/high to idle/low (AC stopping)
-                elif (self._last_power_state in ("moderate", "high") and 
-                      current_power_state in ("idle", "low")):
+                # Detect AC stopping: any transition to idle from a higher power state
+                elif (self._last_power_state in ("low", "moderate", "high") and 
+                      current_power_state == "idle"):
                     self._hysteresis_learner.record_transition('stop', input_data.room_temp)
                     _LOGGER.debug(
                         "Hysteresis transition detected: %s -> %s (stop at %.1f°C)",

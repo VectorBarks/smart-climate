@@ -3262,6 +3262,15 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
         # Wire the forecast engine to the offset engine for dashboard data
         offset_engine.set_forecast_engine(forecast_engine)
         
+        # Wire the seasonal learner from offset engine to coordinator for cycle detection
+        if hasattr(offset_engine, '_seasonal_learner') and offset_engine._seasonal_learner:
+            coordinator.set_seasonal_learner(offset_engine._seasonal_learner)
+            _LOGGER.debug("Connected seasonal learner to coordinator for cycle detection")
+            
+            # Initialize seasonal learning system (historical migration and periodic saving)
+            await coordinator.async_initialize_seasonal_learning()
+            _LOGGER.debug("Initialized seasonal learning system for coordinator")
+        
         # Create entity with all dependencies
         _LOGGER.debug("Creating SmartClimateEntity with wrapped entity: %s", config["climate_entity"])
         
