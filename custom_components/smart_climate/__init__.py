@@ -815,6 +815,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def handle_generate_dashboard(call: ServiceCall) -> None:
     """Handle the generate_dashboard service call."""
+    from .dashboard.generator import DashboardGenerator
+    
     hass = call.hass
     climate_entity_id = call.data.get("climate_entity_id")
     _LOGGER.debug("Generating dashboard for entity: %s", climate_entity_id)
@@ -837,144 +839,23 @@ async def handle_generate_dashboard(call: ServiceCall) -> None:
     state = hass.states.get(climate_entity_id)
     friendly_name = state.attributes.get("friendly_name", climate_entity_id) if state else climate_entity_id
     
-    # Extract entity ID without domain
+    # Extract entity ID without domain for notification ID
     entity_id_without_domain = climate_entity_id.split(".", 1)[1]
     
-    # Find the config entry for this climate entity
-    config_entry_id = entity_entry.config_entry_id
-    if not config_entry_id:
-        raise ServiceValidationError(
-            f"No config entry found for {climate_entity_id}"
-        )
-    
-    # Get the config entry to access user-configured sensor entity IDs
-    config_entry = hass.config_entries.async_get_entry(config_entry_id)
-    if not config_entry:
-        raise ServiceValidationError(
-            f"Config entry {config_entry_id} not found"
-        )
-    
-    # Extract user's configured sensor entity IDs from merged config
-    dashboard_config = {**config_entry.data, **config_entry.options}
-    user_room_sensor = dashboard_config.get("room_sensor") or "sensor.unknown"
-    user_outdoor_sensor = dashboard_config.get("outdoor_sensor") or "sensor.unknown"
-    user_power_sensor = dashboard_config.get("power_sensor") or "sensor.unknown"
-    
-    _LOGGER.debug("User configured sensors - room: %s, outdoor: %s, power: %s", 
-                 user_room_sensor, user_outdoor_sensor, user_power_sensor)
-    # Dynamically discover all related entities for this Smart Climate instance
-    # Pattern 1: Look for entities with matching config_entry_id
-    all_entities = entity_registry.entities
-    related_entities = {
-        "sensors": {},
-        "switch": None,
-        "button": None
-    }
-    
-    # Sensor types we're looking for
-    sensor_types = ["offset_current", "learning_progress", "accuracy_current", 
-                   "calibration_status", "hysteresis_state"]
-    
-    _LOGGER.debug("Looking for entities with config_entry_id: %s", config_entry_id)
-    
-    for entity_id, entity in all_entities.items():
-        if entity.config_entry_id == config_entry_id:
-            _LOGGER.debug("Found entity %s: domain=%s, platform=%s, unique_id=%s", 
-                        entity.entity_id, entity.domain, entity.platform, entity.unique_id)
-            # Check if it's a sensor
-            if entity.domain == "sensor" and entity.platform == DOMAIN:
-                # Try to identify sensor type from unique_id
-                for sensor_type in sensor_types:
-                    if sensor_type in entity.unique_id:
-                        related_entities["sensors"][sensor_type] = entity.entity_id
-                        _LOGGER.debug("Identified %s sensor: %s", sensor_type, entity.entity_id)
-                        break
-            # Check if it's the learning switch
-            elif entity.domain == "switch" and entity.platform == DOMAIN:
-                related_entities["switch"] = entity.entity_id
-                _LOGGER.debug("Found learning switch: %s", entity.entity_id)
-            # Check if it's the reset button
-            elif entity.domain == "button" and entity.platform == DOMAIN:
-                related_entities["button"] = entity.entity_id
-                _LOGGER.debug("Found reset button: %s", entity.entity_id)
-    
-    # Validate we found all required entities
-    missing_sensors = [st for st in sensor_types if st not in related_entities["sensors"]]
-    if missing_sensors:
-        _LOGGER.warning("Missing sensors: %s", missing_sensors)
-    
-    if not related_entities["switch"]:
-        _LOGGER.warning("Learning switch not found")
-    
-    if not related_entities["button"]:
-        _LOGGER.warning("Reset button not found")
-    
-    # Read dashboard template
-    template_path = os.path.join(
-        os.path.dirname(__file__),
-        "dashboard",
-        "dashboard_generic.yaml"
-    )
-    
-    if not os.path.exists(template_path):
-        raise ServiceValidationError(
-            "Dashboard template file not found"
-        )
+    _LOGGER.debug("Generating Advanced Analytics Dashboard for %s (%s)", climate_entity_id, friendly_name)
     
     try:
-        _LOGGER.debug("Reading dashboard template from %s", template_path)
-        template_content = await hass.async_add_executor_job(
-            _read_file_sync, template_path
-        )
-        _LOGGER.debug("Dashboard template read successfully (%d characters)", len(template_content))
+        # Use the DashboardGenerator to create the Advanced Analytics Dashboard
+        generator = DashboardGenerator()
+        dashboard_yaml = generator.generate_dashboard(climate_entity_id, friendly_name)
+        
+        _LOGGER.info("Successfully generated Advanced Analytics Dashboard (%d characters)", len(dashboard_yaml))
+        
     except Exception as exc:
-        _LOGGER.error("Failed to read dashboard template: %s", exc)
+        _LOGGER.error("Failed to generate Advanced Analytics Dashboard for %s: %s", climate_entity_id, exc)
         raise ServiceValidationError(
-            f"Failed to read dashboard template: {exc}"
+            f"Failed to generate dashboard: {exc}"
         ) from exc
-    
-    # Replace placeholders with actual entity IDs
-    _LOGGER.debug("Replacing template placeholders for %s", climate_entity_id)
-    dashboard_yaml = template_content.replace(
-        "REPLACE_ME_CLIMATE", climate_entity_id
-    ).replace(
-        "REPLACE_ME_NAME", friendly_name
-    ).replace(
-        "REPLACE_ME_SENSOR_OFFSET", related_entities["sensors"].get("offset_current", "sensor.unknown")
-    ).replace(
-        "REPLACE_ME_SENSOR_PROGRESS", related_entities["sensors"].get("learning_progress", "sensor.unknown")
-    ).replace(
-        "REPLACE_ME_SENSOR_ACCURACY", related_entities["sensors"].get("accuracy_current", "sensor.unknown")
-    ).replace(
-        "REPLACE_ME_SENSOR_CALIBRATION", related_entities["sensors"].get("calibration_status", "sensor.unknown")
-    ).replace(
-        "REPLACE_ME_SENSOR_HYSTERESIS", related_entities["sensors"].get("hysteresis_state", "sensor.unknown")
-    ).replace(
-        "REPLACE_ME_SWITCH", related_entities["switch"] or "switch.unknown"
-    ).replace(
-        "REPLACE_ME_BUTTON", related_entities["button"] or "button.unknown"
-    ).replace(
-        "REPLACE_ME_ROOM_SENSOR", user_room_sensor
-    ).replace(
-        "REPLACE_ME_OUTDOOR_SENSOR", user_outdoor_sensor
-    ).replace(
-        "REPLACE_ME_POWER_SENSOR", user_power_sensor
-    )
-    _LOGGER.debug("Template processing complete, dashboard YAML generated (%d characters)", len(dashboard_yaml))
-    _LOGGER.debug("Replaced sensor placeholders - room: %s, outdoor: %s, power: %s", 
-                 user_room_sensor, user_outdoor_sensor, user_power_sensor)
-    
-    # CRITICAL BUG FIX: Validate that ALL placeholders were replaced
-    import re
-    remaining_placeholders = re.findall(r'REPLACE_ME_\w+', dashboard_yaml)
-    if remaining_placeholders:
-        _LOGGER.error("Dashboard generation failed: Unreplaced placeholders found: %s", remaining_placeholders)
-        raise ServiceValidationError(
-            f"Dashboard generation failed: The following placeholders could not be replaced: {', '.join(remaining_placeholders)}. "
-            f"This indicates missing entities or incomplete placeholder replacement logic."
-        )
-    
-    _LOGGER.debug("Placeholder validation successful: All placeholders replaced")
     
     # Create notification with instructions
     notification_message = (
@@ -990,11 +871,11 @@ async def handle_generate_dashboard(call: ServiceCall) -> None:
     )
     
     # Create notification with dashboard YAML
-    _LOGGER.debug("Creating notification for dashboard generation")
+    _LOGGER.debug("Creating notification for Advanced Analytics Dashboard")
     try:
         async_create_notification(
             hass,
-            title=f"Smart Climate Dashboard - {friendly_name}",
+            title=f"Smart Climate Advanced Analytics Dashboard - {friendly_name}",
             message=notification_message,
             notification_id=f"smart_climate_dashboard_{entity_id_without_domain}",
         )
@@ -1006,7 +887,7 @@ async def handle_generate_dashboard(call: ServiceCall) -> None:
         ) from exc
     
     _LOGGER.info(
-        "Dashboard generated for %s and sent via notification",
+        "Advanced Analytics Dashboard generated for %s and sent via notification",
         climate_entity_id
     )
 
