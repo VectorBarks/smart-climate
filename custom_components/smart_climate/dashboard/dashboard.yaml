@@ -1,291 +1,1352 @@
-# Smart Climate Dashboard Template
-# This template provides a complete monitoring and control interface for Smart Climate
-# 
-# To use this template:
-# 1. Replace REPLACE_ME_ENTITY with your climate entity ID (without domain, e.g., "living_room_ac")
-# 2. Replace REPLACE_ME_NAME with a friendly name (e.g., "Living Room")
+# Smart Climate Advanced Analytics Dashboard
+# Generated: 2025-08-24 17:36:33
+# Entity: climate.REPLACE_ME_ENTITY
+# Name: REPLACE_ME_NAME
 #
-# Optional: Install these custom cards via HACS for enhanced visualization:
-# - apexcharts-card: For advanced charts and graphs
-# - mushroom-cards: For modern UI elements
-# - button-card: For custom button styling
-
-title: Smart Climate - REPLACE_ME_NAME
+# This dashboard provides comprehensive analytics and monitoring
+# for Smart Climate Control systems. It includes 5 tabs:
+# - Overview: High-level status and controls
+# - Thermal Metrics: Deep thermal system analysis
+# - ML Performance: Machine learning analytics
+# - Optimization: System efficiency analysis
+# - System Health: Component diagnostics
+#
+# For support and documentation, visit:
+# https://github.com/your-org/smart-climate
+title: Smart Climate Advanced Analytics - REPLACE_ME_NAME
 views:
-  - title: Overview
-    path: overview
-    icon: mdi:home-thermometer
-    cards:
-      # Main Climate Control Section
-      - type: vertical-stack
-        cards:
-          # Climate control with temperature display
-          - type: thermostat
-            entity: climate.REPLACE_ME_ENTITY
-            name: REPLACE_ME_NAME Climate Control
-          
-          # Key metrics in a row
-          - type: horizontal-stack
-            cards:
-              # Current offset gauge
-              - type: gauge
-                entity: sensor.REPLACE_ME_ENTITY_offset_current
-                name: Current Offset
-                unit: "°C"
-                min: -5
-                max: 5
-                severity:
-                  green: -1
-                  yellow: -3
-                  red: -5
-                needle: true
-                
-              # Learning progress gauge
-              - type: gauge
-                entity: sensor.REPLACE_ME_ENTITY_learning_progress
-                name: Learning Progress
-                unit: "%"
-                min: 0
-                max: 100
-                severity:
-                  red: 0
-                  yellow: 50
-                  green: 80
-                needle: true
-                
-              # Current accuracy gauge
-              - type: gauge
-                entity: sensor.REPLACE_ME_ENTITY_accuracy_current
-                name: Accuracy
-                unit: "%"
-                min: 0
-                max: 100
-                severity:
-                  red: 0
-                  yellow: 60
-                  green: 85
-                needle: true
-
-      # Learning System Status
-      - type: entities
-        title: Learning System Status
-        show_header_toggle: false
-        entities:
-          # Learning toggle switch with all its attributes
-          - entity: switch.REPLACE_ME_ENTITY_learning
-            name: Learning System
-            secondary_info: last-changed
-            
-          # Calibration status
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: last_sample_collected
-            name: Last Sample Collected
-            icon: mdi:clock-outline
-            
-          - entity: sensor.REPLACE_ME_ENTITY_calibration_status
-            name: Calibration Status
-            icon: mdi:progress-check
-            
-          # Samples collected
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: samples_collected
-            name: Samples Collected
-            icon: mdi:counter
-            
-          # Has sufficient data indicator
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: has_sufficient_data
-            name: Sufficient Data
-            icon: mdi:database-check
-
-      # Hysteresis Learning Status
-      - type: entities
-        title: AC Behavior Learning
-        show_header_toggle: false
-        entities:
-          # Hysteresis state
-          - entity: sensor.REPLACE_ME_ENTITY_hysteresis_state
-            name: AC State
-            icon: mdi:sine-wave
-            
-          # Temperature window
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: temperature_window
-            name: Temperature Window
-            icon: mdi:thermometer-lines
-            
-          # Start threshold
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: learned_start_threshold
-            name: AC Start Threshold
-            icon: mdi:thermometer-chevron-up
-            
-          # Stop threshold
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: learned_stop_threshold
-            name: AC Stop Threshold
-            icon: mdi:thermometer-chevron-down
-            
-          # Hysteresis ready indicator
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: hysteresis_ready
-            name: Behavior Learned
-            icon: mdi:check-circle
-
-      # Historical Data Section
-      - type: vertical-stack
-        cards:
-          - type: markdown
-            content: |
-              ## Historical Performance
-              The graphs below show how Smart Climate is learning and adapting to your AC's behavior.
-          
-          # Temperature and offset history
-          - type: history-graph
-            title: Temperature & Offset History
-            hours_to_show: 24
-            refresh_interval: 60
-            entities:
-              - entity: climate.REPLACE_ME_ENTITY
-                name: Target Temperature
-              - entity: sensor.REPLACE_ME_ENTITY_offset_current
-                name: Applied Offset
-              - entity: sensor.REPLACE_ME_ENTITY_accuracy_current
-                name: Prediction Accuracy
-
-      # Controls Section
-      - type: vertical-stack
-        cards:
-          - type: entities
-            title: Controls
-            show_header_toggle: false
-            entities:
-              # Preset mode selector
-              - entity: climate.REPLACE_ME_ENTITY
-                type: climate-preset-modes
-                name: Preset Mode
-                
-              # Reset button
-              - entity: button.REPLACE_ME_ENTITY_reset_training_data
-                name: Reset Training Data
-                icon: mdi:database-remove
-                action_name: Reset
-              
-              # Divider
-              - type: divider
-              
-              # Info section
-              - type: section
-                label: "Information"
-                
-              # Confidence level
-              - type: attribute
-                entity: switch.REPLACE_ME_ENTITY_learning
-                attribute: confidence_level
-                name: Confidence Level
-                icon: mdi:shield-check
-                format: precision1
-
-      # Enhanced Visualization (with custom cards)
-      - type: conditional
-        conditions:
-          - entity: sensor.REPLACE_ME_ENTITY_learning_progress
-            state_not: "unavailable"
-        card:
-          type: vertical-stack
-          cards:
-            - type: markdown
-              content: |
-                ## Enhanced Visualizations
-                For the best experience, install these optional cards via HACS:
-                - **ApexCharts Card**: For detailed learning progress graphs
-                - **Mushroom Cards**: For modern climate controls
-                - **Button Card**: For custom styled buttons
-                
-                Once installed, you can replace the sections above with enhanced versions.
-
-  # Detailed Stats View
-  - title: Detailed Stats
-    path: stats
-    icon: mdi:chart-line
-    cards:
-      # Learning metrics over time
-      - type: history-graph
-        title: Learning Metrics (7 days)
-        hours_to_show: 168
-        refresh_interval: 300
-        entities:
-          - entity: sensor.REPLACE_ME_ENTITY_learning_progress
-            name: Learning Progress
-          - entity: sensor.REPLACE_ME_ENTITY_accuracy_current
-            name: Accuracy
-          - entity: sensor.REPLACE_ME_ENTITY_offset_current
-            name: Applied Offset
-
-      # All learning attributes
-      - type: entities
-        title: Detailed Learning Information
-        show_header_toggle: false
-        entities:
-          - entity: switch.REPLACE_ME_ENTITY_learning
-            type: custom:multiple-entity-row
-            name: Learning System
-            state_header: Status
-            secondary_info: last-changed
-            show_state: true
-            entities:
-              - attribute: samples_collected
-                name: Samples
-              - attribute: learning_accuracy
-                name: Accuracy
-                format: precision1
-              - attribute: confidence_level
-                name: Confidence
-                format: precision1
-
-      # System diagnostics
-      - type: entities
-        title: System Diagnostics
-        show_header_toggle: false
-        entities:
-          - entity: sensor.REPLACE_ME_ENTITY_calibration_status
-            name: Calibration Status
-          - entity: sensor.REPLACE_ME_ENTITY_hysteresis_state
-            name: Hysteresis State
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: patterns_learned
-            name: Patterns Learned
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: start_samples_collected
-            name: Start Samples
-          - type: attribute
-            entity: switch.REPLACE_ME_ENTITY_learning
-            attribute: stop_samples_collected
-            name: Stop Samples
-
-      # Power monitoring (if available)
-      - type: conditional
-        conditions:
-          - entity: sensor.REPLACE_ME_ENTITY_hysteresis_state
-            state_not: "No power sensor"
-        card:
-          type: entities
-          title: Power Monitoring
-          entities:
-            - type: custom:template-entity-row
-              name: Power Sensor Status
-              state: Connected
-              icon: mdi:flash
-              secondary: Hysteresis learning active
-
-# Note: This dashboard uses only core Home Assistant cards by default.
-# For enhanced visualizations, consider installing custom cards via HACS.
+- cards:
+  - entity: climate.REPLACE_ME_ENTITY
+    title: Climate Control
+    type: thermostat
+  - entity: sensor.REPLACE_ME_ENTITY_offset_current
+    max: 5
+    min: -5
+    needle: true
+    severity:
+      green: 80
+      red: 0
+      yellow: 50
+    title: Current Offset
+    type: gauge
+    unit: °C
+  - entity: sensor.REPLACE_ME_ENTITY_confidence
+    max: 100
+    min: 0
+    needle: true
+    severity:
+      green: 80
+      red: 0
+      yellow: 50
+    title: ML Confidence
+    type: gauge
+    unit: '%'
+  - entity: sensor.REPLACE_ME_ENTITY_cycle_health
+    max: 100
+    min: 0
+    needle: true
+    severity:
+      green: 80
+      red: 0
+      yellow: 60
+    title: Thermal Efficiency
+    type: gauge
+    unit: '%'
+  - entity: sensor.REPLACE_ME_ENTITY_accuracy_current
+    max: 100
+    min: 0
+    needle: true
+    severity:
+      green: 85
+      red: 0
+      yellow: 70
+    title: System Health
+    type: gauge
+    unit: '%'
+  - apex_config:
+      chart:
+        height: 250
+      legend:
+        show: true
+      tooltip:
+        enabled: true
+        shared: true
+    graph_span: 1h
+    header:
+      show: true
+      title: Live Temperature Trends (Last Hour)
+    series:
+    - color: '#1976D2'
+      entity: sensor.REPLACE_ME_ENTITY_setpoint_temperature
+      name: Setpoint
+      stroke_width: 2
+      unit: °C
+    - color: '#4CAF50'
+      entity: sensor.REPLACE_ME_ENTITY_current_temperature
+      name: Actual
+      stroke_width: 2
+      unit: °C
+    - color: '#FFA726'
+      entity: sensor.REPLACE_ME_ENTITY_outdoor_temperature
+      name: Outdoor
+      stroke_width: 1
+      unit: °C
+    - color: '#9C27B0'
+      entity: sensor.REPLACE_ME_ENTITY_offset_current
+      name: Offset
+      stroke_width: 1
+      unit: °C
+      yAxis_id: offset
+    type: custom:apexcharts-card
+    yaxis:
+    - apex_config:
+        title:
+          text: Temperature (°C)
+      id: temperature
+    - apex_config:
+        opposite: true
+        title:
+          text: Offset (°C)
+      id: offset
+  - entities:
+    - entity: sensor.REPLACE_ME_ENTITY_thermal_state
+      icon: mdi:state-machine
+      name: Thermal State
+    - entity: sensor.REPLACE_ME_ENTITY_active_mode
+      icon: mdi:hvac
+      name: Active Mode
+    - entity: sensor.REPLACE_ME_ENTITY_last_update
+      icon: mdi:clock-outline
+      name: Last Probe
+    - entity: sensor.REPLACE_ME_ENTITY_samples_collected
+      icon: mdi:database
+      name: Learning Samples
+    show_header_toggle: false
+    title: System Status
+    type: entities
+  icon: mdi:view-dashboard
+  path: overview
+  title: Overview
+- cards:
+  - apex_config:
+      chart:
+        height: 250
+      legend:
+        show: true
+      markers:
+        hover:
+          size: 6
+        size: 4
+      tooltip:
+        enabled: true
+        shared: true
+    graph_span: 24h
+    header:
+      show: true
+      title: Tau Evolution
+    series:
+    - color: '#1976D2'
+      entity: sensor.REPLACE_ME_ENTITY_tau_cooling
+      name: Tau Cooling
+      stroke_width: 2
+      unit: min
+    - color: '#4CAF50'
+      entity: sensor.REPLACE_ME_ENTITY_tau_warming
+      name: Tau Warming
+      stroke_width: 2
+      unit: min
+    type: custom:apexcharts-card
+  - apex_config:
+      chart:
+        height: 300
+        type: pie
+      dataLabels:
+        enabled: true
+      legend:
+        position: bottom
+      tooltip:
+        enabled: true
+    graph_span: 24h
+    header:
+      show: true
+      title: Thermal State Distribution
+    series:
+    - entity: sensor.REPLACE_ME_ENTITY_thermal_state
+      name: Thermal State
+    type: custom:apexcharts-card
+  - data:
+    - link:
+        source:
+        - 0
+        - 1
+        - 2
+        - 1
+        - 3
+        - 2
+        target:
+        - 1
+        - 2
+        - 3
+        - 0
+        - 1
+        - 1
+        value:
+        - 10
+        - 15
+        - 8
+        - 5
+        - 12
+        - 6
+      node:
+        label:
+        - PRIMING
+        - DRIFTING
+        - PROBING
+        - CORRECTING
+        line:
+          color: black
+          width: 0.5
+        pad: 15
+        thickness: 20
+      type: sankey
+    hours_to_show: 168
+    layout:
+      height: 300
+      hovermode: closest
+      showlegend: true
+      title: State Transitions
+    refresh_interval: 300
+    title: State Transitions
+    type: custom:plotly-graph-card
+  - apex_config:
+      chart:
+        height: 300
+        type: scatter
+      markers:
+        size: 6
+      regression_line: true
+      tooltip:
+        enabled: true
+      xaxis:
+        title:
+          text: Predicted Temperature (°C)
+      yaxis:
+        title:
+          text: Actual Temperature (°C)
+    graph_span: 24h
+    header:
+      show: true
+      subtitle: R² = 0.85
+      title: Drift Analysis
+    series:
+    - color: '#1976D2'
+      entity: sensor.REPLACE_ME_ENTITY_predicted_temperature
+      name: Predicted vs Actual
+    type: custom:apexcharts-card
+  - columns:
+    - field: timestamp
+      name: Timestamp
+    - field: tau_value
+      name: Tau
+    - field: confidence
+      name: Confidence
+    - field: duration
+      name: Duration
+    - field: outdoor_temp
+      name: Outdoor Temp
+    entities:
+    - entity: sensor.REPLACE_ME_ENTITY_last_probe_timestamp
+      icon: mdi:clock-outline
+      name: Last Probe Time
+    - entity: sensor.REPLACE_ME_ENTITY_tau_cooling
+      icon: mdi:thermometer-minus
+      name: Current Tau Cooling
+    - entity: sensor.REPLACE_ME_ENTITY_tau_warming
+      icon: mdi:thermometer-plus
+      name: Current Tau Warming
+    - entity: sensor.REPLACE_ME_ENTITY_confidence
+      icon: mdi:percent
+      name: Confidence
+    - entity: sensor.REPLACE_ME_ENTITY_probe_duration
+      icon: mdi:timer-outline
+      name: Last Probe Duration
+    show_header_toggle: false
+    title: Recent Probe History
+    type: entities
+  - data:
+    - colorscale: Viridis
+      showscale: true
+      type: heatmap
+      x:
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      y:
+      - Mon
+      - Tue
+      - Wed
+      - Thu
+      - Fri
+      - Sat
+      - Sun
+      z:
+      - - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+        - 0
+      - - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 0
+        - 1
+        - 2
+        - 3
+      - - 0
+        - 2
+        - 4
+        - 6
+        - 8
+        - 0
+        - 2
+        - 4
+        - 6
+        - 8
+        - 0
+        - 2
+        - 4
+        - 6
+        - 8
+        - 0
+        - 2
+        - 4
+        - 6
+        - 8
+        - 0
+        - 2
+        - 4
+        - 6
+      - - 0
+        - 3
+        - 6
+        - 9
+        - 2
+        - 5
+        - 8
+        - 1
+        - 4
+        - 7
+        - 0
+        - 3
+        - 6
+        - 9
+        - 2
+        - 5
+        - 8
+        - 1
+        - 4
+        - 7
+        - 0
+        - 3
+        - 6
+        - 9
+      - - 0
+        - 4
+        - 8
+        - 2
+        - 6
+        - 0
+        - 4
+        - 8
+        - 2
+        - 6
+        - 0
+        - 4
+        - 8
+        - 2
+        - 6
+        - 0
+        - 4
+        - 8
+        - 2
+        - 6
+        - 0
+        - 4
+        - 8
+        - 2
+      - - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+        - 0
+        - 5
+      - - 0
+        - 6
+        - 2
+        - 8
+        - 4
+        - 0
+        - 6
+        - 2
+        - 8
+        - 4
+        - 0
+        - 6
+        - 2
+        - 8
+        - 4
+        - 0
+        - 6
+        - 2
+        - 8
+        - 4
+        - 0
+        - 6
+        - 2
+        - 8
+    hours_to_show: 168
+    layout:
+      height: 300
+      hovermode: closest
+      showlegend: true
+      title: Comfort Violations Heatmap
+      xaxis:
+        tickmode: array
+        ticktext:
+        - 00:00
+        - 01:00
+        - 02:00
+        - 03:00
+        - 04:00
+        - 05:00
+        - 06:00
+        - 07:00
+        - 08:00
+        - 09:00
+        - '10:00'
+        - '11:00'
+        - '12:00'
+        - '13:00'
+        - '14:00'
+        - '15:00'
+        - '16:00'
+        - '17:00'
+        - '18:00'
+        - '19:00'
+        - '20:00'
+        - '21:00'
+        - '22:00'
+        - '23:00'
+        tickvals:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
+        - 14
+        - 15
+        - 16
+        - 17
+        - 18
+        - 19
+        - 20
+        - 21
+        - 22
+        - 23
+        title: Hour of Day
+      yaxis:
+        tickmode: array
+        ticktext:
+        - Mon
+        - Tue
+        - Wed
+        - Thu
+        - Fri
+        - Sat
+        - Sun
+        tickvals:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        title: Day of Week
+    refresh_interval: 300
+    title: Comfort Violations Heatmap
+    type: custom:plotly-graph-card
+  icon: mdi:thermometer-lines
+  path: thermal
+  title: Thermal Metrics
+- cards:
+  - apex_config:
+      annotations:
+        xaxis:
+        - borderColor: '#FFA726'
+          label:
+            style:
+              background: '#FFA726'
+              color: '#fff'
+            text: Initial Learning Complete
+          x: new Date().setHours(new Date().getHours() - 24)
+        - borderColor: '#4CAF50'
+          label:
+            style:
+              background: '#4CAF50'
+              color: '#fff'
+            text: Model Stabilized
+          x: new Date().setHours(new Date().getHours() - 72)
+      chart:
+        height: 250
+      legend:
+        show: true
+      tooltip:
+        enabled: true
+        shared: true
+    graph_span: 7d
+    header:
+      show: true
+      title: Learning Progress
+    series:
+    - color: '#1976D2'
+      entity: sensor.REPLACE_ME_ENTITY_samples_collected
+      name: Learning Samples
+      stroke_width: 2
+      unit: samples
+      yaxis_id: samples
+    - color: '#4CAF50'
+      entity: sensor.REPLACE_ME_ENTITY_confidence
+      name: Confidence
+      stroke_width: 2
+      unit: '%'
+      yaxis_id: percentage
+    - color: '#EF5350'
+      entity: sensor.REPLACE_ME_ENTITY_mae
+      name: Prediction Error (MAE)
+      stroke_width: 2
+      unit: °C
+      yaxis_id: temperature
+    type: custom:apexcharts-card
+    yaxis:
+    - apex_config:
+        min: 0
+        title:
+          text: Samples
+      id: samples
+    - apex_config:
+        max: 100
+        min: 0
+        opposite: true
+        title:
+          text: Confidence (%)
+      id: percentage
+    - apex_config:
+        min: 0
+        opposite: true
+        title:
+          text: MAE (°C)
+      id: temperature
+  - apex_config:
+      annotations:
+        yaxis:
+        - borderColor: '#9E9E9E'
+          label:
+            style:
+              background: '#9E9E9E'
+              color: '#fff'
+            text: 'Mean: 0.0°C'
+          y: 0
+        - borderColor: '#FFA726'
+          label:
+            style:
+              background: '#FFA726'
+              color: '#fff'
+            text: 'Std Dev: ±0.5°C'
+          y: 0.5
+        - borderColor: '#EF5350'
+          label:
+            style:
+              background: '#EF5350'
+              color: '#fff'
+            text: '95% CI: ±1.96°C'
+          y: 1.96
+      chart:
+        height: 300
+        type: histogram
+      legend:
+        show: true
+      plotOptions:
+        histogram:
+          bucketSize: 0.1
+      tooltip:
+        enabled: true
+        shared: true
+    graph_span: 30d
+    header:
+      show: true
+      title: Prediction Accuracy
+    series:
+    - color: '#42A5F5'
+      entity: sensor.REPLACE_ME_ENTITY_prediction_errors
+      name: Prediction Errors
+      type: histogram
+      unit: °C
+    - color: '#EF5350'
+      data_generator: normal_distribution_overlay
+      name: Normal Distribution
+      stroke_width: 2
+      type: line
+    type: custom:apexcharts-card
+  - apex_config:
+      chart:
+        height: 300
+        type: bar
+      dataLabels:
+        enabled: true
+        formatter: function (val) { return val + "%"; }
+      legend:
+        show: true
+      plotOptions:
+        bar:
+          borderRadius: 4
+          dataLabels:
+            position: center
+          horizontal: true
+      tooltip:
+        enabled: true
+        shared: true
+        y:
+          formatter: function (val) { return val + "% importance"; }
+      xaxis:
+        categories:
+        - Outdoor Temperature
+        - Time of Day
+        - Day of Week
+        - Power Consumption
+        - Previous Offset
+        title:
+          text: Feature Importance (%)
+      yaxis:
+        title:
+          text: Features
+    graph_span: 24h
+    header:
+      show: true
+      title: Feature Importance
+    series:
+    - color: '#1976D2'
+      data_generator: feature_importance_normalized
+      name: Importance %
+    type: custom:apexcharts-card
+  - apex_config:
+      chart:
+        height: 300
+        type: area
+      fill:
+        gradient:
+          opacityFrom: 0.6
+          opacityTo: 0.1
+        type: gradient
+      legend:
+        show: true
+      stroke:
+        width:
+        - 2
+        - 1
+        - 1
+      tooltip:
+        enabled: true
+        intersect: false
+        shared: true
+    graph_span: 24h
+    header:
+      show: true
+      title: Prediction Confidence
+    series:
+    - color: '#4CAF50'
+      entity: sensor.REPLACE_ME_ENTITY_current_temperature
+      name: Actual Temperature
+      stroke_width: 2
+      type: line
+      unit: °C
+    - color: '#42A5F5'
+      entity: sensor.REPLACE_ME_ENTITY_prediction_upper_bound
+      fill_opacity: 0.3
+      name: Upper Confidence
+      type: area
+      unit: °C
+    - color: '#42A5F5'
+      entity: sensor.REPLACE_ME_ENTITY_prediction_lower_bound
+      fill_opacity: 0.3
+      name: Lower Confidence
+      type: area
+      unit: °C
+    type: custom:apexcharts-card
+  - entities:
+    - entity: sensor.REPLACE_ME_ENTITY_mae
+      icon: mdi:target
+      name: Mean Absolute Error (MAE)
+      unit: °C
+    - entity: sensor.REPLACE_ME_ENTITY_rmse
+      icon: mdi:chart-bell-curve
+      name: Root Mean Square Error (RMSE)
+      unit: °C
+    - entity: sensor.REPLACE_ME_ENTITY_r_squared
+      icon: mdi:percent
+      name: R² Score (Goodness of Fit)
+      unit: '%'
+    - entity: sensor.REPLACE_ME_ENTITY_model_age_hours
+      icon: mdi:clock-outline
+      name: Model Age
+      unit: hours
+    - entity: sensor.REPLACE_ME_ENTITY_samples_collected
+      icon: mdi:database
+      name: Training Sample Count
+      unit: samples
+    - entity: sensor.REPLACE_ME_ENTITY_outliers_detected
+      icon: mdi:alert-circle
+      name: Outliers Detected
+      unit: count
+    show_header_toggle: false
+    state_color: true
+    title: Performance Metrics
+    type: entities
+  icon: mdi:brain
+  path: ml_performance
+  title: ML Performance
+- cards:
+  - apex_config:
+      annotations:
+        xaxis:
+        - borderColor: '#FFA726'
+          label:
+            style:
+              background: '#FFA726'
+              color: '#fff'
+            text: Min Cycle (10min)
+          strokeDashArray: 5
+          x: 10
+        - borderColor: '#4CAF50'
+          label:
+            style:
+              background: '#4CAF50'
+              color: '#fff'
+            text: Optimal (30min)
+          strokeDashArray: 5
+          x: 30
+        - borderColor: '#EF5350'
+          label:
+            style:
+              background: '#EF5350'
+              color: '#fff'
+            text: Short Cycling (5min)
+          strokeDashArray: 8
+          x: 5
+      chart:
+        height: 350
+        type: histogram
+      legend:
+        show: true
+      plotOptions:
+        histogram:
+          bucketSize: 5
+      tooltip:
+        enabled: true
+        intersect: false
+        shared: true
+      xaxis:
+        title:
+          text: Cycle Duration (minutes)
+      yaxis:
+        title:
+          text: Frequency
+    graph_span: 7d
+    header:
+      show: true
+      title: HVAC Cycle Duration Analysis
+    series:
+    - color: '#1976D2'
+      entity: sensor.REPLACE_ME_ENTITY_cycle_on_duration
+      name: ON Cycle Duration
+      type: histogram
+      unit: min
+    - color: '#42A5F5'
+      entity: sensor.REPLACE_ME_ENTITY_cycle_off_duration
+      name: OFF Cycle Duration
+      type: histogram
+      unit: min
+    type: custom:apexcharts-card
+  - apex_config:
+      chart:
+        dropShadow:
+          blur: 1
+          enabled: true
+          left: 1
+          top: 1
+        height: 350
+        type: radar
+      legend:
+        horizontalAlign: center
+        position: top
+      markers:
+        colors:
+        - '#fff'
+        size: 4
+        strokeColor: '#1976D2'
+        strokeWidth: 2
+      plotOptions:
+        radar:
+          polygons:
+            fill:
+              colors:
+              - '#f8f8f8'
+              - '#fff'
+            strokeColors: '#e9e9e9'
+          size: 140
+      tooltip:
+        y:
+          formatter: function(val) { return val + "%"; }
+      yaxis:
+        labels:
+          formatter: function(val, i) { return val + "%"; }
+        max: 100
+        min: 0
+        tickAmount: 5
+    header:
+      show: true
+      title: System Efficiency Overview
+    series:
+    - color: '#1976D2'
+      data:
+      - x: Cycle Efficiency
+        y: sensor.REPLACE_ME_ENTITY_cycle_efficiency
+      - x: Prediction Accuracy
+        y: sensor.REPLACE_ME_ENTITY_prediction_accuracy
+      - x: Offset Effectiveness
+        y: sensor.REPLACE_ME_ENTITY_offset_effectiveness
+      - x: Response Time
+        y: sensor.REPLACE_ME_ENTITY_response_efficiency
+      - x: Overshoot Control
+        y: sensor.REPLACE_ME_ENTITY_overshoot_control
+      name: Current Performance
+    - color: '#4CAF50'
+      data:
+      - x: Cycle Efficiency
+        y: 85
+      - x: Prediction Accuracy
+        y: 90
+      - x: Offset Effectiveness
+        y: 80
+      - x: Response Time
+        y: 85
+      - x: Overshoot Control
+        y: 95
+      name: Target Performance
+    type: custom:apexcharts-card
+  - apex_config:
+      chart:
+        height: 350
+        type: boxPlot
+      plotOptions:
+        boxPlot:
+          colors:
+            lower: '#42A5F5'
+            upper: '#1976D2'
+      tooltip:
+        intersect: true
+        shared: false
+      xaxis:
+        categories:
+        - Morning
+        - Afternoon
+        - Evening
+        - Night
+        title:
+          text: Time Period
+        type: category
+      yaxis:
+        title:
+          text: Response Time (minutes)
+    graph_span: 7d
+    header:
+      show: true
+      title: Response Time Analysis
+    series:
+    - color: '#1976D2'
+      data:
+      - - 1
+        - 4
+        - 7
+        - 12
+        - 18
+      name: Morning (6-12)
+      type: boxPlot
+    - color: '#4CAF50'
+      data:
+      - - 2
+        - 5
+        - 8
+        - 14
+        - 22
+      name: Afternoon (12-18)
+      type: boxPlot
+    - color: '#FFA726'
+      data:
+      - - 1
+        - 3
+        - 6
+        - 11
+        - 16
+      name: Evening (18-24)
+      type: boxPlot
+    - color: '#9E9E9E'
+      data:
+      - - 2
+        - 4
+        - 7
+        - 13
+        - 19
+      name: Night (24-6)
+      type: boxPlot
+    type: custom:apexcharts-card
+  - apex_config:
+      annotations:
+        line:
+        - borderColor: '#4CAF50'
+          label:
+            text: Ideal Response Line
+          strokeDashArray: 5
+          x: -5
+          x2: 5
+          y: -5
+          y2: 5
+        points:
+        - label:
+            offsetY: -10
+            text: Perfect Match
+          marker:
+            fillColor: '#9E9E9E'
+            size: 8
+            strokeColor: '#9E9E9E'
+          x: 0
+          y: 0
+      chart:
+        height: 350
+        type: scatter
+        zoom:
+          enabled: true
+          type: xy
+      grid:
+        xaxis:
+          lines:
+            show: true
+        yaxis:
+          lines:
+            show: true
+      markers:
+        hover:
+          size: 8
+        size: 6
+      tooltip:
+        custom: 'function({series, seriesIndex, dataPointIndex, w}) { return "<div
+          class=''tooltip''><span>Applied: " + w.globals.seriesX[seriesIndex][dataPointIndex]
+          + "°C</span><br><span>Achieved: " + w.globals.series[seriesIndex][dataPointIndex]
+          + "°C</span><br><span>Effectiveness: " + Math.round((w.globals.series[seriesIndex][dataPointIndex]
+          / w.globals.seriesX[seriesIndex][dataPointIndex]) * 100) + "%</span></div>";
+          }'
+      xaxis:
+        tickAmount: 10
+        title:
+          text: Applied Offset (°C)
+        type: numeric
+      yaxis:
+        tickAmount: 7
+        title:
+          text: Achieved Change (°C)
+    graph_span: 24h
+    header:
+      show: true
+      subtitle: Applied vs Achieved Temperature Changes
+      title: Offset Effectiveness Analysis
+    series:
+    - color: '#1976D2'
+      data_generator: offset_effectiveness_data
+      name: Effectiveness
+    type: custom:apexcharts-card
+  - apex_config:
+      annotations:
+        yaxis:
+        - borderColor: '#FFA726'
+          label:
+            style:
+              background: '#FFA726'
+              color: '#fff'
+            text: Overshoot Threshold (±0.5°C)
+          strokeDashArray: 5
+          y: 0.5
+      chart:
+        height: 350
+        zoom:
+          enabled: true
+      fill:
+        gradient:
+          opacityFrom: 0.6
+          opacityTo: 0.1
+        type:
+        - solid
+        - solid
+        - gradient
+      legend:
+        horizontalAlign: left
+        position: top
+        show: true
+      markers:
+        hover:
+          size:
+          - 4
+          - 4
+          - 6
+        size:
+        - 0
+        - 0
+        - 4
+      stroke:
+        curve: smooth
+        width:
+        - 2
+        - 2
+        - 0
+      tooltip:
+        enabled: true
+        intersect: false
+        shared: true
+        y:
+          formatter: function (val) { return val.toFixed(2) + "°C"; }
+      yaxis:
+        labels:
+          formatter: function (val) { return val.toFixed(1) + "°C"; }
+        title:
+          text: Temperature (°C)
+    graph_span: 24h
+    header:
+      show: true
+      title: Temperature Overshoot Analysis
+    series:
+    - color: '#1976D2'
+      entity: sensor.REPLACE_ME_ENTITY_setpoint_temperature
+      name: Target Temperature
+      stroke_width: 2
+      unit: °C
+    - color: '#4CAF50'
+      entity: sensor.REPLACE_ME_ENTITY_current_temperature
+      name: Actual Temperature
+      stroke_width: 2
+      unit: °C
+    - color: '#EF5350'
+      entity: sensor.REPLACE_ME_ENTITY_overshoot_events
+      fill_opacity: 0.3
+      name: Overshoot Events
+      stroke_width: 3
+      type: area
+      unit: °C
+    type: custom:apexcharts-card
+  - card_mod:
+      style: "\n                ha-card {\n                  border: 1px solid var(--divider-color);\n\
+        \                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n              \
+        \  }\n                .entity {\n                  padding: 8px 16px;\n  \
+        \              }\n                .entity[data-entity*=\"alert\"] {\n    \
+        \              background-color: rgba(244, 67, 54, 0.1);\n               \
+        \ }\n                .entity[data-entity*=\"tip\"] {\n                  background-color:\
+        \ rgba(76, 175, 80, 0.1);\n                }\n                "
+    entities:
+    - entity: sensor.REPLACE_ME_ENTITY_optimization_score
+      icon: mdi:speedometer
+      name: Overall Optimization Score
+      unit: '%'
+    - entity: sensor.REPLACE_ME_ENTITY_primary_suggestion
+      icon: mdi:lightbulb-on
+      name: Primary Recommendation
+    - entity: sensor.REPLACE_ME_ENTITY_cycle_efficiency_status
+      icon: mdi:sync
+      name: Cycle Efficiency
+      secondary_info: last-changed
+    - entity: sensor.REPLACE_ME_ENTITY_short_cycling_detected
+      icon: mdi:alert-circle
+      name: Short Cycling Alert
+      secondary_info: last-changed
+    - entity: sensor.REPLACE_ME_ENTITY_offset_effectiveness_score
+      icon: mdi:target
+      name: Offset Effectiveness
+      secondary_info: last-changed
+      unit: '%'
+    - entity: sensor.REPLACE_ME_ENTITY_response_time_status
+      icon: mdi:timer-outline
+      name: Response Time Status
+      secondary_info: last-changed
+    - entity: sensor.REPLACE_ME_ENTITY_energy_efficiency_tip
+      icon: mdi:leaf
+      name: Energy Efficiency Tip
+      secondary_info: last-changed
+    - entity: sensor.REPLACE_ME_ENTITY_next_optimization_check
+      icon: mdi:calendar-clock
+      name: Next Analysis
+      secondary_info: last-changed
+    show_header_toggle: false
+    state_color: true
+    theme: Backend-selected
+    title: Optimization Suggestions
+    type: entities
+  icon: mdi:tune
+  path: optimization
+  title: Optimization
+- cards:
+  - entities:
+    - label: Core Components
+      type: section
+    - entity: binary_sensor.REPLACE_ME_ENTITY_offset_engine_healthy
+      icon: mdi:engine
+      name: Offset Engine
+      secondary_info: 'Last calculation: {{ states("sensor.REPLACE_ME_ENTITY_offset_last_update")
+        }}'
+    - entity: binary_sensor.REPLACE_ME_ENTITY_thermal_manager_healthy
+      icon: mdi:thermostat
+      name: Thermal Manager
+      secondary_info: 'State: {{ states("sensor.REPLACE_ME_ENTITY_thermal_state") }}'
+    - entity: binary_sensor.REPLACE_ME_ENTITY_sensor_manager_healthy
+      icon: mdi:sensors
+      name: Sensor Manager
+      secondary_info: 'Sensors active: {{ states("sensor.REPLACE_ME_ENTITY_active_sensors")
+        }}'
+    - label: Learning Components
+      type: section
+    - entity: binary_sensor.REPLACE_ME_ENTITY_delay_learner_healthy
+      icon: mdi:clock-outline
+      name: Delay Learner
+      secondary_info: 'Learned delay: {{ states("sensor.REPLACE_ME_ENTITY_learned_delay")
+        }}s'
+    - entity: binary_sensor.REPLACE_ME_ENTITY_seasonal_learner_healthy
+      icon: mdi:weather-partly-cloudy
+      name: Seasonal Learner
+      secondary_info: 'Patterns: {{ states("sensor.REPLACE_ME_ENTITY_seasonal_patterns")
+        }}'
+    - label: System Status
+      type: section
+    - entity: sensor.REPLACE_ME_ENTITY_system_uptime
+      icon: mdi:clock-check-outline
+      name: System Uptime
+    - entity: sensor.REPLACE_ME_ENTITY_error_count
+      icon: mdi:alert-circle-outline
+      name: Error Count (24h)
+    - entity: sensor.REPLACE_ME_ENTITY_memory_usage
+      icon: mdi:memory
+      name: Memory Usage
+    show_header_toggle: false
+    state_color: true
+    title: Component Health Status
+    type: entities
+  - entities:
+    - entity: sensor.REPLACE_ME_ENTITY_temperature
+      line:
+        color: '#4CAF50'
+        width: 2
+      name: Room Temperature
+      yaxis: y
+    - entity: sensor.REPLACE_ME_ENTITY_outdoor_temperature
+      line:
+        color: '#FFA726'
+        width: 2
+      name: Outdoor Temperature
+      yaxis: y
+    - entity: sensor.REPLACE_ME_ENTITY_power_consumption
+      line:
+        color: '#EF5350'
+        width: 1.5
+      name: Power Consumption
+      yaxis: y2
+    - entity: sensor.REPLACE_ME_ENTITY_humidity
+      line:
+        color: '#1976D2'
+        width: 1.5
+      name: Humidity
+      yaxis: y2
+    hours_to_show: 24
+    layout:
+      height: 300
+      hovermode: x unified
+      showlegend: true
+      title: Sensor Values with 24h History
+      yaxis:
+        title: Temperature (°C)
+      yaxis2:
+        overlaying: y
+        side: right
+        title: Power (W) / Humidity (%)
+    refresh_interval: 30
+    title: Real-Time Sensor Readings
+    type: custom:plotly-graph-card
+  - entities:
+    - entity: sensor.REPLACE_ME_ENTITY_last_error
+      icon: mdi:alert-circle
+      name: Last Error
+      secondary_info: '{{ states("sensor.REPLACE_ME_ENTITY_last_error_time") }}'
+    - entity: sensor.REPLACE_ME_ENTITY_last_warning
+      icon: mdi:alert
+      name: Last Warning
+      secondary_info: '{{ states("sensor.REPLACE_ME_ENTITY_last_warning_time") }}'
+    - label: Error History (24h)
+      type: section
+    - entity: sensor.REPLACE_ME_ENTITY_critical_errors_24h
+      icon: mdi:alert-circle
+      name: Critical Errors
+    - entity: sensor.REPLACE_ME_ENTITY_warnings_24h
+      icon: mdi:alert
+      name: Warnings
+    - entity: sensor.REPLACE_ME_ENTITY_info_messages_24h
+      icon: mdi:information
+      name: Info Messages
+    - label: Component Errors
+      type: section
+    - entity: sensor.REPLACE_ME_ENTITY_offset_engine_errors
+      icon: mdi:engine-off
+      name: Offset Engine
+    - entity: sensor.REPLACE_ME_ENTITY_thermal_manager_errors
+      icon: mdi:thermostat-box
+      name: Thermal Manager
+    - entity: sensor.REPLACE_ME_ENTITY_learner_errors
+      icon: mdi:brain
+      name: Learning Components
+    show_header_toggle: false
+    state_color: true
+    title: Recent Errors & Warnings
+    type: entities
+  - entities:
+    - label: Update Performance
+      type: section
+    - entity: sensor.REPLACE_ME_ENTITY_update_latency
+      icon: mdi:timer-outline
+      name: Update Latency
+      secondary_info: Average response time
+    - entity: sensor.REPLACE_ME_ENTITY_update_frequency
+      icon: mdi:refresh
+      name: Update Frequency
+      secondary_info: Updates per minute
+    - entity: sensor.REPLACE_ME_ENTITY_calculation_time
+      icon: mdi:calculator
+      name: Calculation Time
+      secondary_info: Offset computation time
+    - label: Resource Usage
+      type: section
+    - entity: sensor.REPLACE_ME_ENTITY_memory_usage_mb
+      icon: mdi:memory
+      name: Memory Usage
+      secondary_info: RAM consumption
+    - entity: sensor.REPLACE_ME_ENTITY_cpu_usage_percent
+      icon: mdi:chip
+      name: CPU Usage
+      secondary_info: During training
+    - entity: sensor.REPLACE_ME_ENTITY_storage_used_kb
+      icon: mdi:harddisk
+      name: Storage Used
+      secondary_info: Persistent data size
+    - label: Network & I/O
+      type: section
+    - entity: sensor.REPLACE_ME_ENTITY_api_response_time
+      icon: mdi:web
+      name: API Response Time
+      secondary_info: Home Assistant API
+    - entity: sensor.REPLACE_ME_ENTITY_sensor_read_errors
+      icon: mdi:sensor-off
+      name: Sensor Read Errors
+      secondary_info: Failed sensor reads
+    show_header_toggle: false
+    state_color: false
+    title: Performance Metrics
+    type: entities
+  icon: mdi:heart-pulse
+  path: system_health
+  title: System Health
