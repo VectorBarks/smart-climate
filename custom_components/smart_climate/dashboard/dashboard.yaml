@@ -1,5 +1,5 @@
 # Smart Climate Advanced Analytics Dashboard
-# Generated: 2025-08-24 17:36:33
+# Generated: 2025-08-24 17:56:38
 # Entity: climate.REPLACE_ME_ENTITY
 # Name: REPLACE_ME_NAME
 #
@@ -1196,7 +1196,8 @@ views:
     - entity: binary_sensor.REPLACE_ME_ENTITY_thermal_manager_healthy
       icon: mdi:thermostat
       name: Thermal Manager
-      secondary_info: 'State: {{ states("sensor.REPLACE_ME_ENTITY_thermal_state") }}'
+      secondary_info: 'State: {{ states("sensor.REPLACE_ME_ENTITY_thermal_state")
+        }}'
     - entity: binary_sensor.REPLACE_ME_ENTITY_sensor_manager_healthy
       icon: mdi:sensors
       name: Sensor Manager
