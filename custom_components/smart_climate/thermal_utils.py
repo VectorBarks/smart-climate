@@ -26,7 +26,8 @@ def exponential_decay(t: float, T_final: float, T_initial: float, tau: float) ->
 
 def analyze_drift_data(
     data_segment: List[Tuple[float, float]], 
-    is_passive: bool = False
+    is_passive: bool = False,
+    outdoor_temp: Optional[float] = None
 ) -> Optional[ProbeResult]:
     """Analyze temperature drift data and extract thermal time constant.
     
@@ -36,9 +37,10 @@ def analyze_drift_data(
     Args:
         data_segment: List of (timestamp, temperature) tuples
         is_passive: If True, applies 0.5x confidence scaling for passive measurements
+        outdoor_temp: Outdoor temperature during drift (°C) - for ProbeResult enhancement
         
     Returns:
-        ProbeResult with tau_value, confidence, duration, fit_quality, aborted=False
+        ProbeResult with tau_value, confidence, duration, fit_quality, aborted=False, outdoor_temp
         Returns None if analysis fails or insufficient data
     """
     # Lazy import scipy to avoid blocking event loop during startup
@@ -127,7 +129,8 @@ def analyze_drift_data(
             confidence=confidence,
             duration=int(duration),
             fit_quality=fit_quality,
-            aborted=False
+            aborted=False,
+            outdoor_temp=outdoor_temp  # FIXED: Pass outdoor_temp to ProbeResult
         )
         
     except (RuntimeError, ValueError, TypeError, IndexError) as e:

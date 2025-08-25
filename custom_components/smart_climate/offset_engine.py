@@ -254,8 +254,8 @@ class OffsetEngine:
         self._power_min_threshold = config.get("power_min_threshold", DEFAULT_POWER_MIN_THRESHOLD)
         self._power_max_threshold = config.get("power_max_threshold", DEFAULT_POWER_MAX_THRESHOLD)
         
-        # Learning configuration (disabled by default for backward compatibility)
-        self._enable_learning = config.get("enable_learning", False)
+        # Learning configuration (FIXED: enabled by default for data collection)
+        self._enable_learning = config.get("enable_learning", True)
         self._learner: Optional[EnhancedLightweightOffsetLearner] = None
         self._update_callbacks: List[Callable] = []  # For state update notifications
         

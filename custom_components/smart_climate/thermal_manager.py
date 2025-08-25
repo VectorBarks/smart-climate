@@ -985,7 +985,7 @@ class ThermalManager:
             
             # Phase 1: Passive learning during PRIMING (AFTER handler execution)
             if self._current_state == ThermalState.PRIMING:
-                self._handle_passive_learning()
+                self._handle_passive_learning(outdoor_temp)
             
 
             
@@ -1043,7 +1043,7 @@ class ThermalManager:
         _LOGGER.debug("Thermal manager reset complete: state=%s, tau_cooling=90.0, tau_warming=150.0",
                      self._current_state.value)
 
-    def _handle_passive_learning(self) -> None:
+    def _handle_passive_learning(self, outdoor_temp: Optional[float] = None) -> None:
         """Handle passive learning during PRIMING state.
         
         Orchestrates passive learning by:
@@ -1051,6 +1051,9 @@ class ThermalManager:
         2. Analyzing drift data using thermal_utils.analyze_drift_data
         3. Accepting results with confidence > configured threshold
         4. Updating thermal model via existing update_tau method
+        
+        Args:
+            outdoor_temp: Current outdoor temperature (°C) for ProbeResult enhancement
         
         Uses configuration parameters:
         - passive_confidence_threshold: Minimum confidence to accept results (default 0.3)
@@ -1069,9 +1072,9 @@ class ThermalManager:
                 
             _LOGGER.debug("Found drift event with %d data points for passive analysis", len(drift_data))
             
-            # Analyze drift data using thermal_utils
+            # Analyze drift data using thermal_utils with outdoor temperature
             from .thermal_utils import analyze_drift_data
-            probe_result = analyze_drift_data(drift_data, is_passive=True)
+            probe_result = analyze_drift_data(drift_data, is_passive=True, outdoor_temp=outdoor_temp)
             
             if not probe_result:
                 _LOGGER.debug("Passive learning analysis failed - insufficient data or curve fitting error")
@@ -1093,9 +1096,15 @@ class ThermalManager:
             # Update thermal model with passive learning result
             self._model.update_tau(probe_result, is_cooling)
             
-            _LOGGER.info("Passive learning successful: tau=%.1f, confidence=%.3f, duration=%ds, fit_quality=%.3f",
-                        probe_result.tau_value, probe_result.confidence, 
-                        probe_result.duration, probe_result.fit_quality)
+            # Log success with outdoor temperature if available
+            if outdoor_temp is not None:
+                _LOGGER.info("Passive learning successful: tau=%.1f, confidence=%.3f, duration=%ds, fit_quality=%.3f, outdoor_temp=%.1f°C",
+                            probe_result.tau_value, probe_result.confidence, 
+                            probe_result.duration, probe_result.fit_quality, outdoor_temp)
+            else:
+                _LOGGER.info("Passive learning successful: tau=%.1f, confidence=%.3f, duration=%ds, fit_quality=%.3f",
+                            probe_result.tau_value, probe_result.confidence, 
+                            probe_result.duration, probe_result.fit_quality)
                         
         except Exception as e:
             _LOGGER.error("Error in passive learning handler: %s", e)
