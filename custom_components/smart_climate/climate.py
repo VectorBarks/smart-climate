@@ -118,6 +118,8 @@ class SmartClimateEntity(ClimateEntity):
         self._feedback_tasks: List[Callable] = []  # Cancel functions for scheduled feedbacks
         self._last_predicted_offset: Optional[float] = None
         self._last_offset_input: Optional[OffsetInput] = None
+        self._last_initial_room_temp: Optional[float] = None  # Store initial room temp for ideal offset calculation
+        self._last_target_temperature: Optional[float] = None  # Store target temp for validation
         self._feedback_delay = config.get("feedback_delay", 45)  # Default 45 seconds
         
         # DelayLearner for adaptive feedback delays
@@ -1883,6 +1885,8 @@ class SmartClimateEntity(ClimateEntity):
                 # Store current prediction data (use reactive offset for learning)
                 self._last_predicted_offset = reactive_offset
                 self._last_offset_input = offset_input
+                self._last_initial_room_temp = room_temp  # Store initial room temp for ideal offset calculation
+                self._last_target_temperature = target_temp  # Store target temp for validation
                 
                 # Determine feedback delay (adaptive or fixed)
                 feedback_delay = self._feedback_delay  # Default fixed delay
@@ -2123,24 +2127,35 @@ class SmartClimateEntity(ClimateEntity):
         """Collect learning feedback after temperature adjustment settles.
         
         This method is called after a delay to measure how well the predicted
-        offset worked by comparing current temperatures.
+        offset worked by comparing against the ideal offset needed to reach target.
         
         Args:
             _now: Current time (required by async_call_later but not used)
         """
         if (self._last_predicted_offset is None or 
-            self._last_offset_input is None):
+            self._last_offset_input is None or
+            self._last_initial_room_temp is None or
+            self._last_target_temperature is None):
             _LOGGER.debug("No prediction data available for feedback")
             return
         
         try:
-            # Get current temperatures
+            # Check if target temperature changed (user intervention)
+            if self._attr_target_temperature != self._last_target_temperature:
+                _LOGGER.debug(
+                    "Target temperature changed from %.1f°C to %.1f°C, skipping feedback (user intervention)",
+                    self._last_target_temperature,
+                    self._attr_target_temperature if self._attr_target_temperature else 0.0
+                )
+                return
+            
+            # Get current temperatures for validation
             current_room_temp = self._sensor_manager.get_room_temperature()
             if current_room_temp is None:
                 _LOGGER.debug("Room temperature unavailable for feedback")
                 return
             
-            # Get current AC internal temperature
+            # Get current AC internal temperature for validation
             wrapped_state = self.hass.states.get(self._wrapped_entity_id)
             if not wrapped_state or not wrapped_state.attributes:
                 _LOGGER.debug("Wrapped entity unavailable for feedback")
@@ -2151,25 +2166,40 @@ class SmartClimateEntity(ClimateEntity):
                 _LOGGER.debug("AC internal temperature unavailable for feedback")
                 return
             
-            # Calculate actual offset that exists now
-            # The offset is: AC internal temp - Room temp
-            # When room is warmer than AC (cooling): AC=22, Room=25 -> offset = -3 (need to cool MORE)
-            # When room is cooler than AC (overcooled): AC=25, Room=22 -> offset = 3 (need to cool LESS)
-            actual_offset = float(current_ac_temp) - current_room_temp
+            # Calculate the ideal offset that would have been needed
+            # This represents what offset SHOULD have been applied to perfectly reach the target
+            # Ideal offset = target_setpoint - initial_room_temp
+            ideal_offset = self._last_target_temperature - self._last_initial_room_temp
             
-            # Record the performance
+            # Record the performance using ideal offset as ground truth
             self._offset_engine.record_actual_performance(
                 predicted_offset=self._last_predicted_offset,
-                actual_offset=actual_offset,  # Use the offset directly without negation
+                actual_offset=ideal_offset,  # The ground truth: what would have been perfect
                 input_data=self._last_offset_input
             )
             
             _LOGGER.debug(
-                "Learning feedback collected: predicted_offset=%.2f°C, actual_offset=%.2f°C, "
-                "ac_temp=%.1f°C, room_temp=%.1f°C",
+                "Learning feedback collected: predicted_offset=%.2f°C, ideal_offset=%.2f°C "
+                "(target=%.1f°C - initial_room=%.1f°C), current: ac_temp=%.1f°C, room_temp=%.1f°C",
                 self._last_predicted_offset,
-                actual_offset,
+                ideal_offset,
+                self._last_target_temperature,
+                self._last_initial_room_temp,
                 current_ac_temp,
+                current_room_temp
+            )
+            
+            # Enhanced debug logging for troubleshooting
+            temp_difference = current_room_temp - self._last_target_temperature
+            offset_error = abs(self._last_predicted_offset - ideal_offset)
+            
+            _LOGGER.debug(
+                "Learning analysis: temp_diff_from_target=%.2f°C, offset_error=%.2f°C, "
+                "room_temp_change=%.2f°C (%.1f->%.1f)",
+                temp_difference,
+                offset_error,
+                current_room_temp - self._last_initial_room_temp,
+                self._last_initial_room_temp,
                 current_room_temp
             )
             

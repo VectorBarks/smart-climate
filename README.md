@@ -1,11 +1,11 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.5.3--alpha-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.5--beta6-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
-> 🚀 **v1.5.3-beta Coming Soon**: Intelligent Probe Scheduler solves the 30-day confidence problem with context-aware thermal calibration. [Current: v1.5.3-alpha](https://github.com/VectorBarks/smart-climate/releases/tag/v1.5.3-alpha)
+> 🚀 **v1.5.5-beta6 Current**: Critical data collection fixes restore ML learning system. Enhanced learning feedback provides meaningful training data. [Latest Release](https://github.com/VectorBarks/smart-climate/releases)
 
 Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
 
@@ -151,29 +151,19 @@ Smart Climate Control creates a virtual climate entity that:
 
 ## Latest Releases
 
-### v1.5.3-beta (Coming Soon): Intelligent Probe Scheduler
-**🚀 Next Release**: Context-aware thermal calibration that solves the 30-day confidence problem
+### v1.5.5-beta6 (Current): Critical Data Collection Fixes
+**🔧 Critical Fix Release**: [Download now](https://github.com/VectorBarks/smart-climate/releases)
 
-#### Revolutionary Features
-- **Zero Comfort Impact**: Only probes when you're away using presence detection
-- **Faster Learning**: Reach 80%+ confidence in days instead of weeks
-- **Intelligent Scheduling**: Combines opportunity, information gain, and system stability
-- **Learning Profiles**: Choose from Comfort, Balanced, Aggressive, or Custom profiles
-- **Advanced Integration**: Weather monitoring, calendar integration, manual overrides
+#### Critical Fixes
+- **Learning System Restored**: Fixed 2-week data collection gap where learning was incorrectly paused during DRIFTING state
+- **Outdoor Temperature Capture**: Fixed null outdoor_temp in probe_history entries, enabling weather-correlated analysis  
+- **Enhanced Feedback Loop**: Implemented ideal offset calculation for meaningful ML training data
+- **Quiet Mode Integration**: 90% reduction in AC beep pollution when compressor idle
 
-#### ProbeScheduler Benefits
-- **No More Fixed Intervals**: End disruptive 24-hour probe schedules
-- **Smart Diversity**: Prioritizes unexplored temperature conditions for maximum learning value
-- **Graceful Degradation**: Works with minimal sensors, scales with available integrations
-- **Equipment Protection**: Respects HVAC recovery time and prevents excessive cycling
-
-### v1.5.3-alpha (Current): Thermal Model Enhancements
-**📊 Foundation Release**: [Download now](https://github.com/VectorBarks/smart-climate/releases/tag/v1.5.3-alpha)
-
-#### Enhanced Learning System
-- **75-Probe History**: Expanded from 5 to 75 samples for seasonal adaptation (1.5-2.5 months of data)
-- **Exponential Decay Weighting**: Time-based probe weighting (0.98^days) with 34.3-day half-life
-- **Enhanced Confidence**: Statistical threshold-based calculation enabling 95%+ confidence
+#### Technical Improvements
+- **Data Pipeline Recovery**: Modified coordinator.py to only pause learning during PRIMING phase
+- **Weather Integration**: Updated ProbeResult creation across 3 files to capture outdoor temperature
+- **Learning Feedback**: Enhanced feedback mechanism calculates hindsight ideal offsets for better ML training
 - **Full Backward Compatibility**: Automatic migration preserves existing probe data
 
 #### Performance Validated
