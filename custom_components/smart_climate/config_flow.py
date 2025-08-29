@@ -151,6 +151,9 @@ from .const import (
     DEFAULT_MAX_PROBE_INTERVAL,
 
     DEFAULT_INFO_GAIN_THRESHOLD,
+    # Quiet Mode imports (v1.5.6+)
+    CONF_QUIET_MODE_ENABLED,
+    DEFAULT_QUIET_MODE_ENABLED,
     # Entity availability waiting imports
     CONF_STARTUP_TIMEOUT,
     STARTUP_TIMEOUT_SEC,
@@ -1476,6 +1479,10 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_THERMAL_EFFICIENCY_ENABLED,
                 default=current_options.get(CONF_THERMAL_EFFICIENCY_ENABLED, current_config.get(CONF_THERMAL_EFFICIENCY_ENABLED, DEFAULT_THERMAL_EFFICIENCY_ENABLED))
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_QUIET_MODE_ENABLED,
+                default=current_options.get(CONF_QUIET_MODE_ENABLED, current_config.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED))
             ): selector.BooleanSelector(),
             vol.Optional(
                 CONF_PREFERENCE_LEVEL,

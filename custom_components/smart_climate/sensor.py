@@ -178,6 +178,11 @@ async def async_setup_entry(
             SamplesPerDaySensor(coordinator, entity_id, config_entry),
             ConvergenceTrendSensor(coordinator, entity_id, config_entry),
             OutlierDetectionSensor(coordinator, entity_id, config_entry),
+            
+            # === QUIET MODE SENSORS (3) ===
+            QuietModeStatusSensor(coordinator, entity_id, config_entry),
+            QuietModeSuppressionSensor(coordinator, entity_id, config_entry),
+            CompressorStateSensor(coordinator, entity_id, config_entry),
         ])
         
         # === THERMAL EFFICIENCY SENSORS (12) ===
@@ -927,4 +932,102 @@ class OutlierCountSensor(SmartClimateDashboardSensor):
             return base_attrs
         except (AttributeError, TypeError):
             return base_attrs
+
+
+class QuietModeStatusSensor(SmartClimateDashboardSensor):
+    """Sensor for quiet mode status."""
+    
+    def __init__(
+        self,
+        coordinator,
+        base_entity_id: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize quiet mode status sensor."""
+        super().__init__(coordinator, base_entity_id, "quiet_mode_status", config_entry)
+        self._attr_name = "Quiet Mode Status"
+    
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the quiet mode status."""
+        if not self.coordinator.data:
+            return None
+        
+        try:
+            return getattr(self.coordinator.data, "quiet_mode_status", None)
+        except (AttributeError, TypeError):
+            return None
+    
+    @property
+    def icon(self) -> str:
+        """Return the icon based on status."""
+        status = self.native_value
+        if status == "disabled":
+            return "mdi:volume-high"
+        else:
+            return "mdi:volume-off"
+
+
+class QuietModeSuppressionSensor(SmartClimateDashboardSensor):
+    """Sensor for quiet mode suppression count."""
+    
+    def __init__(
+        self,
+        coordinator,
+        base_entity_id: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize quiet mode suppression sensor."""
+        super().__init__(coordinator, base_entity_id, "quiet_mode_suppressions", config_entry)
+        self._attr_name = "Quiet Mode Suppressions"
+        self._attr_native_unit_of_measurement = "suppressions"
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_icon = "mdi:counter"
+    
+    @property
+    def native_value(self) -> Optional[int]:
+        """Return the suppression count."""
+        if not self.coordinator.data:
+            return None
+        
+        try:
+            return getattr(self.coordinator.data, "quiet_mode_suppressions", None)
+        except (AttributeError, TypeError):
+            return None
+
+
+class CompressorStateSensor(SmartClimateDashboardSensor):
+    """Sensor for compressor state."""
+    
+    def __init__(
+        self,
+        coordinator,
+        base_entity_id: str,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize compressor state sensor."""
+        super().__init__(coordinator, base_entity_id, "compressor_state", config_entry)
+        self._attr_name = "Compressor State"
+    
+    @property
+    def native_value(self) -> Optional[str]:
+        """Return the compressor state."""
+        if not self.coordinator.data:
+            return None
+        
+        try:
+            return getattr(self.coordinator.data, "compressor_state", None)
+        except (AttributeError, TypeError):
+            return None
+    
+    @property
+    def icon(self) -> str:
+        """Return the icon based on compressor state."""
+        state = self.native_value
+        if state == "active":
+            return "mdi:air-conditioner"
+        elif state == "idle":
+            return "mdi:pause"
+        else:
+            return "mdi:help-circle"
 

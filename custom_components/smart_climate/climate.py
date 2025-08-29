@@ -19,10 +19,12 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult, ModeAdjustments
 from .thermal_models import ThermalState
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
 from .config_helpers import build_predictive_config
+from .quiet_mode_controller import QuietModeController
+from .compressor_state_analyzer import CompressorStateAnalyzer
 
 if TYPE_CHECKING:
     from .offset_engine import OffsetEngine
@@ -146,6 +148,17 @@ class SmartClimateEntity(ClimateEntity):
         self._attr_target_temperature_high = None
         self._attr_target_temperature_low = None
         self.hass = hass
+        
+        # Initialize quiet mode controller
+        self._quiet_mode_enabled = config.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
+        self._quiet_mode_controller = None
+        if self._quiet_mode_enabled:
+            analyzer = CompressorStateAnalyzer()
+            self._quiet_mode_controller = QuietModeController(
+                enabled=True,
+                analyzer=analyzer,
+                logger=_LOGGER
+            )
         
         _LOGGER.debug(
             "SmartClimateEntity initialized for wrapped entity: %s",
@@ -786,6 +799,11 @@ class SmartClimateEntity(ClimateEntity):
             "total_offset": self._last_offset + predictive_offset,
             "predictive_strategy": active_strategy,
         })
+        
+        # Quiet mode attributes
+        if self._quiet_mode_controller:
+            attributes["quiet_mode_enabled"] = self._quiet_mode_enabled
+            attributes["quiet_mode_suppressions"] = self._quiet_mode_controller.get_suppression_count()
         
         # Phase 1: Core Intelligence Attributes (v1.3.0+)
         
@@ -1808,6 +1826,31 @@ class SmartClimateEntity(ClimateEntity):
                 total_offset,
                 adjusted_temp
             )
+            
+            # Check quiet mode suppression
+            if self._quiet_mode_controller and power_consumption is not None:
+                # Get current setpoint from wrapped entity
+                wrapped_state = self.hass.states.get(self._wrapped_entity_id)
+                current_setpoint = None
+                if wrapped_state and wrapped_state.attributes:
+                    current_setpoint = wrapped_state.attributes.get("temperature")
+                
+                if current_setpoint is not None:
+                    should_suppress, reason = self._quiet_mode_controller.should_suppress_adjustment(
+                        current_room_temp=room_temp,
+                        current_setpoint=current_setpoint,
+                        new_setpoint=adjusted_temp,
+                        power=power_consumption,
+                        hvac_mode=self.hvac_mode,
+                        hysteresis_learner=self._offset_engine._hysteresis_learner
+                    )
+                    
+                    if should_suppress:
+                        _LOGGER.info(
+                            "Quiet Mode: Suppressed adjustment from %.1f°C to %.1f°C - %s",
+                            current_setpoint, adjusted_temp, reason
+                        )
+                        return  # Don't send to AC
             
             # Send adjusted temperature to wrapped entity
             await self._temperature_controller.send_temperature_command(

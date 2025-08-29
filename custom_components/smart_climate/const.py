@@ -111,6 +111,9 @@ CONF_MAX_PROBE_INTERVAL = "max_probe_interval_days"
 
 CONF_INFO_GAIN_THRESHOLD = "information_gain_threshold"
 
+# Quiet Mode configuration keys (v1.5.6+)
+CONF_QUIET_MODE_ENABLED = "quiet_mode_enabled"
+
 # Default values
 DEFAULT_MAX_OFFSET = 5.0
 DEFAULT_MIN_TEMPERATURE = 16.0
@@ -225,6 +228,8 @@ DEFAULT_MIN_PROBE_INTERVAL = 12  # hours
 DEFAULT_MAX_PROBE_INTERVAL = 7   # days
 
 DEFAULT_INFO_GAIN_THRESHOLD = 0.5
+# Quiet Mode default values (v1.5.6+)
+DEFAULT_QUIET_MODE_ENABLED = True  # Better UX by default - suppress beeps when AC idle
 
 # Preference level options
 PREFERENCE_LEVELS = [

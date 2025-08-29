@@ -62,6 +62,7 @@
         "description": "Configure advanced settings for your Smart Climate Control",
         "data": {
           "thermal_efficiency_enabled": "Enable Thermal Efficiency",
+          "quiet_mode_enabled": "Enable Quiet Mode",
           "preference_level": "Comfort vs Savings Preference",
           "shadow_mode": "Shadow Mode (observe only)",
           "priming_duration_hours": "Priming Duration (hours)",
@@ -72,6 +73,7 @@
         },
         "data_description": {
           "thermal_efficiency_enabled": "Enable advanced thermal efficiency optimization for energy savings",
+          "quiet_mode_enabled": "Suppress unnecessary temperature adjustments when AC compressor is idle to reduce beep noise",
           "preference_level": "Choose your balance between comfort and energy savings",
           "shadow_mode": "Enable to monitor thermal patterns without controlling the AC",
           "priming_duration_hours": "Duration for initial thermal learning (24-48 hours recommended)",
