@@ -597,12 +597,16 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                     
                     # Control OffsetEngine learning based on current state
                     current_state = thermal_manager.current_state
-                    if current_state == ThermalState.DRIFTING:
+                    if current_state == ThermalState.PRIMING:
+                        # Only pause learning during initial PRIMING phase (24-48 hours)
+                        # when the system is still gathering baseline data
                         self._offset_engine.pause_learning()
-                        _LOGGER.debug("Learning paused for DRIFTING state")
-                    elif current_state == ThermalState.CORRECTING:
+                        _LOGGER.debug("Learning paused for PRIMING state (initial baseline phase)")
+                    else:
+                        # Allow learning in all other states including DRIFTING
+                        # DRIFTING is when we need to learn thermal behavior!
                         self._offset_engine.resume_learning()
-                        _LOGGER.debug("Learning resumed for CORRECTING state")
+                        _LOGGER.debug("Learning enabled for %s state", current_state.value)
                     
                     # Get learning target for state-aware training
                     learning_target = thermal_manager.get_learning_target(

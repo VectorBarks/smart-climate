@@ -823,7 +823,8 @@ class ProbeState(StateHandler):
                 confidence=confidence,
                 duration=int(duration),
                 fit_quality=fit_quality,
-                aborted=False
+                aborted=False,
+                outdoor_temp=outdoor_temp
             )
             
         except (AttributeError, TypeError, ValueError) as e:

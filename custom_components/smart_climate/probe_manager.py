@@ -126,7 +126,7 @@ class ProbeManager:
             _LOGGER.error("Error checking probe start conditions: %s", e)
             return False
     
-    def start_active_probe(self, max_drift: Optional[float] = None) -> str:
+    def start_active_probe(self, max_drift: Optional[float] = None, current_conditions: Optional[Dict[str, Any]] = None) -> str:
         """
         Start an active thermal probe with user notification.
         
@@ -164,7 +164,8 @@ class ProbeManager:
             'max_drift': max_drift,
             'temperatures': [],  # List of (timestamp, temperature) tuples
             'aborted': False,
-            'completed': False
+            'completed': False,
+            'outdoor_temp': current_conditions.get('outdoor_temp') if current_conditions else None
         }
         
         self._active_probes[probe_id] = probe_data
@@ -335,13 +336,14 @@ class ProbeManager:
                 fit_quality
             )
             
-            # Create probe result
+            # Create probe result with outdoor temperature
             result = ProbeResult(
                 tau_value=tau_value,
                 confidence=confidence,
                 duration=duration_seconds,
                 fit_quality=fit_quality,
-                aborted=False
+                aborted=False,
+                outdoor_temp=probe_data.get('outdoor_temp')
             )
             
             # Update thermal model

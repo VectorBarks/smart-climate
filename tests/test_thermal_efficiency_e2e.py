@@ -287,8 +287,8 @@ class TestThermalEfficiencyE2E:
         assert window_size <= 2.5  # Should be conservative
 
     @pytest.mark.asyncio
-    async def test_drifting_state_pauses_learning_completely(self, full_thermal_coordinator, mock_offset_engine):
-        """Test DRIFTING state pauses all learning activities."""
+    async def test_drifting_state_enables_learning(self, full_thermal_coordinator, mock_offset_engine):
+        """Test DRIFTING state enables learning activities."""
         thermal_manager = Mock()
         thermal_manager.current_state = ThermalState.DRIFTING
         thermal_manager.get_operating_window.return_value = (22.5, 25.5)
@@ -299,8 +299,8 @@ class TestThermalEfficiencyE2E:
         data = await full_thermal_coordinator._async_update_data()
         
         assert data.thermal_state == ThermalState.DRIFTING.value
-        assert data.learning_active is False
-        mock_offset_engine.pause_learning.assert_called_once()
+        assert data.learning_active is True
+        mock_offset_engine.resume_learning.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_correcting_state_active_learning_with_boundary(self, full_thermal_coordinator, mock_offset_engine):

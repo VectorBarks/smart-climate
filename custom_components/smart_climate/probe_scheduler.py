@@ -866,7 +866,8 @@ class ProbeScheduler:
         probe_duration_minutes: int,
         tau_measured: float, 
         fit_quality: float,
-        abort_reason: str
+        abort_reason: str,
+        outdoor_temp: Optional[float] = None
     ) -> Optional[ProbeResult]:
         """Handle partial data from aborted probe.
         
@@ -907,7 +908,8 @@ class ProbeScheduler:
                 duration=probe_duration_minutes * 60,  # Convert to seconds
                 fit_quality=fit_quality,
                 aborted=True,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
+                outdoor_temp=outdoor_temp
             )
             
         except Exception as e:

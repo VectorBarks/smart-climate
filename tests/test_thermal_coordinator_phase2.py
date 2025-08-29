@@ -194,10 +194,10 @@ class TestThermalCoordinatorPhase2:
 
     # Test 3-4: State Transitions Update OffsetEngine Learning
     @pytest.mark.asyncio
-    async def test_drifting_state_pauses_offset_learning(self, coordinator_with_thermal_manager, mock_offset_engine, mock_thermal_manager):
-        """Test that DRIFTING state pauses OffsetEngine learning."""
-        # Set thermal manager to DRIFTING state
-        mock_thermal_manager.current_state = ThermalState.DRIFTING
+    async def test_priming_state_pauses_offset_learning(self, coordinator_with_thermal_manager, mock_offset_engine, mock_thermal_manager):
+        """Test that PRIMING state pauses OffsetEngine learning."""
+        # Set thermal manager to PRIMING state
+        mock_thermal_manager.current_state = ThermalState.PRIMING
         
         # Update coordinator data
         await coordinator_with_thermal_manager._async_update_data()
@@ -347,14 +347,14 @@ class TestThermalCoordinatorPhase2:
     # Test 14: DRIFTING State Specific Behavior
     @pytest.mark.asyncio
     async def test_drifting_state_specific_behavior(self, coordinator_with_thermal_manager, mock_offset_engine, mock_thermal_manager):
-        """Test DRIFTING state pauses learning and sets learning_active=False."""
+        """Test DRIFTING state enables learning and sets learning_active=True."""
         mock_thermal_manager.current_state = ThermalState.DRIFTING
         
         data = await coordinator_with_thermal_manager._async_update_data()
         
-        # Verify learning is paused
-        mock_offset_engine.pause_learning.assert_called_once()
-        assert data.learning_active is False
+        # Verify learning is resumed (DRIFTING now allows learning)
+        mock_offset_engine.resume_learning.assert_called_once()
+        assert data.learning_active is True
         assert data.thermal_state == ThermalState.DRIFTING.value
 
     # Test 15: CORRECTING State Specific Behavior
