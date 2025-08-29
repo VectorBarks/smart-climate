@@ -1994,6 +1994,7 @@ class OffsetEngine:
                     _LOGGER.debug("Failed to get thermal data: %s", exc)
 
             # Create a comprehensive state dictionary with v2.1 schema
+            # NOTE: data_store wraps this with its own structure, so we pass the inner structure
             persistent_data = {
                 "version": "2.1",  # Updated for v2.1 schema with thermal persistence support
                 "learning_data": {
@@ -2012,7 +2013,7 @@ class OffsetEngine:
                 sample_count, self._enable_learning, learner_data is not None
             )
 
-            # Save to persistent storage
+            # Save to persistent storage (data_store will wrap with its own version 1.0 structure)
             await self._data_store.async_save_learning_data(persistent_data)
             
             # Update save statistics on success
