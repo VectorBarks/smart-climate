@@ -194,7 +194,7 @@ class DashboardGenerator:
         )
         learning_entities = self._select_entities(
             related_entities,
-            ["learning", "calibration", "hysteresis", "adaptive_delay", "sample", "window", "seasonal", "forecast"],
+            ["learning", "calibration", "hysteresis", "adaptive_delay", "sample", "window", "seasonal", "forecast", "transition", "probe"],
             limit=24,
         )
         thermal_entities = self._select_entities(
@@ -363,6 +363,12 @@ class DashboardGenerator:
                 f"- Strategy detail: {{{{ state_attr('{climate_entity_id}', 'predictive_strategy_status_detail') }}}}\n"
                 f"- Temperature window: `{{{{ state_attr('{climate_entity_id}', 'temperature_window_learned') }}}}`\n"
                 f"- Window detail: {{{{ state_attr('{climate_entity_id}', 'temperature_window_status_detail') }}}}\n"
+                f"- Learning probe step: `{{{{ state_attr('{climate_entity_id}', 'learning_probe_step') }}}}°C`\n"
+                f"- Last transition: `{{{{ state_attr('{climate_entity_id}', 'last_hysteresis_transition') }}}}` "
+                f"via `{{{{ state_attr('{climate_entity_id}', 'last_transition_cause') }}}}` "
+                f"at `{{{{ state_attr('{climate_entity_id}', 'last_transition_room_temp') }}}}°C`\n"
+                f"- Transition setpoint: `{{{{ state_attr('{climate_entity_id}', 'last_transition_ac_setpoint_before') }}}}` → "
+                f"`{{{{ state_attr('{climate_entity_id}', 'last_transition_ac_setpoint_after') }}}}`\n"
             ),
         }
 

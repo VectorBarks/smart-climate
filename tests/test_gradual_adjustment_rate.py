@@ -14,7 +14,9 @@ from custom_components.smart_climate.const import (
     CONF_CLIMATE_ENTITY,
     CONF_ROOM_SENSOR,
     CONF_GRADUAL_ADJUSTMENT_RATE,
+    CONF_LEARNING_PROBE_STEP,
     DEFAULT_GRADUAL_ADJUSTMENT_RATE,
+    DEFAULT_LEARNING_PROBE_STEP,
 )
 from custom_components.smart_climate.config_flow import SmartClimateConfigFlow
 from custom_components.smart_climate.temperature_controller import (
@@ -58,6 +60,7 @@ class TestGradualAdjustmentRateConfigFlow:
         
         return hass
     
+    @pytest.mark.asyncio
     async def test_config_flow_gradual_adjustment_rate_field(self, mock_hass):
         """Test gradual adjustment rate field exists in config flow."""
         flow = SmartClimateConfigFlow()
@@ -76,6 +79,7 @@ class TestGradualAdjustmentRateConfigFlow:
         )
         assert gradual_rate_field is not None
     
+    @pytest.mark.asyncio
     async def test_config_flow_gradual_adjustment_rate_validation(self, mock_hass):
         """Test gradual adjustment rate validation (0.1-2.0°C range)."""
         flow = SmartClimateConfigFlow()
@@ -94,34 +98,39 @@ class TestGradualAdjustmentRateConfigFlow:
             assert result["type"] == data_entry_flow.RESULT_TYPE_CREATE_ENTRY
             assert result["data"][CONF_GRADUAL_ADJUSTMENT_RATE] == valid_rate
     
+    @pytest.mark.asyncio
     async def test_config_flow_gradual_adjustment_rate_invalid_low(self, mock_hass):
         """Test gradual adjustment rate validation rejects values below 0.1."""
         flow = SmartClimateConfigFlow()
         flow.hass = mock_hass
         
-        # Test invalid low value
-        with pytest.raises(vol.Invalid):
-            await flow.async_step_user(user_input={
-                CONF_NAME: "Test Climate",
-                CONF_CLIMATE_ENTITY: "climate.test",
-                CONF_ROOM_SENSOR: "sensor.test_temp",
-                CONF_GRADUAL_ADJUSTMENT_RATE: 0.05,  # Too low
-            })
+        result = await flow.async_step_user(user_input={
+            CONF_NAME: "Test Climate",
+            CONF_CLIMATE_ENTITY: "climate.test",
+            CONF_ROOM_SENSOR: "sensor.test_temp",
+            CONF_GRADUAL_ADJUSTMENT_RATE: 0.05,  # Too low
+        })
+
+        assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
+        assert result["errors"][CONF_GRADUAL_ADJUSTMENT_RATE] == "out_of_range"
     
+    @pytest.mark.asyncio
     async def test_config_flow_gradual_adjustment_rate_invalid_high(self, mock_hass):
         """Test gradual adjustment rate validation rejects values above 2.0."""
         flow = SmartClimateConfigFlow()
         flow.hass = mock_hass
         
-        # Test invalid high value
-        with pytest.raises(vol.Invalid):
-            await flow.async_step_user(user_input={
-                CONF_NAME: "Test Climate",
-                CONF_CLIMATE_ENTITY: "climate.test",
-                CONF_ROOM_SENSOR: "sensor.test_temp",
-                CONF_GRADUAL_ADJUSTMENT_RATE: 2.5,  # Too high
-            })
+        result = await flow.async_step_user(user_input={
+            CONF_NAME: "Test Climate",
+            CONF_CLIMATE_ENTITY: "climate.test",
+            CONF_ROOM_SENSOR: "sensor.test_temp",
+            CONF_GRADUAL_ADJUSTMENT_RATE: 2.5,  # Too high
+        })
+
+        assert result["type"] == data_entry_flow.RESULT_TYPE_FORM
+        assert result["errors"][CONF_GRADUAL_ADJUSTMENT_RATE] == "out_of_range"
     
+    @pytest.mark.asyncio
     async def test_config_flow_gradual_adjustment_rate_default(self, mock_hass):
         """Test gradual adjustment rate default value."""
         flow = SmartClimateConfigFlow()
@@ -138,7 +147,24 @@ class TestGradualAdjustmentRateConfigFlow:
         )
         
         # The default should be set
-        assert gradual_rate_field.default() == DEFAULT_GRADUAL_ADJUSTMENT_RATE
+        assert gradual_rate_field.default == DEFAULT_GRADUAL_ADJUSTMENT_RATE
+
+    @pytest.mark.asyncio
+    async def test_config_flow_learning_probe_step_field(self, mock_hass):
+        """Test learning probe step exists in config flow with independent default."""
+        flow = SmartClimateConfigFlow()
+        flow.hass = mock_hass
+
+        result = await flow.async_step_user()
+
+        schema = result["data_schema"]
+        probe_step_field = next(
+            (key for key in schema.schema.keys() if str(key) == CONF_LEARNING_PROBE_STEP),
+            None
+        )
+
+        assert probe_step_field is not None
+        assert probe_step_field.default == DEFAULT_LEARNING_PROBE_STEP
 
 
 class TestTemperatureControllerWithCustomRate:
@@ -399,6 +425,7 @@ class TestBackwardCompatibility:
         )
         assert result == 1.5  # 1.0 + 0.5 (default rate)
     
+    @pytest.mark.asyncio
     async def test_config_entry_migration(self, mock_hass):
         """Test config entry without gradual_adjustment_rate uses default."""
         # Simulate old config entry

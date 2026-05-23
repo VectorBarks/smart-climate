@@ -147,6 +147,50 @@ class TestHysteresisLearner:
         assert data["start_temps"] == [24.5, 24.3]
         assert data["stop_temps"] == [23.7]
 
+    def test_record_transition_stores_context_event(self):
+        """Test transition telemetry keeps room, setpoint, power and cause context."""
+        learner = HysteresisLearner()
+
+        learner.record_transition(
+            "start",
+            24.5,
+            ac_setpoint_before=28.0,
+            ac_setpoint_after=27.0,
+            power_before=15.0,
+            power_after=640.0,
+            transition_cause="probe",
+        )
+
+        events = learner.get_transition_events()
+        assert len(events) == 1
+        assert events[0]["transition_type"] == "start"
+        assert events[0]["room_temp_at_transition"] == 24.5
+        assert events[0]["ac_setpoint_before"] == 28.0
+        assert events[0]["ac_setpoint_after"] == 27.0
+        assert events[0]["power_before"] == 15.0
+        assert events[0]["power_after"] == 640.0
+        assert events[0]["transition_cause"] == "probe"
+
+    def test_transition_events_roundtrip_through_persistence(self):
+        """Test transition telemetry survives persistence roundtrip."""
+        learner = HysteresisLearner()
+        learner.record_transition(
+            "stop",
+            23.4,
+            ac_setpoint_before=23.0,
+            ac_setpoint_after=23.5,
+            power_before=620.0,
+            power_after=12.0,
+            transition_cause="natural",
+        )
+
+        restored = HysteresisLearner()
+        restored.restore_from_persistence(learner.serialize_for_persistence())
+
+        assert restored.get_transition_events()[0]["transition_type"] == "stop"
+        assert restored.get_transition_events()[0]["room_temp_at_transition"] == 23.4
+        assert restored.get_transition_events()[0]["transition_cause"] == "natural"
+
     def test_restore_from_persistence(self):
         """Test restoration of learner state from persistence data."""
         learner = HysteresisLearner(min_samples=2)

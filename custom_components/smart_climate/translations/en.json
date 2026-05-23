@@ -40,7 +40,8 @@
           "clear_sky_min_duration_hours": "Clear Sky Minimum Duration (hours)",
           "clear_sky_lookahead_hours": "Clear Sky Lookahead Period (hours)",
           "clear_sky_pre_action_hours": "Clear Sky Pre-Action Time (hours)",
-          "clear_sky_adjustment": "Clear Sky Pre-Cool Adjustment (\u00b0C)"
+          "clear_sky_adjustment": "Clear Sky Pre-Cool Adjustment (\u00b0C)",
+          "learning_probe_step": "Learning Probe Step (\u00b0C per update)"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -55,7 +56,7 @@
           "away_temperature": "Fixed temperature to maintain when Away mode is active",
           "sleep_offset": "Additional temperature offset applied during Sleep/Night mode for quieter operation",
           "boost_offset": "Aggressive cooling offset applied during Boost mode (negative value)",
-          "gradual_adjustment_rate": "Maximum temperature change per update cycle to prevent oscillation",
+          "gradual_adjustment_rate": "Maximum normal temperature change per update cycle to prevent oscillation",
           "feedback_delay": "Time to wait after temperature adjustment before recording learning feedback",
           "enable_learning": "Enable the lightweight learning system to improve offset predictions over time",
           "power_idle_threshold": "Power consumption below this value indicates the AC is idle or off",
@@ -78,7 +79,8 @@
           "clear_sky_min_duration_hours": "Minimum duration of clear conditions to trigger strategy (1-24 hours)",
           "clear_sky_lookahead_hours": "How far ahead to check forecast for clear conditions (1-48 hours)",
           "clear_sky_pre_action_hours": "How many hours before clear conditions to start pre-cooling (1-6 hours)",
-          "clear_sky_adjustment": "Temperature adjustment for clear sky pre-cooling (negative values for cooling, -3.0 to 0.0\u00b0C)"
+          "clear_sky_adjustment": "Temperature adjustment for clear sky pre-cooling (negative values for cooling, -3.0 to 0.0\u00b0C)",
+          "learning_probe_step": "Cooling step used only for Quiet Mode learning probes while hysteresis thresholds are unknown"
         }
       }
     },
@@ -144,7 +146,8 @@
           "recovery_duration_minutes": "Recovery Duration (minutes)",
           "probe_drift_limit": "Probe Drift Limit (\u00b0C)",
           "calibration_idle_minutes": "Calibration Idle Threshold (minutes)",
-          "calibration_drift_threshold": "Calibration Temperature Stability (\u00b0C)"
+          "calibration_drift_threshold": "Calibration Temperature Stability (\u00b0C)",
+          "learning_probe_step": "Learning Probe Step (\u00b0C per update)"
         },
         "data_description": {
           "max_offset": "Maximum temperature offset to apply (safety limit)",
@@ -155,7 +158,7 @@
           "away_temperature": "Fixed temperature to maintain when Away mode is active",
           "sleep_offset": "Additional temperature offset applied during Sleep/Night mode for quieter operation",
           "boost_offset": "Aggressive cooling offset applied during Boost mode (negative value)",
-          "gradual_adjustment_rate": "Maximum temperature change per update cycle to prevent oscillation",
+          "gradual_adjustment_rate": "Maximum normal temperature change per update cycle to prevent oscillation",
           "feedback_delay": "Time to wait after temperature adjustment before recording learning feedback",
           "enable_learning": "Enable the lightweight learning system to improve offset predictions over time",
           "power_sensor": "Select a power sensor from the AC smart plug to detect compressor state and running power",
@@ -188,7 +191,8 @@
           "recovery_duration_minutes": "Time to recover after mode changes (30-60 minutes)",
           "probe_drift_limit": "Maximum temperature drift during active learning (1.0-3.0\u00b0C)",
           "calibration_idle_minutes": "Minutes AC must be idle before opportunistic calibration triggers (15-120)",
-          "calibration_drift_threshold": "Maximum temperature drift to consider conditions stable for calibration. 0.2-0.3\u00b0C for modern homes, 0.4-0.5\u00b0C for standard homes, 0.6-1.0\u00b0C for older/drafty buildings (0.1-1.0\u00b0C)"
+          "calibration_drift_threshold": "Maximum temperature drift to consider conditions stable for calibration. 0.2-0.3\u00b0C for modern homes, 0.4-0.5\u00b0C for standard homes, 0.6-1.0\u00b0C for older/drafty buildings (0.1-1.0\u00b0C)",
+          "learning_probe_step": "Cooling step used only for Quiet Mode learning probes while hysteresis thresholds are unknown"
         }
       }
     }

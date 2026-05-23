@@ -31,6 +31,7 @@ from .const import (
     CONF_SLEEP_OFFSET,
     CONF_BOOST_OFFSET,
     CONF_GRADUAL_ADJUSTMENT_RATE,
+    CONF_LEARNING_PROBE_STEP,
     CONF_FEEDBACK_DELAY,
     CONF_ENABLE_LEARNING,
     CONF_POWER_IDLE_THRESHOLD,
@@ -64,6 +65,7 @@ from .const import (
     DEFAULT_SLEEP_OFFSET,
     DEFAULT_BOOST_OFFSET,
     DEFAULT_GRADUAL_ADJUSTMENT_RATE,
+    DEFAULT_LEARNING_PROBE_STEP,
     DEFAULT_FEEDBACK_DELAY,
     DEFAULT_ENABLE_LEARNING,
     DEFAULT_POWER_IDLE_THRESHOLD,
@@ -241,6 +243,10 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["away_temperature"] = "away_temperature_out_of_range"
                 elif "power threshold" in str(ex):
                     errors["base"] = "power_threshold_invalid"
+                elif "gradual_adjustment_rate_out_of_range" in str(ex):
+                    errors[CONF_GRADUAL_ADJUSTMENT_RATE] = "out_of_range"
+                elif "learning_probe_step_out_of_range" in str(ex):
+                    errors[CONF_LEARNING_PROBE_STEP] = "out_of_range"
                 else:
                     errors["base"] = "unknown"
                     _LOGGER.exception("Unexpected error in config flow: %s", ex)
@@ -373,6 +379,15 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             ),
             vol.Optional(CONF_GRADUAL_ADJUSTMENT_RATE, default=DEFAULT_GRADUAL_ADJUSTMENT_RATE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.1,
+                    max=2.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(CONF_LEARNING_PROBE_STEP, default=DEFAULT_LEARNING_PROBE_STEP): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=0.1,
                     max=2.0,
@@ -624,7 +639,16 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         validated[CONF_AWAY_TEMPERATURE] = away_temp
         validated[CONF_SLEEP_OFFSET] = user_input.get(CONF_SLEEP_OFFSET, DEFAULT_SLEEP_OFFSET)
         validated[CONF_BOOST_OFFSET] = user_input.get(CONF_BOOST_OFFSET, DEFAULT_BOOST_OFFSET)
-        validated[CONF_GRADUAL_ADJUSTMENT_RATE] = user_input.get(CONF_GRADUAL_ADJUSTMENT_RATE, DEFAULT_GRADUAL_ADJUSTMENT_RATE)
+        gradual_rate = user_input.get(CONF_GRADUAL_ADJUSTMENT_RATE, DEFAULT_GRADUAL_ADJUSTMENT_RATE)
+        if gradual_rate < 0.1 or gradual_rate > 2.0:
+            raise vol.Invalid("gradual_adjustment_rate_out_of_range")
+
+        learning_probe_step = user_input.get(CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP)
+        if learning_probe_step < 0.1 or learning_probe_step > 2.0:
+            raise vol.Invalid("learning_probe_step_out_of_range")
+
+        validated[CONF_GRADUAL_ADJUSTMENT_RATE] = gradual_rate
+        validated[CONF_LEARNING_PROBE_STEP] = learning_probe_step
         validated[CONF_FEEDBACK_DELAY] = user_input.get(CONF_FEEDBACK_DELAY, DEFAULT_FEEDBACK_DELAY)
         validated[CONF_ENABLE_LEARNING] = user_input.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING)
         validated[CONF_DEFAULT_TARGET_TEMPERATURE] = user_input.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)
@@ -1129,6 +1153,18 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             vol.Optional(
                 CONF_GRADUAL_ADJUSTMENT_RATE,
                 default=current_options.get(CONF_GRADUAL_ADJUSTMENT_RATE, current_config.get(CONF_GRADUAL_ADJUSTMENT_RATE, DEFAULT_GRADUAL_ADJUSTMENT_RATE))
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.1,
+                    max=2.0,
+                    step=0.1,
+                    unit_of_measurement="°C",
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            ),
+            vol.Optional(
+                CONF_LEARNING_PROBE_STEP,
+                default=current_options.get(CONF_LEARNING_PROBE_STEP, current_config.get(CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP))
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=0.1,

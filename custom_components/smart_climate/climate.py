@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult, ModeAdjustments
 from .thermal_models import ThermalState
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
 from .config_helpers import build_predictive_config
@@ -159,7 +159,8 @@ class SmartClimateEntity(ClimateEntity):
             self._quiet_mode_controller = QuietModeController(
                 enabled=True,
                 analyzer=analyzer,
-                logger=_LOGGER
+                logger=_LOGGER,
+                learning_probe_step=config.get(CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP),
             )
         if self._coordinator is not None:
             self._coordinator._quiet_mode_controller = self._quiet_mode_controller
@@ -820,6 +821,7 @@ class SmartClimateEntity(ClimateEntity):
         if self._quiet_mode_controller:
             attributes["quiet_mode_enabled"] = self._quiet_mode_enabled
             attributes["quiet_mode_suppressions"] = self._quiet_mode_controller.get_suppression_count()
+            attributes["learning_probe_step"] = self._quiet_mode_controller._learning_probe_step
         
         # Phase 1: Core Intelligence Attributes (v1.3.0+)
         
@@ -906,6 +908,18 @@ class SmartClimateEntity(ClimateEntity):
             # Number of completed AC hysteresis cycles
             hysteresis_cycle_count = self._get_hysteresis_cycle_count()
             attributes["hysteresis_cycle_count"] = hysteresis_cycle_count
+
+            latest_transition = None
+            if hasattr(self._offset_engine, "_hysteresis_learner"):
+                latest_transition = self._offset_engine._hysteresis_learner.get_latest_transition_event()
+            if latest_transition:
+                attributes["last_hysteresis_transition"] = latest_transition.get("transition_type")
+                attributes["last_transition_room_temp"] = latest_transition.get("room_temp_at_transition")
+                attributes["last_transition_ac_setpoint_before"] = latest_transition.get("ac_setpoint_before")
+                attributes["last_transition_ac_setpoint_after"] = latest_transition.get("ac_setpoint_after")
+                attributes["last_transition_power_before"] = latest_transition.get("power_before")
+                attributes["last_transition_power_after"] = latest_transition.get("power_after")
+                attributes["last_transition_cause"] = latest_transition.get("transition_cause")
             
         except Exception as exc:
             _LOGGER.warning("Error getting AC learning attributes: %s", exc)
@@ -1713,6 +1727,12 @@ class SmartClimateEntity(ClimateEntity):
                 humidity_differential if humidity_differential is not None else 0.0
             )
             
+            # Capture the current AC setpoint for hysteresis transition telemetry
+            current_ac_setpoint = None
+            wrapped_state_for_context = self.hass.states.get(self._wrapped_entity_id)
+            if wrapped_state_for_context and wrapped_state_for_context.attributes:
+                current_ac_setpoint = wrapped_state_for_context.attributes.get("temperature")
+
             offset_input = OffsetInput(
                 ac_internal_temp=ac_internal_temp,
                 room_temp=room_temp,
@@ -1722,6 +1742,7 @@ class SmartClimateEntity(ClimateEntity):
                 time_of_day=now.time(),
                 day_of_week=now.weekday(),
                 hvac_mode=self.hvac_mode,
+                ac_setpoint=current_ac_setpoint,
                 # Add humidity data
                 indoor_humidity=indoor_humidity,
                 outdoor_humidity=outdoor_humidity,
@@ -1866,14 +1887,19 @@ class SmartClimateEntity(ClimateEntity):
                 adjusted_temp
             )
             
-            # Check quiet mode suppression
+            # Limit normal setpoint changes using the configured gradual adjustment rate.
+            # Quiet-mode learning probes are intentionally handled separately below.
+            raw_adjusted_temp = adjusted_temp
+            current_setpoint = current_ac_setpoint
+            was_learning_probe = False
+            if current_setpoint is not None:
+                adjusted_temp = self._temperature_controller.apply_gradual_adjustment(
+                    current_setpoint,
+                    adjusted_temp,
+                )
+
+            # Check quiet mode suppression and learning probes
             if self._quiet_mode_controller and power_consumption is not None:
-                # Get current setpoint from wrapped entity
-                wrapped_state = self.hass.states.get(self._wrapped_entity_id)
-                current_setpoint = None
-                if wrapped_state and wrapped_state.attributes:
-                    current_setpoint = wrapped_state.attributes.get("temperature")
-                
                 if current_setpoint is not None:
                     hysteresis_learner = self._offset_engine._hysteresis_learner
                     progressive_setpoint = self._quiet_mode_controller.get_progressive_adjustment(
@@ -1881,7 +1907,7 @@ class SmartClimateEntity(ClimateEntity):
                         current_setpoint=current_setpoint,
                         hysteresis_learner=hysteresis_learner,
                         hvac_mode=self.hvac_mode,
-                        target_setpoint=adjusted_temp,
+                        target_setpoint=raw_adjusted_temp,
                     )
                     if progressive_setpoint is not None:
                         _LOGGER.info(
@@ -1891,6 +1917,7 @@ class SmartClimateEntity(ClimateEntity):
                             progressive_setpoint,
                         )
                         adjusted_temp = progressive_setpoint
+                        was_learning_probe = True
 
                     should_suppress, reason = self._quiet_mode_controller.should_suppress_adjustment(
                         current_room_temp=room_temp,
@@ -1913,6 +1940,11 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id,
                 adjusted_temp
             )
+            if hasattr(self._offset_engine, "record_setpoint_command"):
+                self._offset_engine.record_setpoint_command(
+                    adjusted_temp,
+                    was_learning_probe=was_learning_probe,
+                )
             
             _LOGGER.info(
                 "Temperature adjustment complete: target=%.1f°C -> adjusted=%.1f°C "

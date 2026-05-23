@@ -20,7 +20,8 @@ class QuietModeController:
         self,
         enabled: bool,
         analyzer: CompressorStateAnalyzer,
-        logger: logging.Logger
+        logger: logging.Logger,
+        learning_probe_step: float = 1.0,
     ):
         """Initialize the QuietModeController.
         
@@ -32,6 +33,7 @@ class QuietModeController:
         self._enabled = enabled
         self._analyzer = analyzer
         self._logger = logger
+        self._learning_probe_step = max(0.1, float(learning_probe_step))
         self._suppression_count = 0
         self._last_learning_attempt = None
         
@@ -152,7 +154,7 @@ class QuietModeController:
             hysteresis_learner: Hysteresis learner (may have unknown thresholds)
             hvac_mode: Current HVAC mode
             target_setpoint: Requested calculated setpoint to move toward. When
-                omitted, one 0.5°C step below the current setpoint is returned.
+                omitted, one learning probe step below the current setpoint is returned.
             
         Returns:
             Progressive setpoint for learning, or None if mode not supported
@@ -177,8 +179,8 @@ class QuietModeController:
         except Exception:  # pragma: no cover - advisory probe only
             pass
         
-        # Return a 0.5°C cooling step while never overshooting the calculated target.
-        progressive_setpoint = current_setpoint - 0.5
+        # Return a learning-probe cooling step while never overshooting the calculated target.
+        progressive_setpoint = current_setpoint - self._learning_probe_step
         if target_setpoint is not None:
             progressive_setpoint = max(target_setpoint, progressive_setpoint)
         progressive_setpoint = round(progressive_setpoint, 1)

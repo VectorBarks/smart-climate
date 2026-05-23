@@ -52,7 +52,7 @@ class TestQuietModeLearning:
         )
     
     def test_progressive_temperature_stepping(self, quiet_controller, mock_analyzer, mock_hysteresis_learner_no_thresholds):
-        """Test progressive 0.5°C temperature stepping during learning."""
+        """Test progressive 1.0°C temperature stepping during learning."""
         # Setup: No learned thresholds, need to learn
         mock_analyzer.get_adjustment_needed_to_activate.return_value = 20.0  # Need to reach 20°C
         
@@ -63,12 +63,10 @@ class TestQuietModeLearning:
         
         # Simulate progressive learning steps
         learning_steps = [
-            21.5,  # First step: -0.5°C
-            21.0,  # Second step: -0.5°C  
-            20.5,  # Third step: -0.5°C
-            20.0,  # Fourth step: -0.5°C (should activate)
+            21.0,  # First step: -1.0°C
+            20.0,  # Second step: -1.0°C (should activate)
         ]
-        
+
         for expected_setpoint in learning_steps:
             progressive_setpoint = quiet_controller.get_progressive_adjustment(
                 current_room_temp=current_room_temp,
@@ -79,9 +77,9 @@ class TestQuietModeLearning:
             
             # Should return progressive setpoint for learning
             if progressive_setpoint is not None:
-                # Verify 0.5°C steps
+                # Verify 1.0°C steps
                 step_size = current_setpoint - progressive_setpoint
-                assert abs(step_size - 0.5) < 0.1, f"Expected 0.5°C step, got {step_size}"
+                assert abs(step_size - 1.0) < 0.1, f"Expected 1.0°C step, got {step_size}"
                 current_setpoint = progressive_setpoint
         
         # Verify learning progression attempted
@@ -273,8 +271,8 @@ class TestQuietModeLearning:
             
             # Each session should attempt progressive learning
             if progressive_setpoint is not None:
-                # Verify progressive step (should be 0.5°C cooler)
-                expected_step = session["current_setpoint"] - 0.5
+                # Verify progressive step (should be 1.0°C cooler)
+                expected_step = session["current_setpoint"] - 1.0
                 assert abs(progressive_setpoint - expected_step) < 0.1
         
         # Verify multiple learning attempts tracked

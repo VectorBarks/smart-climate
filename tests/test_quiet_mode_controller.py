@@ -200,8 +200,8 @@ class TestQuietModeController:
             hvac_mode="cool"
         )
         
-        # Should return a setpoint 0.5°C lower than current
-        assert progressive_adjustment == 23.5
+        # Should return a setpoint 1.0°C lower than current
+        assert progressive_adjustment == 23.0
         
         # Test unsupported modes return None
         progressive_adjustment = self.enabled_controller.get_progressive_adjustment(

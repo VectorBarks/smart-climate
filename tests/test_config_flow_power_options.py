@@ -26,6 +26,8 @@ class _FakeOptionsFlow:
 
 core_module = ModuleType("homeassistant.core")
 core_module.HomeAssistant = object
+setattr(core_module, "ServiceCall", object)
+setattr(core_module, "State", object)
 core_module.callback = lambda func: func
 sys.modules["homeassistant.core"] = core_module
 
@@ -42,6 +44,7 @@ sys.modules["homeassistant"].config_entries = config_entries_module
 
 flow_module = ModuleType("homeassistant.data_entry_flow")
 flow_module.FlowResult = dict
+setattr(flow_module, "FlowResultType", SimpleNamespace(FORM="form", CREATE_ENTRY="create_entry", ABORT="abort"))
 sys.modules["homeassistant.data_entry_flow"] = flow_module
 
 helpers_module = ModuleType("homeassistant.helpers")

@@ -90,6 +90,7 @@ class HysteresisLearner:
         self._min_samples: int = min_samples
         self._start_temps: deque[float] = deque(maxlen=max_samples)
         self._stop_temps: deque[float] = deque(maxlen=max_samples)
+        self._transition_events: deque[dict] = deque(maxlen=max_samples)
 
         # Publicly accessible learned thresholds
         self.learned_start_threshold: Optional[float] = None
@@ -113,11 +114,21 @@ class HysteresisLearner:
             and self.learned_stop_threshold is not None
         )
 
-    def record_threshold(self, transition_type: Literal['start', 'stop'], room_temp: float) -> None:
+    def record_threshold(self, transition_type: Literal['start', 'stop'], room_temp: float, **kwargs: Any) -> None:
         """Backward-compatible alias for recording a hysteresis transition."""
-        self.record_transition(transition_type, room_temp)
+        self.record_transition(transition_type, room_temp, **kwargs)
 
-    def record_transition(self, transition_type: Literal['start', 'stop'], room_temp: float) -> None:
+    def record_transition(
+        self,
+        transition_type: Literal['start', 'stop'],
+        room_temp: float,
+        *,
+        ac_setpoint_before: Optional[float] = None,
+        ac_setpoint_after: Optional[float] = None,
+        power_before: Optional[float] = None,
+        power_after: Optional[float] = None,
+        transition_cause: str = "natural",
+    ) -> None:
         """
         Records the room temperature during a power state transition. This is the primary data input method.
 
@@ -129,9 +140,30 @@ class HysteresisLearner:
             self._start_temps.append(room_temp)
         elif transition_type == 'stop':
             self._stop_temps.append(room_temp)
+
+        self._transition_events.append({
+            "transition_type": transition_type,
+            "room_temp_at_transition": float(room_temp),
+            "ac_setpoint_before": ac_setpoint_before,
+            "ac_setpoint_after": ac_setpoint_after,
+            "power_before": power_before,
+            "power_after": power_after,
+            "transition_cause": transition_cause,
+            "timestamp": datetime.now().isoformat(),
+        })
         
         # Update thresholds after recording new data
         self._update_thresholds()
+
+    def get_transition_events(self) -> List[dict]:
+        """Return recorded hysteresis transition context events."""
+        return list(self._transition_events)
+
+    def get_latest_transition_event(self) -> Optional[dict]:
+        """Return the most recent hysteresis transition event, if any."""
+        if not self._transition_events:
+            return None
+        return self._transition_events[-1]
 
     def get_hysteresis_state(self, power_state: str, room_temp: float) -> HysteresisState:
         """
@@ -171,7 +203,7 @@ class HysteresisLearner:
         # This includes the case where room_temp equals either threshold
         return "idle_stable_zone"
 
-    def serialize_for_persistence(self) -> Dict[str, List[float]]:
+    def serialize_for_persistence(self) -> Dict[str, Any]:
         """
         Serializes the learner's state into a JSON-compatible dictionary.
 
@@ -180,7 +212,8 @@ class HysteresisLearner:
         """
         return {
             "start_temps": list(self._start_temps),
-            "stop_temps": list(self._stop_temps)
+            "stop_temps": list(self._stop_temps),
+            "transition_events": list(self._transition_events),
         }
 
     def restore_from_persistence(self, data: Dict) -> None:
@@ -205,6 +238,13 @@ class HysteresisLearner:
                 for temp in stop_temps:
                     if isinstance(temp, (int, float)):
                         self._stop_temps.append(float(temp))
+
+            transition_events = data.get("transition_events", [])
+            self._transition_events.clear()
+            if isinstance(transition_events, list):
+                for event in transition_events:
+                    if isinstance(event, dict):
+                        self._transition_events.append(event)
             
             # Update thresholds after restoring data
             self._update_thresholds()
@@ -276,6 +316,9 @@ class OffsetEngine:
         self._hysteresis_enabled = power_sensor is not None and power_sensor != ""
         self._hysteresis_learner = HysteresisLearner()
         self._last_power_state: Optional[str] = None
+        self._last_power_consumption: Optional[float] = None
+        self._last_ac_setpoint: Optional[float] = None
+        self._last_adjustment_was_learning_probe = False
         
         # Add state for the stable calibration offset
         self._stable_calibration_offset: Optional[float] = None
@@ -1141,33 +1184,59 @@ class OffsetEngine:
         
         try:
             current_power_state = self._get_power_state(input_data.power_consumption)
+            current_setpoint = getattr(input_data, "ac_setpoint", None)
+            transition_cause = "probe" if self._last_adjustment_was_learning_probe else "natural"
             
             # Check for transitions if we have a previous state
             if self._last_power_state is not None and self._last_power_state != current_power_state:
                 # Detect AC starting: any transition from idle to a higher power state
                 if (self._last_power_state == "idle" and 
                     current_power_state in ("low", "moderate", "high")):
-                    self._hysteresis_learner.record_transition('start', input_data.room_temp)
+                    self._hysteresis_learner.record_transition(
+                        'start',
+                        input_data.room_temp,
+                        ac_setpoint_before=self._last_ac_setpoint,
+                        ac_setpoint_after=current_setpoint,
+                        power_before=self._last_power_consumption,
+                        power_after=input_data.power_consumption,
+                        transition_cause=transition_cause,
+                    )
                     _LOGGER.debug(
-                        "Hysteresis transition detected: %s -> %s (start at %.1f°C)",
-                        self._last_power_state, current_power_state, input_data.room_temp
+                        "Hysteresis transition detected: %s -> %s (start at %.1f°C, cause=%s)",
+                        self._last_power_state, current_power_state, input_data.room_temp, transition_cause
                     )
                 
                 # Detect AC stopping: any transition to idle from a higher power state
                 elif (self._last_power_state in ("low", "moderate", "high") and 
                       current_power_state == "idle"):
-                    self._hysteresis_learner.record_transition('stop', input_data.room_temp)
+                    self._hysteresis_learner.record_transition(
+                        'stop',
+                        input_data.room_temp,
+                        ac_setpoint_before=self._last_ac_setpoint,
+                        ac_setpoint_after=current_setpoint,
+                        power_before=self._last_power_consumption,
+                        power_after=input_data.power_consumption,
+                        transition_cause=transition_cause,
+                    )
                     _LOGGER.debug(
-                        "Hysteresis transition detected: %s -> %s (stop at %.1f°C)",
-                        self._last_power_state, current_power_state, input_data.room_temp
+                        "Hysteresis transition detected: %s -> %s (stop at %.1f°C, cause=%s)",
+                        self._last_power_state, current_power_state, input_data.room_temp, transition_cause
                     )
             
-            # Update the last power state
+            # Update the last power/setpoint context
             self._last_power_state = current_power_state
+            self._last_power_consumption = input_data.power_consumption
+            if current_setpoint is not None:
+                self._last_ac_setpoint = current_setpoint
             
         except Exception as exc:
             _LOGGER.warning("Error in hysteresis transition detection: %s", exc)
     
+    def record_setpoint_command(self, setpoint: float, was_learning_probe: bool = False) -> None:
+        """Record the last commanded AC setpoint for transition-cause telemetry."""
+        self._last_ac_setpoint = setpoint
+        self._last_adjustment_was_learning_probe = was_learning_probe
+
     def _generate_reason(self, input_data: OffsetInput, offset: float, clamped: bool) -> str:
         """Generate human-readable reason for the offset."""
         if offset == 0.0:

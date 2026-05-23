@@ -2,6 +2,7 @@
 
 import sys
 import os
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
 # Add the project root to the Python path
@@ -9,8 +10,25 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 # Mock homeassistant modules before any imports
-sys.modules['homeassistant'] = MagicMock()
-sys.modules['homeassistant.core'] = MagicMock()
+homeassistant_module = ModuleType('homeassistant')
+homeassistant_module.__path__ = []
+sys.modules['homeassistant'] = homeassistant_module
+core_module = ModuleType('homeassistant.core')
+
+class MockHomeAssistant:
+    pass
+
+class MockServiceCall:
+    pass
+
+class MockState:
+    pass
+
+setattr(core_module, 'HomeAssistant', MockHomeAssistant)
+setattr(core_module, 'ServiceCall', MockServiceCall)
+setattr(core_module, 'State', MockState)
+setattr(core_module, 'callback', lambda func: func)
+sys.modules['homeassistant.core'] = core_module
 
 # Create a proper mock for exceptions that preserves actual exception classes
 class MockExceptions:
@@ -41,12 +59,51 @@ class MockExceptions:
             pass
 
 sys.modules['homeassistant.exceptions'] = MockExceptions()
-sys.modules['homeassistant.helpers'] = MagicMock()
+helpers_module = ModuleType('homeassistant.helpers')
+helpers_module.__path__ = []
+sys.modules['homeassistant.helpers'] = helpers_module
+setattr(sys.modules['homeassistant'], 'helpers', helpers_module)
 sys.modules['homeassistant.helpers.typing'] = MagicMock()
 sys.modules['homeassistant.helpers.config_validation'] = MagicMock()
 sys.modules['homeassistant.helpers.event'] = MagicMock()
 sys.modules['homeassistant.helpers.update_coordinator'] = MagicMock()
 sys.modules['homeassistant.helpers.entity'] = MagicMock()
+
+entity_registry_module = ModuleType('homeassistant.helpers.entity_registry')
+setattr(entity_registry_module, 'async_get', MagicMock())
+sys.modules['homeassistant.helpers.entity_registry'] = entity_registry_module
+setattr(helpers_module, 'entity_registry', entity_registry_module)
+
+device_registry_import_module = ModuleType('homeassistant.helpers.device_registry')
+setattr(device_registry_import_module, 'async_get', MagicMock())
+sys.modules['homeassistant.helpers.device_registry'] = device_registry_import_module
+setattr(helpers_module, 'device_registry', device_registry_import_module)
+
+selector_module = ModuleType('homeassistant.helpers.selector')
+
+class _SelectorConfig:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+class _Selector:
+    def __init__(self, config=None):
+        self.config = config
+
+class _SelectOptionDict(dict):
+    def __init__(self, *, value, label):
+        super().__init__(value=value, label=label)
+
+setattr(selector_module, 'SelectSelectorConfig', _SelectorConfig)
+setattr(selector_module, 'NumberSelectorConfig', _SelectorConfig)
+setattr(selector_module, 'SelectSelector', _Selector)
+setattr(selector_module, 'NumberSelector', _Selector)
+setattr(selector_module, 'BooleanSelector', _Selector)
+setattr(selector_module, 'TextSelector', _Selector)
+setattr(selector_module, 'SelectOptionDict', _SelectOptionDict)
+setattr(selector_module, 'SelectSelectorMode', SimpleNamespace(DROPDOWN="dropdown"))
+setattr(selector_module, 'NumberSelectorMode', SimpleNamespace(BOX="box"))
+sys.modules['homeassistant.helpers.selector'] = selector_module
+setattr(helpers_module, 'selector', selector_module)
 sys.modules['homeassistant.const'] = MagicMock()
 sys.modules['homeassistant.components'] = MagicMock()
 sys.modules['homeassistant.components.climate'] = MagicMock()
@@ -135,7 +192,56 @@ sys.modules['homeassistant.components.binary_sensor'] = binary_sensor_module
 
 config_entries_module = MagicMock()
 config_entries_module.ConfigEntry = MagicMock
+
+class MockConfigEntries:
+    def async_entries(self, *args, **kwargs):
+        return []
+
+class MockConfigFlowBase:
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__()
+
+    def async_show_form(self, *, step_id, data_schema=None, errors=None, description_placeholders=None):
+        return {
+            "type": "form",
+            "step_id": step_id,
+            "data_schema": data_schema,
+            "errors": errors or {},
+            "description_placeholders": description_placeholders or {},
+        }
+
+    def async_create_entry(self, *, title, data=None, options=None):
+        return {
+            "type": "create_entry",
+            "title": title,
+            "data": data or {},
+            "options": options or {},
+        }
+
+    def async_abort(self, *, reason):
+        return {"type": "abort", "reason": reason}
+
+class MockOptionsFlowBase(MockConfigFlowBase):
+    pass
+
+config_entries_module.ConfigEntries = MockConfigEntries
+config_entries_module.ConfigFlow = MockConfigFlowBase
+config_entries_module.OptionsFlow = MockOptionsFlowBase
 sys.modules['homeassistant.config_entries'] = config_entries_module
+setattr(sys.modules['homeassistant'], 'config_entries', config_entries_module)
+
+data_entry_flow_module = MagicMock()
+data_entry_flow_module.FlowResult = dict
+data_entry_flow_module.FlowResultType = SimpleNamespace(
+    FORM="form",
+    CREATE_ENTRY="create_entry",
+    ABORT="abort",
+)
+data_entry_flow_module.RESULT_TYPE_FORM = "form"
+data_entry_flow_module.RESULT_TYPE_CREATE_ENTRY = "create_entry"
+data_entry_flow_module.RESULT_TYPE_ABORT = "abort"
+sys.modules['homeassistant.data_entry_flow'] = data_entry_flow_module
+setattr(sys.modules['homeassistant'], 'data_entry_flow', data_entry_flow_module)
 
 update_coordinator_module = MagicMock()
 update_coordinator_module.CoordinatorEntity = MockCoordinatorEntity
