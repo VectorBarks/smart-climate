@@ -382,7 +382,7 @@ script:
 
 ## Related Documentation
 
-- [Configuration Guide](configuration.md) - Initial setup and options
-- [Usage Guide](usage.md) - General operation instructions
+- [Configuration Guide](configuration-guide.md) - Initial setup and options
+- [User Guide](user-guide.md) - General operation instructions
 - [Dashboard Setup](dashboard-setup.md) - Visualization dashboard
-- [Automations Guide](usage.md#automations) - Automation examples
+- [User Guide automations](user-guide.md#integration-with-automations) - Automation examples

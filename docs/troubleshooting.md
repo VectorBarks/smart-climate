@@ -91,7 +91,7 @@ This guide helps you diagnose and resolve common issues with Smart Climate Contr
 
 3. Check sensor accuracy:
    - Compare sensors with a reference thermometer
-   - Verify sensor placement (see [Sensor Guide](sensors.md))
+   - Verify sensor placement (see [Sensor Reference](sensor-reference.md))
 
 **Solutions**:
 - Calibrate sensors if readings are inaccurate

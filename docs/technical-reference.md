@@ -384,45 +384,76 @@ When testing probe timestamp persistence:
 
 ## AC Temperature Window Detection (HysteresisLearner)
 
-The HysteresisLearner system learns AC cooling cycle behavior for enhanced prediction accuracy.
+The HysteresisLearner learns compressor start/stop behavior from the configured power sensor. Current releases model this behavior primarily as **setpoint-relative offsets**, not fixed absolute room temperatures.
 
-### What is AC Hysteresis?
+### What is AC hysteresis?
 
-AC units cycle on/off based on internal temperature thresholds:
-- **Start Cooling**: When temperature rises above threshold (e.g., 24.5°C for 24°C target)
-- **Stop Cooling**: When temperature drops below different threshold (e.g., 23.5°C)
-- **Hysteresis Window**: Temperature range between start/stop points (1°C in example)
+Most AC units do not start and stop exactly at the displayed setpoint. They use a window:
 
-### How HysteresisLearner Works
+- **Start cooling**: compressor starts when measured temperature rises far enough above the active AC setpoint.
+- **Stop cooling**: compressor stops after the sensed temperature drops far enough.
+- **Window**: difference between the learned start and stop offsets.
 
-#### 1. Power Transition Detection
-- Monitors AC power consumption to detect cooling start/stop
-- **Cooling Start**: Power increases from idle/low to moderate/high
-- **Cooling Stop**: Power decreases from moderate/high to idle/low
-- Records room temperature at transition moments
+Example:
 
-#### 2. Threshold Learning
-- Collects room temperature samples during power transitions
-- Calculates median values for robust learning
-- **Start Threshold**: Median room temperature when AC begins cooling
-- **Stop Threshold**: Median room temperature when AC stops cooling
+```text
+room_temp_at_start = 23.6°C
+active_ac_setpoint = 22.8°C
+start_offset       = +0.8°C
+```
 
-#### 3. Hysteresis State Detection
-Based on learned thresholds and current conditions:
-- **`learning_hysteresis`**: Insufficient data for thresholds
-- **`active_phase`**: AC actively cooling (high power)
-- **`idle_above_start_threshold`**: AC off, temp above start point
-- **`idle_below_stop_threshold`**: AC off, temp below stop point
-- **`idle_stable_zone`**: AC off, temp between thresholds
+### Natural samples
 
-#### 4. Enhanced Predictions
-- Factors hysteresis state into offset predictions
-- Different states yield different prediction patterns
-- Improves learning accuracy through AC cycle context
+Natural transitions happen without a fresh probe command causing the transition. These are high-quality exact samples:
+
+```text
+start offset = room_temp_at_start - ac_setpoint
+stop offset  = room_temp_at_stop  - ac_setpoint
+```
+
+Natural offsets are stored separately from legacy absolute temperatures and are preferred for future decisions.
+
+### Probe constraints
+
+A learning probe deliberately changes the wrapped AC setpoint to discover a threshold. That result is useful, but it is not an exact natural sample.
+
+Probe starts and stops are stored as interval or single-sided constraints:
+
+- start probe: threshold is at or below the observed offset
+- stop probe: threshold is at or above the observed offset
+- if both previous and new setpoints are known, the threshold lies between those offsets
+
+These constraints are persisted separately as `start_probe_bounds` and `stop_probe_bounds` and surfaced through diagnostic attributes.
+
+### Transition classification
+
+Each transition records:
+
+- `transition_type`: `start` or `stop`
+- `transition_cause`: usually `natural` or `probe`
+- `transition_sample_type`: `exact`, `constraint`, or `ignored`
+- room temperature at transition
+- AC setpoint before/after when known
+- power before/after
+- setpoint-relative offset and optional bounds
+
+### Hysteresis state detection
+
+Based on power state and learned data, the system can report states such as:
+
+- `learning_hysteresis`: insufficient natural data for a complete window
+- `active_phase`: compressor active
+- `idle_above_start_threshold`: idle but above learned start point
+- `idle_below_stop_threshold`: idle and below learned stop point
+- `idle_stable_zone`: idle between learned thresholds
+
+### Quiet Mode interaction
+
+Quiet Mode suppresses avoidable noisy commands. When thresholds are unknown and the compressor is idle, it can allow a bounded learning probe so hysteresis learning does not deadlock. These probes are still classified as constraints, not exact samples.
 
 ### Requirements
 
-**Essential**:
+**Essential for HysteresisLearner**:
 - Power sensor monitoring AC electrical consumption
 - Home Assistant climate entity
 - Room temperature sensor
@@ -430,39 +461,17 @@ Based on learned thresholds and current conditions:
 **Power Sensor Types**:
 - Smart plugs with power monitoring
 - Whole-home energy monitors with CT clamps
-- Built-in power reporting (some smart AC units)
+- Built-in power reporting from smart AC units
 - Dedicated power meters
 
-**Without Power Sensor**: HysteresisLearner automatically disables, system continues with existing methods.
-
-### Understanding Internal Sensor Thermal Dynamics
-
-Many internal AC sensors show behavior perfect for HysteresisLearner:
-
-**During Active Cooling**:
-- Internal fan runs, mixing warm room air with cold evaporator
-- Sensor reads averaged temperature (matches target)
-
-**After Cooling Stops**:
-- Fans stop, no airflow mixing
-- Sensor reads pure evaporator coil temperature
-- Temperature drops significantly (4-5°C difference typical)
-
-**Why This Happens**:
-- Evaporator coil has thermal mass, stays cold after compressor stops
-- Without airflow, sensor measures actual coil temperature
-- Coil gradually warms toward room temperature over 10-30 minutes
-
-**Perfect for Learning**:
-- **Clear Transitions**: 4-5°C difference makes state detection trivial
-- **Reliable Patterns**: Consistent behavior enables robust learning
-- **Enhanced Accuracy**: System quickly learns AC's cooling cycle
+Without a power sensor, HysteresisLearner disables itself and the system continues with basic offset learning.
 
 ### Performance Characteristics
-- **Prediction Time**: <0.0001s (well under 1ms requirement)
-- **Memory Usage**: Bounded by max_samples configuration
-- **Learning Accuracy**: Improves over 5-10 cooling cycles
-- **Learning Parameters**: 5 minimum samples, 50 maximum samples, median calculation
+
+- Prediction time is designed to stay below the 1ms budget.
+- Memory is bounded by configured sample limits.
+- Natural samples and probe constraints are retained separately.
+- Legacy absolute thresholds remain available as fallback for older persisted data.
 
 ## Weather Forecast Integration
 
@@ -939,8 +948,9 @@ state.attributes.get('seasonal_patterns_count')  # Seasonal learning
 
 #### Version Upgrade Notes
 
-**v1.4.1-beta5**:
+**v1.5.5-beta20**:
 - No breaking changes, fully backward compatible
+- Probe-induced transitions are persisted as bounds/constraints, separate from natural exact hysteresis samples
 - Removed obsolete seasonal migration code
 - Enhanced shadow mode behavior
 

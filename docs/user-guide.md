@@ -58,9 +58,10 @@ Think of the learning system as a personal assistant that observes patterns:
 
 #### 2. HysteresisLearner (With Power Monitoring)
 If you have a power sensor, this advanced system learns your AC's operational behavior:
-- Detects when your AC starts cooling (power spike)
+- Detects when your AC starts cooling (power increase)
 - Identifies when it stops (power drop)
-- Learns the temperature thresholds for these transitions
+- Learns start/stop offsets relative to the active AC setpoint
+- Separates natural exact samples from deliberate probe constraints
 - Optimizes predictions based on AC state
 
 ### Learning Timeline
@@ -164,11 +165,12 @@ If you need to clear all learned patterns and start fresh:
 - **Safety**: Creates backup before deletion
 
 **When to Reset**:
-- After major changes to AC system or room layout
-- Moving integration to different room or AC unit
-- Learning patterns become inaccurate due to unusual usage
-- Start of new season if you prefer fresh patterns
-- After significant sensor placement changes
+- AC unit replaced or substantially reconfigured
+- Room temperature sensor moved significantly
+- Power sensor changed, or power thresholds were wrong for a long period
+- Room layout, airflow, insulation, or heat sources changed materially
+
+**Do not reset just because learning probes occurred.** Probe transitions are stored separately as constraints/bounds and are expected during early hysteresis learning.
 
 **How to Reset**:
 1. Navigate to your Smart Climate device in Home Assistant
@@ -260,9 +262,10 @@ The `learning_feedback_delay` is crucial for accurate learning:
 
 If you have power monitoring:
 - Ensure power thresholds match your AC's consumption patterns
-- System shows "learning_hysteresis" initially
-- After 5-10 power transitions, learns your AC's behavior
-- Dramatically improves prediction accuracy
+- System may show learning/window status while collecting data
+- Natural start/stop cycles become exact samples
+- Quiet Mode learning probes become bounds/constraints
+- After enough natural transitions, compressor-window predictions become more reliable
 
 ## Integration with Automations
 
@@ -355,14 +358,9 @@ last_update: "2024-01-15 14:45:30"
 
 ### Dashboard Visualization
 
-Smart Climate automatically creates 5 dashboard sensors:
-- **Current Offset**: Real-time temperature compensation
-- **Learning Progress**: System optimization percentage  
-- **Current Accuracy**: Prediction accuracy over time
-- **Calibration Status**: Current learning phase
-- **Hysteresis State**: AC behavior detection
+Smart Climate creates dashboard and diagnostic entities for offset, learning, compressor state, Quiet Mode, thermal state, probe status, and system health.
 
-Use the one-click dashboard generation service to create comprehensive visualizations.
+Use the `smart_climate.generate_dashboard` service to generate a robust core-card Lovelace dashboard. The dashboard uses live entity IDs and does not require custom Lovelace cards.
 
 ### History Graphs
 

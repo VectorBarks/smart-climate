@@ -1,5 +1,35 @@
 # Release Notes
 
+## v1.5.5-beta20 (2026-05-23)
+
+### Summary
+Probe-induced compressor transitions are now data-safe. Quiet Mode learning probes narrow hysteresis thresholds as bounds/constraints instead of being promoted to exact natural start/stop samples.
+
+### Added
+- Setpoint-relative probe bounds for compressor start/stop learning.
+- Persisted `start_probe_bounds` and `stop_probe_bounds` alongside natural offset samples.
+- Diagnostic attributes for probe bounds and transition sample type.
+- Dashboard visibility for compressor offsets, probe bounds, and latest transition semantics.
+
+### Fixed
+- Probe starts no longer corrupt learned natural hysteresis thresholds.
+- Dashboard deployment now uses a robust core-card Lovelace dashboard with live entity IDs.
+
+### Verification
+- `python -m json.tool custom_components/smart_climate/manifest.json`
+- `python -m py_compile custom_components/smart_climate/offset_engine.py custom_components/smart_climate/climate.py custom_components/smart_climate/compressor_state_analyzer.py custom_components/smart_climate/dashboard/generator.py tests/test_hysteresis_integration.py`
+- `pytest tests/test_quiet_mode_learning_mode_behavior.py -q`
+- focused hysteresis/probe regression tests in `tests/test_hysteresis_integration.py`
+
+## v1.5.5-beta19 (2026-05-23)
+
+### Summary
+Learning probes are limited to idle-compressor conditions so active cooling cycles are not confused with threshold discovery.
+
+### Fixed
+- Prevented learning probes while the compressor is already active.
+- Preserved normal Quiet Mode stepping behavior during active compressor operation.
+
 ## v1.5.5-beta17 (2026-05-23)
 
 ### Summary

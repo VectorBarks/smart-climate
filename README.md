@@ -1,323 +1,142 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.5.5--beta17-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.5--beta20-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
-> 🧭 **v1.5.5-beta17 Current**: Quiet Mode now has an active hysteresis learning probe: when thresholds are unknown, it steps the wrapped AC setpoint down by 0.5°C instead of suppressing the change that would teach compressor start behavior. [Latest Release](https://github.com/VectorBarks/smart-climate/releases)
+Smart Climate Control wraps an existing Home Assistant climate entity and makes it behave like the room you actually care about, not like the AC unit's badly placed internal sensor.
 
-Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
+Current release: **v1.5.5-beta20**. The current learning model separates natural compressor samples from deliberate probe constraints, so Quiet Mode calibration can learn without poisoning the real hysteresis data.
 
-## The Problem
+## What it does
 
-Many AC units and heat pumps have poorly placed internal temperature sensors that don't reflect actual room temperature. This creates thermal feedback loops and control instability, leading to uncomfortable spaces and wasted energy as the unit can't accurately maintain your desired temperature.
+- Uses a trusted room temperature sensor as the source of truth.
+- Sends corrected setpoints to the wrapped AC/heat-pump entity.
+- Learns offset patterns from actual performance feedback.
+- Uses power monitoring, when available, to detect compressor start/stop cycles.
+- Learns setpoint-relative compressor hysteresis instead of relying on fragile absolute room-temperature thresholds.
+- Treats deliberate learning probes as **bounds/constraints**, not exact natural samples.
+- Supports Quiet Mode so the system avoids unnecessary beeps/commands while still allowing safe learning probes when thresholds are unknown.
+- Provides thermal-state telemetry, probe status, cycle health, dashboard sensors, and a core-card Lovelace dashboard.
 
-## The Solution
+## Recommended setup
 
-Smart Climate Control creates a virtual climate entity that:
-- Uses your accurate room sensor instead of the AC's internal sensor
-- Dynamically calculates temperature offsets using multi-factor algorithms
-- Learns environmental patterns through hysteresis detection and exponential smoothing
-- Predicts optimal adjustments using weather forecasts and seasonal adaptation
-- Maintains your desired comfort level with sub-degree precision
+Minimum:
+- Home Assistant 2024.1+
+- Existing climate entity
+- Room temperature sensor in the same room
 
-## Key Features
+Strongly recommended:
+- Power sensor for the climate device, preferably a smart plug with live wattage
+- Outdoor temperature sensor or weather entity
+- Learning enabled after the basic entity is verified
 
-**COMING IN v1.5.3-beta: Intelligent Probe Scheduler**
-- **Context-Aware Probing**: Only probes when you're away - zero comfort impact
-  - Presence detection hierarchy: sensors → calendar → manual override → quiet hours
-  - Opportunistic scheduling based on user activity and system stability
-  - Intelligent abort conditions protect against disruption
-- **Information Gain Analysis**: Prioritizes unexplored temperature conditions
-  - Temperature bin coverage tracking for optimal data diversity
-  - Enhanced confidence calculation: base confidence + diversity bonus (up to 100%)
-  - Faster learning: reach 80%+ confidence in days instead of weeks
-- **Learning Profiles**: Four profiles balance comfort vs. learning speed
-  - **Comfort**: 24h intervals, presence required, high confidence threshold
-  - **Balanced**: 12h intervals, opportunistic, standard confidence (default)
-  - **Aggressive**: 6h intervals, may ignore presence, rapid learning
-  - **Custom**: Full user control over all parameters and thresholds
-- **Advanced Integration**: Weather, calendar, and manual override support
-  - Outdoor temperature monitoring for adaptive bins and abort conditions
-  - Calendar integration for predictable away periods
-  - Manual override entities for user control and emergency scheduling
+## Installation
 
-**NEW in v1.4.0: Thermal Efficiency System (15-30% Energy Savings)**
-- **6-State Thermal Management**: Intelligent state machine (PRIMING, DRIFTING, CORRECTING, RECOVERY, PROBING, CALIBRATING)
-  - State-aware learning protocol prevents conflicts between thermal and offset engines
-  - Adaptive comfort bands that adjust based on outdoor conditions
-  - Physics-based RC circuit modeling for accurate temperature drift prediction
-- **5-Level User Preference System**: From MAX_COMFORT (±0.5°C) to MAX_SAVINGS (±2.5°C)
-  - Asymmetric heating/cooling behavior based on preference level
-  - Extreme weather compensation with gradual band adjustment
-  - Shadow mode (default) for observation-only deployment before active control
-- **Advanced Learning & Probing**: Weighted 75-probe history with confidence metrics
-  - Active and passive thermal characteristic measurement
-  - AI-driven insights engine for energy-saving recommendations
-  - Cycle health monitoring to prevent equipment damage
-- **Comprehensive Testing**: 420+ tests ensure production-ready reliability
+### HACS
 
-**NEW in v1.3.1: Advanced Outlier Detection & Data Quality Protection**
-- **Outlier Detection System**: Statistical analysis using Modified Z-Score with Median Absolute Deviation (MAD)
-  - Automatic detection of temperature sensor malfunctions and power consumption spikes
-  - Configurable sensitivity threshold (1.0-5.0) with intelligent default of 2.5
-  - ML model protection: prevents corrupted sensor data from poisoning learning algorithms
-  - Real-time outlier statistics and health monitoring through dedicated dashboard sensors
-- **System Health Monitoring**: Comprehensive diagnostics for integration performance
-  - Memory usage tracking, persistence latency monitoring, and sample collection rates
-  - Outlier detection status with count tracking and detection rate analytics
-  - Dashboard integration with binary sensors for outlier alerts and system status
-- **Configuration Management**: User-friendly outlier detection settings in Home Assistant UI
-  - Enable/disable outlier detection with instant integration reload
-  - Sensitivity adjustment for different sensor types and environments
-  - Automatic sensor creation for outlier monitoring and system health
+1. HACS → Integrations → Custom repositories
+2. Add `https://github.com/VectorBarks/smart-climate` as an **Integration**
+3. Install **Smart Climate Control**
+4. Restart Home Assistant
+5. Settings → Devices & Services → Add Integration → Smart Climate Control
 
-**ENHANCED in v1.3.0: Advanced Predictive Intelligence**
-- **Adaptive Feedback Delays**: ML-powered optimization of AC response timing based on temperature stability patterns
-  - Exponential moving average smoothing of learned delays with 70% weight on recent measurements
-  - Temperature stability detection with 0.1°C threshold monitoring
-  - Automatic timeout protection and graceful fallback to conservative defaults
-- **Weather Forecast Integration**: Proactive temperature adjustments using outdoor weather pattern analysis
-  - Heat wave pre-cooling strategies with -1.0°C offset during rising temperature trends
-  - Clear sky thermal optimization for energy-efficient temperature maintenance
-  - Strategy evaluation system with 30-minute throttling to prevent API overload
-- **Seasonal Adaptation**: Context-aware hysteresis learning using outdoor temperature buckets
-  - 45-day pattern retention with temperature bucket matching (5°C tolerance)
-  - Outdoor temperature-based pattern correlation for seasonal accuracy
-  - Graceful fallback to global patterns when insufficient seasonal data available
+### Manual
 
-**NEW in v1.2.1-beta2: Learning Data Preservation Fix**
-- Fixed learning data loss when learning switch is disabled before restart (Issue #25)
-- All accumulated learning samples are now preserved even when learning is temporarily disabled
-- Both save and load operations now handle learner data regardless of enable_learning state
+Copy `custom_components/smart_climate` into your Home Assistant `custom_components/` directory, restart Home Assistant, then add the integration through the UI.
 
-**Fixed in v1.2.1-beta1: Critical Bug Fixes**
-- Fixed AC continuing to cool/heat when room temperature reaches target (Issue #22)
-- Fixed dashboard service blocking I/O warnings (Issue #18)
-- Fixed crashes when wrapped entity becomes unavailable (Issue #19)
-- Fixed deprecated ApexCharts span properties in dashboard (Issue #20)
-- Room temperature deviation check prevents overcooling/overheating
-- Automatic recovery when entities come back online
-- Dashboard service now fully asynchronous
+## Configuration
 
-**v1.2.0: Smart Climate Dashboard & Enhanced Learning**
-- Beautiful visualization dashboard for learning progress and system performance
-- Automatic sensor creation - no manual configuration needed
-- One-click dashboard generation service
-- Immediate temperature adjustments on Home Assistant startup
-- Real confidence progression (0-100%) instead of stuck at 50%
-- Configurable save intervals (5 minutes to 24 hours) with 60-minute default
-- Enhanced save diagnostics visible in Home Assistant UI
-- Robust startup retry mechanism for slow sensor initialization
+Use the Home Assistant UI. YAML remains useful for development and bulk setups, but normal installs should configure the integration through Settings → Devices & Services.
 
-**v1.1.0: HysteresisLearner - AC Temperature Window Detection**
-- Automatically learns your AC's start/stop temperature thresholds
-- Understands when your AC actually turns on and off
-- Adapts predictions based on real power consumption patterns
-- Dramatically improves temperature control accuracy
-- Works seamlessly with power monitoring sensors
+Required:
+- climate entity
+- room temperature sensor
 
-**Universal Compatibility**
-- Works with ANY Home Assistant climate entity
-- Compatible with ANY temperature sensor
-- No device-specific limitations
-- Configurable default target temperature (16-30°C)
+Optional but important:
+- outdoor sensor / weather entity for predictive and seasonal behavior
+- power sensor for compressor-state and hysteresis learning
+- Quiet Mode and learning probe step
+- Probe Scheduler settings for thermal calibration
 
-**Intelligent Learning System**
-- Multi-layered learning architecture: reactive offset calculation + predictive strategies + seasonal adaptation
-- HysteresisLearner with power consumption correlation for AC cycle detection
-- Exponential smoothing algorithms for pattern recognition and noise reduction
-- Logarithmic confidence scaling with condition diversity factors
-- Time-series pattern analysis for circadian and seasonal temperature correlations
-- Real-time learning state monitoring with <1ms prediction latency
-- Persistent JSON storage with atomic backup safety and schema versioning
+## Learning model
 
-**Smart Operation**
-- Hybrid control system: immediate rule-based responses with background ML optimization
-- Configurable gradual adjustment rates (0.1-2.0°C per cycle) with anti-oscillation algorithms
-- Advanced mode management with offset adjustments and thermal state tracking
-- Multi-layer safety constraints with temperature clamping and deviation monitoring
-- Adaptive feedback loops with temperature stability detection and response timing optimization
+Smart Climate uses several layers:
 
-**Reliable & Safe**
-- Continues working if sensors fail
-- Manual override always available
-- Robust training data persistence with configurable save intervals
-- Enhanced shutdown save with timeout protection
-- Save diagnostics and monitoring in Home Assistant UI
-- Backward-compatible persistence schema
-- Comprehensive debug logging for troubleshooting
+1. **Reactive offset**: current room-vs-AC correction.
+2. **Performance learning**: learns what offset worked after feedback delay.
+3. **Compressor hysteresis**: with a power sensor, learns when the compressor naturally starts and stops.
+4. **Probe constraints**: deliberate probes narrow threshold ranges without being counted as exact natural samples.
+5. **Thermal model**: tracks room drift/correction behavior and calibration/probe state.
 
-## Latest Releases
+### Natural samples vs. probe constraints
 
-### v1.5.5-beta6 (Current): Critical Data Collection Fixes
-**🔧 Critical Fix Release**: [Download now](https://github.com/VectorBarks/smart-climate/releases)
+Natural compressor transitions are high-quality samples:
 
-#### Critical Fixes
-- **Learning System Restored**: Fixed 2-week data collection gap where learning was incorrectly paused during DRIFTING state
-- **Outdoor Temperature Capture**: Fixed null outdoor_temp in probe_history entries, enabling weather-correlated analysis  
-- **Enhanced Feedback Loop**: Implemented ideal offset calculation for meaningful ML training data
-- **Quiet Mode Integration**: 90% reduction in AC beep pollution when compressor idle
+```text
+start offset = room_temp_at_start - active_ac_setpoint
+stop offset  = room_temp_at_stop  - active_ac_setpoint
+```
 
-#### Technical Improvements
-- **Data Pipeline Recovery**: Modified coordinator.py to only pause learning during PRIMING phase
-- **Weather Integration**: Updated ProbeResult creation across 3 files to capture outdoor temperature
-- **Learning Feedback**: Enhanced feedback mechanism calculates hindsight ideal offsets for better ML training
-- **Full Backward Compatibility**: Automatic migration preserves existing probe data
+Learning probes are different. If Smart Climate nudges the AC setpoint to trigger a compressor transition, the result is only a boundary:
 
-#### Performance Validated
-- 75-probe operations: <1ms
-- Memory usage: <50KB additional overhead
-- Serialization: <50ms
+- a probe start proves the threshold is at or below the observed offset
+- a probe stop proves the threshold is at or above the observed offset
+- if both before/after setpoints are known, the threshold lies inside that interval
 
-## Quick Start
+That is why probe data is useful without corrupting natural learning.
 
-### Installation
+## Quiet Mode
 
-**Option 1: HACS (Recommended)**
-1. Add this repository to HACS custom repositories
-2. Install "Smart Climate Control"
-3. Restart Home Assistant
+Quiet Mode reduces unnecessary setpoint commands while still avoiding learning deadlocks:
 
-**Option 2: Manual**
-1. Copy `custom_components/smart_climate` to your `custom_components` folder
-2. Restart Home Assistant
+- if thresholds are already known, Quiet Mode suppresses commands that would only make noise
+- if thresholds are unknown and the compressor is idle, Smart Climate may send a bounded learning probe
+- probes are not sent while the compressor is already active
+- probe transitions are marked as constraints, not exact samples
 
-### Configuration
+## Dashboard
 
-1. Go to Settings → Devices & Services → Add Integration
-2. Search for "Smart Climate Control"
-3. Select your climate entity and room temperature sensor
-4. Optionally add outdoor temperature and power sensors
-5. Configure all your preferences through the intuitive UI:
-   - Temperature limits and offset settings
-   - Mode-specific temperatures and offsets
-   - Learning system parameters and confidence thresholds
-   - Power thresholds for AC detection and hysteresis learning
-   - Update intervals and adaptive adjustment rates
-   - Weather integration settings for predictive strategies
-   - Seasonal adaptation parameters and outdoor temperature buckets
-   - **NEW in v1.5.3-beta**: Intelligent Probe Scheduler with learning profiles
-   - Default target temperature (16-30°C)
+The dashboard service generates a robust Lovelace dashboard using only built-in Home Assistant cards.
 
-That's it! Your new smart climate entity is ready to use. No YAML editing required!
+1. Developer Tools → Services
+2. Call `smart_climate.generate_dashboard`
+3. Select your Smart Climate entity
+4. Copy the generated YAML from the notification into a dashboard raw editor
 
-### Basic Usage
-
-- Set your desired temperature normally - the intelligent algorithms handle optimization automatically
-- Enable learning to activate multi-layered ML: hysteresis detection, seasonal adaptation, and predictive strategies
-- The system automatically learns AC response timing and adjusts feedback delays for optimal efficiency
-- Weather-aware predictive adjustments activate automatically based on forecast patterns
-- Seasonal learning adapts to outdoor temperature changes without manual intervention
-- Monitor real-time learning metrics, confidence levels, and prediction accuracy through rich entity attributes
-- Use preset modes for different thermal scenarios with mode-specific offset adjustments
-
-### Enhanced Intelligence Dashboard (v1.3.0+)
-
-**Zero-Configuration Visualization**: Complete dashboard setup with a single service call
-
-1. **Automatic Sensor Creation**: Dashboard sensors are created automatically for each Smart Climate device
-2. **One-Click Generation**: Go to Developer Tools → Services → "Smart Climate: Generate Dashboard"
-3. **Smart Entity Replacement**: Select your Smart Climate entity - the service automatically replaces placeholder values with your configured sensor entity IDs
-4. **Comprehensive Analytics**: Generated dashboard showcases multi-layered intelligence with weather integration, adaptive timing, and seasonal learning
-5. **Technical Diagnostics**: Advanced metrics including prediction latency monitoring, confidence analysis, and system health indicators
-6. **Ready-to-Use**: Notification contains complete dashboard YAML - just copy, paste, and save
-
-**Enhanced Features in v1.3.0+ Dashboard:**
-- **Multi-Layered Intelligence Display**: Real-time breakdown of reactive vs. predictive offset contributions
-- **Weather Strategy Analytics**: Active weather strategies, forecast timeline, and adjustment effectiveness
-- **Adaptive Timing Insights**: Learned AC response patterns and temperature stability optimization
-- **Seasonal Learning Progress**: Outdoor temperature correlation and pattern bucket analysis
-- **Performance Monitoring**: Sub-millisecond prediction latency tracking and learning system health
+The dashboard uses real entity IDs from the entity registry. It does not depend on ApexCharts, Mushroom, Button Card, or placeholder replacement hacks.
 
 ## Documentation
 
-**Setup & Configuration**
-- [Installation Guide](docs/installation-guide.md) - Detailed installation instructions
-- [Configuration Guide](docs/configuration-guide.md) - All configuration options explained
-- [Sensor Reference](docs/sensor-reference.md) - Complete sensor documentation and placement guide
+- [Installation Guide](docs/installation-guide.md)
+- [Configuration Guide](docs/configuration-guide.md)
+- [User Guide](docs/user-guide.md)
+- [Dashboard Setup](docs/dashboard-setup.md)
+- [Sensor Reference](docs/sensor-reference.md)
+- [Probe Scheduler Guide](docs/probe_scheduler.md)
+- [Technical Reference](docs/technical-reference.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Services](docs/services.md)
+- [Contributing](docs/contributing.md)
 
-**NEW in v1.5.3-beta**
-- [Probe Scheduler Guide](docs/probe_scheduler.md) - **NEW!** Intelligent thermal calibration system
+## Training data and reset guidance
 
-**Usage & Features**
-- [User Guide](docs/user-guide.md) - How to use all features effectively
-- [Dashboard Setup](docs/dashboard-setup.md) - Visualization dashboard blueprint
-- [Technical Reference](docs/technical-reference.md) - Architecture, algorithms, and advanced features
-- [Troubleshooting](docs/troubleshooting.md) - Solving common issues
+Do **not** reset training data just because probes occurred. Probe transitions are now stored separately as constraints. Reset only when the physical setup materially changed, for example:
 
-**Technical & Development**
-- [Architecture Overview](docs/architecture.md) - Technical design documentation
-- [Contributing Guide](docs/contributing.md) - How to contribute to the project
+- AC unit replaced
+- room sensor moved significantly
+- power sensor changed or thresholds were badly wrong for a long period
+- room layout/airflow changed enough to invalidate old data
 
-## Example Configuration
-
-The UI configuration now handles all settings, making YAML configuration optional:
-
-```yaml
-# YAML configuration is optional - UI configuration is recommended
-# All settings below can be configured through the UI
-smart_climate:
-  - name: "Living Room Smart AC"
-    climate_entity: climate.living_room_ac
-    room_sensor: sensor.living_room_temperature
-    power_sensor: sensor.ac_power  # Optional: enables HysteresisLearner
-    default_target_temperature: 24  # Optional: your preferred default (16-30°C)
-    
-    # NEW in v1.5.3-beta: Intelligent Probe Scheduler
-    probe_scheduler:
-      learning_profile: balanced  # comfort|balanced|aggressive|custom
-      presence_entity_id: binary_sensor.home_occupied  # Optimal probing when away
-      weather_entity_id: weather.home  # Weather-aware scheduling
-      calendar_entity_id: calendar.work_schedule  # Optional: work schedule integration
-```
-
-## Requirements
-
-- Home Assistant 2024.1 or newer
-- Python 3.11 or newer
-- A climate entity (AC, heat pump, etc.)
-- A temperature sensor in the same room
+For normal learning, let the system run. Natural cycles will improve accuracy over time.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/VectorBarks/smart-climate/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/VectorBarks/smart-climate/discussions)
-- **Documentation**: [Full Documentation](docs/)
-
-## Project Status
-
-**Version 1.5.3-beta Coming Soon**: Revolutionary Intelligent Probe Scheduler for context-aware thermal calibration!
-
-**Latest: v1.5.3-alpha Released**: Enhanced thermal model with 75-probe history and exponential weighting
-
-**New in v1.3.0:**
-- **Adaptive Feedback Delays**: ML-powered AC response timing optimization with exponential smoothing
-- **Weather Forecast Integration**: Proactive temperature strategies using heat wave detection and thermal optimization
-- **Seasonal Adaptation**: Context-aware hysteresis learning with outdoor temperature pattern correlation
-- **Enhanced Learning Architecture**: Multi-factor confidence calculation with logarithmic scaling
-- **Predictive Algorithms**: Weather-aware offset calculation and seasonal pattern bucket matching
-- **Advanced Telemetry**: Real-time learning metrics with <1ms prediction latency monitoring
-
-**Previous v1.0.x improvements:**
-- Fixed learning data collection with feedback mechanism
-- Corrected offset calculations for proper cooling/heating
-- Complete UI configuration for all settings
-- Reorganized documentation for better accessibility
-
-This is a personal project developed for educational purposes and community use. While functional and tested, it comes with no warranties. Always test thoroughly in your environment.
+- Issues: https://github.com/VectorBarks/smart-climate/issues
+- Releases: https://github.com/VectorBarks/smart-climate/releases
+- Documentation: [docs/](docs/)
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Home Assistant team for the excellent platform
-- The HACS community for making distribution easy
-- All contributors and testers who help improve this integration
-
----
-
-**Made with love for the Home Assistant community**
+GPL-3.0. See [LICENSE](LICENSE).

@@ -44,7 +44,7 @@ HACS provides the easiest installation and update experience with automatic noti
 2. Search for "Smart Climate Control"
 3. Click on the integration card
 4. Click "Download" 
-5. Select the latest version (v1.4.1-beta5 or newer)
+5. Select the latest version (v1.5.5-beta20 or newer)
 6. Click "Download" again to confirm
 7. **Restart Home Assistant** (required for custom integrations)
 
@@ -151,12 +151,13 @@ Smart Climate Control provides comprehensive monitoring capabilities through aut
 
 ### Automatic Dashboard Sensors
 
-Each configured Smart Climate device automatically creates 5 specialized sensors:
-- **Current Offset**: Real-time temperature compensation being applied
-- **Learning Progress**: Completion percentage of the learning system
-- **Current Accuracy**: Prediction accuracy over time
-- **Calibration Status**: Current system phase (calibrating/learning/complete)
-- **Hysteresis State**: AC behavior state (cooling/idle/learning patterns)
+Each configured Smart Climate device creates diagnostic entities for dashboard and troubleshooting use, including:
+- **Current Offset**: real-time temperature compensation being applied
+- **Learning Progress**: learning completion and sample progress
+- **Current Accuracy**: prediction accuracy over time
+- **Compressor / Quiet Mode Status**: live compressor state, Quiet Mode state, and suppressions
+- **Thermal / Probe Status**: thermal state, probing activity, cycle health, and calibration details
+- **Hysteresis / Window Data**: compressor window and probe-bound diagnostics when a power sensor is configured
 
 ### One-Click Dashboard Generation
 
@@ -175,7 +176,7 @@ The generated dashboard includes:
 - **Historical Charts**: Temperature trends and prediction accuracy
 - **Performance Metrics**: Energy efficiency and system health indicators
 
-For detailed dashboard setup instructions, see the full [Configuration Guide](configuration-guide.md).
+For detailed dashboard setup instructions, see [Dashboard Setup](dashboard-setup.md).
 
 ## Updating the Integration
 
@@ -204,18 +205,15 @@ For detailed dashboard setup instructions, see the full [Configuration Guide](co
 
 Smart Climate Control includes automatic migration for data and configuration.
 
-### What's New in v1.4.1-beta5
+### Current migration notes
 
-Smart Climate Control v1.4.1-beta5 includes important updates and improvements:
+The current release line is **v1.5.5-beta20**. It is backward compatible and focuses on data quality:
 
-#### Removed Features
-- **Seasonal Migration Code**: Obsolete migration logic has been removed as all users should now be on modern schema versions
-- **Legacy Warnings**: Cleaned up async_load deprecation warnings
-
-#### Improved Features
-- **Shadow Mode Behavior**: Enhanced thermal efficiency shadow mode operation
-- **Configuration Validation**: Better error handling during setup
-- **Learning System**: Continued refinements to ML offset calculations
+- Natural compressor transitions remain exact hysteresis samples.
+- Deliberate Quiet Mode learning probes are stored as bounds/constraints.
+- Existing learning data is preserved.
+- A reset is not required for normal upgrades.
+- The generated dashboard uses live entity IDs and built-in Home Assistant cards.
 
 ### Migration Process
 
@@ -228,7 +226,7 @@ The integration handles migration automatically:
 
 ### Post-Migration Verification
 
-After updating to v1.4.1-beta5:
+After updating to the current version:
 
 1. **Check Entity Status**: Verify your Smart Climate entity is working normally
 2. **Review Learning Data**: Confirm learning progress and accuracy metrics are preserved  
@@ -244,7 +242,7 @@ If upgrading from pre-v1.2.0, you'll gain access to automatic dashboard sensors:
 
 ### Breaking Changes
 
-**v1.4.1-beta5**: No breaking changes - fully backward compatible
+**v1.5.5-beta20**: No breaking changes - fully backward compatible
 
 **v1.3.0**: No breaking changes - new features are optional
 
