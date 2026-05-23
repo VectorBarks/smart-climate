@@ -105,6 +105,18 @@ class HysteresisLearner:
         """
         return len(self._start_temps) >= self._min_samples and len(self._stop_temps) >= self._min_samples
 
+    def has_learned_thresholds(self) -> bool:
+        """Return True when both hysteresis thresholds are learned and usable."""
+        return (
+            self.has_sufficient_data
+            and self.learned_start_threshold is not None
+            and self.learned_stop_threshold is not None
+        )
+
+    def record_threshold(self, transition_type: Literal['start', 'stop'], room_temp: float) -> None:
+        """Backward-compatible alias for recording a hysteresis transition."""
+        self.record_transition(transition_type, room_temp)
+
     def record_transition(self, transition_type: Literal['start', 'stop'], room_temp: float) -> None:
         """
         Records the room temperature during a power state transition. This is the primary data input method.

@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.5.5-beta17 (2026-05-23)
+
+### Summary
+Quiet Mode now actively learns compressor hysteresis instead of blocking itself. If thresholds are still unknown and cooling is requested while the compressor is idle, Smart Climate sends a safe progressive probe step toward the calculated AC setpoint.
+
+### Added
+- Progressive learning probes for unknown hysteresis thresholds: 0.5°C cooling steps, bounded by the calculated target setpoint.
+- Explicit Quiet Mode reasons for learning probes, disabled mode, unsupported HVAC modes, active compressor, and threshold-crossing adjustments.
+
+### Fixed
+- Removed the learning deadlock where Quiet Mode suppressed idle-compressor adjustments while hysteresis thresholds were still unknown.
+
+### Verification
+- `pytest tests/test_quiet_mode_e2e.py tests/test_quiet_mode_controller.py tests/test_quiet_mode_learning.py tests/test_quiet_mode_learning_mode_behavior.py -q`
+- `python -m compileall -q custom_components/smart_climate tests/test_quiet_mode_learning_mode_behavior.py tests/test_quiet_mode_controller.py tests/test_quiet_mode_learning.py tests/test_quiet_mode_e2e.py`
+
 ## v1.5.5-beta16 (2026-05-23)
 
 ### Summary

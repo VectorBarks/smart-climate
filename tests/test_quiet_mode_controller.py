@@ -62,7 +62,7 @@ class TestQuietModeController:
         )
         
         assert should_suppress is False
-        assert reason is None
+        assert "disabled" in reason
 
     def test_suppresses_adjustment_when_idle_and_wont_activate(self):
         """Test main quiet mode path - suppress when idle and won't activate."""
@@ -105,7 +105,7 @@ class TestQuietModeController:
         )
         
         assert should_suppress is False
-        assert reason is None
+        assert "would activate" in reason
 
     def test_allows_adjustment_when_compressor_active(self):
         """Test allows adjustment when compressor is already active (no suppression)."""
@@ -122,7 +122,7 @@ class TestQuietModeController:
         )
         
         assert should_suppress is False
-        assert reason is None
+        assert "Compressor active" in reason
         
         # Should only check if compressor is idle, not call would_activate
         self.mock_analyzer.is_compressor_idle.assert_called_once_with(75.0)
@@ -147,7 +147,7 @@ class TestQuietModeController:
             )
             
             assert should_suppress is False
-            assert reason is None
+            assert "not supported" in reason
             
             # Should not call analyzer methods for unsupported modes
             self.mock_analyzer.is_compressor_idle.assert_not_called()
@@ -275,8 +275,8 @@ class TestQuietModeController:
             hysteresis_learner=unknown_learner
         )
         
-        assert should_suppress is True
-        assert "unknown" in reason.lower() or "learning" in reason.lower()
+        assert should_suppress is False
+        assert "learning" in reason.lower()
 
     def test_handles_none_power_gracefully(self):
         """Test graceful handling of None power consumption."""
@@ -312,7 +312,7 @@ class TestQuietModeController:
         )
         
         assert should_suppress is False
-        assert reason is None
+        assert "disabled" in reason
         
         # Should not call analyzer when disabled
         self.mock_analyzer.is_compressor_idle.assert_not_called()

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5-beta17] - 2026-05-23
+
+### Added
+- Added Quiet Mode hysteresis learning probes: when compressor thresholds are unknown and cooling is requested, Smart Climate now sends a bounded 0.5°C step toward the calculated AC setpoint instead of blocking learning.
+
+### Fixed
+- Prevented Quiet Mode from deadlocking hysteresis learning by suppressing the very setpoint changes needed to trigger compressor start samples.
+- Added compatibility helpers on `HysteresisLearner` for threshold-state checks used by Quiet Mode tests and diagnostics.
+
 ## [1.5.5-beta16] - 2026-05-23
 
 ### Fixed

@@ -1,11 +1,11 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.5.5--beta12-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.5--beta17-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
-> 🧭 **v1.5.5-beta16 Current**: Dashboard generation now uses live Home Assistant entity-registry data and core Lovelace cards, so generated dashboards reference real entities instead of guessed/missing helper IDs. [Latest Release](https://github.com/VectorBarks/smart-climate/releases)
+> 🧭 **v1.5.5-beta17 Current**: Quiet Mode now has an active hysteresis learning probe: when thresholds are unknown, it steps the wrapped AC setpoint down by 0.5°C instead of suppressing the change that would teach compressor start behavior. [Latest Release](https://github.com/VectorBarks/smart-climate/releases)
 
 Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
 

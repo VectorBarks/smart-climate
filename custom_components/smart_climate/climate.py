@@ -1875,13 +1875,30 @@ class SmartClimateEntity(ClimateEntity):
                     current_setpoint = wrapped_state.attributes.get("temperature")
                 
                 if current_setpoint is not None:
+                    hysteresis_learner = self._offset_engine._hysteresis_learner
+                    progressive_setpoint = self._quiet_mode_controller.get_progressive_adjustment(
+                        current_room_temp=room_temp,
+                        current_setpoint=current_setpoint,
+                        hysteresis_learner=hysteresis_learner,
+                        hvac_mode=self.hvac_mode,
+                        target_setpoint=adjusted_temp,
+                    )
+                    if progressive_setpoint is not None:
+                        _LOGGER.info(
+                            "Quiet Mode learning: probing compressor threshold from %.1f°C toward %.1f°C using %.1f°C",
+                            current_setpoint,
+                            adjusted_temp,
+                            progressive_setpoint,
+                        )
+                        adjusted_temp = progressive_setpoint
+
                     should_suppress, reason = self._quiet_mode_controller.should_suppress_adjustment(
                         current_room_temp=room_temp,
                         current_setpoint=current_setpoint,
                         new_setpoint=adjusted_temp,
                         power=power_consumption,
                         hvac_mode=self.hvac_mode,
-                        hysteresis_learner=self._offset_engine._hysteresis_learner
+                        hysteresis_learner=hysteresis_learner
                     )
                     
                     if should_suppress:
