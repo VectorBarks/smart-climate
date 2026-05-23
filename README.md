@@ -1,11 +1,11 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.5.5--beta6-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.5--beta9-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
-> 🚀 **v1.5.5-beta6 Current**: Critical data collection fixes restore ML learning system. Enhanced learning feedback provides meaningful training data. [Latest Release](https://github.com/VectorBarks/smart-climate/releases)
+> 💧 **v1.5.5-beta9 Current**: Humidity and related diagnostic sensors now hydrate their initial state immediately after Home Assistant reload/setup. [Latest Release](https://github.com/VectorBarks/smart-climate/releases)
 
 Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
 

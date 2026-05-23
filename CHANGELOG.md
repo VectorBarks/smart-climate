@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5-beta9] - 2026-05-23
+
+### Fixed
+- Hydrate Smart Climate polling sensors before adding them to Home Assistant, so humidity and derived diagnostic sensors publish valid initial states immediately after reload/setup instead of staying `unknown` until the next manual or scheduled update.
+
+### Tests
+- Added a focused regression test that enforces `async_add_entities(..., True)` for the sensor platform initial update contract.
+
 ## [1.5.5-beta5] - 2025-08-29
 
 ### 🔇 **Quiet Mode Feature - Reduce Beep Pollution by 90%**
