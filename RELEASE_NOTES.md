@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.5.5-beta13 (2026-05-23)
+
+### Summary
+Diagnostic/debug entities now render explicit states instead of persistent `unknown`, and their attributes explain whether a value is active, disabled, still learning, or waiting for cycle/probe history.
+
+### Fixed
+- `sensor.*_weather_forecast` and `sensor.*_seasonal_adaptation` now show `enabled`/`disabled` on the sensor platform.
+- `sensor.*_convergence_trend` accepts live `learning` and `not_learning` states.
+- `sensor.*_temperature_window` now shows `learning`/`disabled` instead of `unknown` while hysteresis data is incomplete.
+- `sensor.*_shadow_mode`, `sensor.*_probing_active`, and `sensor.*_cycle_health` now publish sensor states instead of relying on binary-sensor-only APIs.
+- `sensor.*_average_on_cycle` and `sensor.*_average_off_cycle` read the wired `CycleMonitor` tuple API.
+
+### Added
+- Entity-detail attributes such as `status_detail`, `source`, sample counts, cycle counts, and seasonal context to make the debug entities self-explaining.
+- Focused regression tests for diagnostic display states.
+
 ## v1.5.5-beta12 (2026-05-23)
 
 ### Summary

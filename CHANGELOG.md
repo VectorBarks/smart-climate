@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5-beta13] - 2026-05-23
+
+### Fixed
+- Expose sensor-platform text states for boolean-like diagnostic entities so weather forecast, seasonal adaptation, thermal shadow mode, probing active, and cycle health no longer render as `unknown`.
+- Accept `learning` and `not_learning` convergence states from the offset engine instead of falling back to `unknown`.
+- Show temperature-window learning/disabled state with explanatory attributes while hysteresis samples are still being collected.
+- Wire a `CycleMonitor` into thermal components and read its tuple-based average cycle API for on/off cycle sensors.
+
+### Added
+- Added diagnostic detail attributes (`status_detail`, `source`, and feature-specific context) as HA entity-detail “tooltip” style explanations.
+- Added focused regression coverage for debug entity display states and cycle monitor wiring.
+
 ## [1.5.5-beta12] - 2026-05-23
 
 ### Fixed

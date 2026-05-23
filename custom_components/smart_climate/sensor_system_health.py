@@ -254,7 +254,7 @@ class ConvergenceTrendSensor(SmartClimateDashboardSensor):
         initialization, causing dashboard templates to display persistent "unknown" states.
         """
         # Define valid trend values
-        valid_trends = ["improving", "stable", "unstable", "unknown"]
+        valid_trends = ["improving", "stable", "unstable", "unknown", "learning", "not_learning"]
         
         try:
             # Check if coordinator data is available

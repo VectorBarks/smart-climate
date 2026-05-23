@@ -257,6 +257,15 @@ class SmartClimateDashboardSensor(SmartClimateSensorEntity):
         if isinstance(data, dict):
             return data.get(key, default)
         return getattr(data, key, default)
+
+    @staticmethod
+    def _status_from_bool(value: Optional[bool]) -> str:
+        """Return a stable sensor state for boolean-like diagnostic features."""
+        if value is True:
+            return "enabled"
+        if value is False:
+            return "disabled"
+        return "unknown"
     
     def _get_thermal_persistence_diagnostics(self) -> Dict[str, Any]:
         """Get thermal persistence diagnostic attributes per §10.8.1.
@@ -747,9 +756,23 @@ class WeatherForecastSensor(SmartClimateDashboardSensor, BinarySensorEntity):
             return None
     
     @property
-    def native_value(self) -> None:
-        """Binary sensors don't have native_value."""
-        return None
+    def native_value(self) -> str:
+        """Return a stable text state for the sensor platform."""
+        return self._status_from_bool(self.is_on)
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return diagnostic context for Home Assistant's entity detail view."""
+        value = self.is_on
+        return {
+            "enabled": value,
+            "status_detail": (
+                "Forecast engine is wired and active" if value is True
+                else "Forecast engine is disabled or not configured" if value is False
+                else "Waiting for coordinator data"
+            ),
+            "source": "dashboard_coordinator.weather_forecast",
+        }
 
 
 class SeasonalAdaptationSensor(SmartClimateDashboardSensor, BinarySensorEntity):
@@ -847,9 +870,31 @@ class SeasonalAdaptationSensor(SmartClimateDashboardSensor, BinarySensorEntity):
             return self._last_known_value
     
     @property
-    def native_value(self) -> None:
-        """Binary sensors don't have native_value."""
-        return None
+    def native_value(self) -> str:
+        """Return a stable text state for the sensor platform."""
+        return self._status_from_bool(self.is_on)
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return seasonal learning details for the entity detail view."""
+        seasonal_data = {}
+        if isinstance(self.coordinator.data, dict):
+            seasonal_data = self.coordinator.data.get("seasonal_data", {}) or {}
+
+        value = self.is_on
+        return {
+            "enabled": value,
+            "contribution_percent": seasonal_data.get("contribution", 0.0),
+            "pattern_count": seasonal_data.get("pattern_count", 0),
+            "outdoor_temp_bucket": seasonal_data.get("outdoor_temp_bucket"),
+            "accuracy_percent": seasonal_data.get("accuracy", 0.0),
+            "status_detail": (
+                "Seasonal learner is wired and active" if value is True
+                else "Seasonal learner is disabled or missing an outdoor sensor" if value is False
+                else "Waiting for seasonal coordinator data"
+            ),
+            "source": "dashboard_coordinator.seasonal_data",
+        }
 
 
 class SeasonalContributionSensor(SmartClimateDashboardSensor):

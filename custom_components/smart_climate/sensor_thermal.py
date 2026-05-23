@@ -72,6 +72,41 @@ class SmartClimateThermalSensor(SmartClimateSensorEntity):
             _LOGGER.debug("Error getting thermal components for %s: %s", self._base_entity_id, e)
             return None
 
+    @staticmethod
+    def _status_from_bool(value: Optional[bool], true_state: str = "on", false_state: str = "off") -> str:
+        """Return a stable text state for sensor-platform diagnostic booleans."""
+        if value is True:
+            return true_state
+        if value is False:
+            return false_state
+        return "unknown"
+
+    @staticmethod
+    def _cycle_durations(cycle_monitor: Any) -> tuple[float, float]:
+        """Return average on/off cycle durations from either supported monitor API."""
+        if not cycle_monitor:
+            return 0.0, 0.0
+
+        if hasattr(cycle_monitor, "get_average_cycle_duration"):
+            on_duration, off_duration = cycle_monitor.get_average_cycle_duration()
+            return float(on_duration or 0.0), float(off_duration or 0.0)
+
+        on_duration = (
+            cycle_monitor.get_average_on_duration()
+            if hasattr(cycle_monitor, "get_average_on_duration") else 0.0
+        )
+        off_duration = (
+            cycle_monitor.get_average_off_duration()
+            if hasattr(cycle_monitor, "get_average_off_duration") else 0.0
+        )
+        return float(on_duration or 0.0), float(off_duration or 0.0)
+
+    @staticmethod
+    def _cycle_history_count(cycle_monitor: Any) -> int:
+        """Return recorded cycle count when the monitor exposes history."""
+        history = getattr(cycle_monitor, "_cycle_history", None)
+        return len(history) if history is not None else 0
+
 
 # === DASHBOARD SENSORS (5) ===
 
@@ -266,9 +301,23 @@ class ShadowModeSensor(SmartClimateThermalSensor, BinarySensorEntity):
             return None
     
     @property
-    def native_value(self) -> None:
-        """Binary sensors don't have native_value."""
-        return None
+    def native_value(self) -> str:
+        """Return a stable text state for the sensor platform."""
+        return self._status_from_bool(self.is_on, "enabled", "disabled")
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return shadow-mode context for Home Assistant's detail view."""
+        value = self.is_on
+        return {
+            "enabled": value,
+            "status_detail": (
+                "Thermal efficiency is evaluating in shadow mode" if value is True
+                else "Thermal efficiency changes may be applied normally" if value is False
+                else "Thermal components are not available"
+            ),
+            "source": "thermal_components.shadow_mode",
+        }
 
 
 # === PERFORMANCE SENSORS (5) ===
@@ -405,11 +454,26 @@ class AverageOnCycleSensor(SmartClimateThermalSensor):
         
         try:
             cycle_monitor = thermal_components.get("cycle_monitor")
-            if cycle_monitor and hasattr(cycle_monitor, 'get_average_on_duration'):
-                return cycle_monitor.get_average_on_duration()
+            on_duration, _ = self._cycle_durations(cycle_monitor)
+            return on_duration
+        except (AttributeError, TypeError, ValueError):
             return None
-        except (AttributeError, TypeError):
-            return None
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return cycle monitor context."""
+        thermal_components = self._get_thermal_components() or {}
+        cycle_monitor = thermal_components.get("cycle_monitor")
+        return {
+            "cycle_monitor_configured": cycle_monitor is not None,
+            "recorded_cycles": self._cycle_history_count(cycle_monitor),
+            "status_detail": (
+                "Average on-cycle duration from recorded HVAC cycles"
+                if self._cycle_history_count(cycle_monitor) else
+                "No completed HVAC on-cycles recorded yet"
+            ),
+            "source": "thermal_components.cycle_monitor",
+        }
 
 
 class AverageOffCycleSensor(SmartClimateThermalSensor):
@@ -439,11 +503,26 @@ class AverageOffCycleSensor(SmartClimateThermalSensor):
         
         try:
             cycle_monitor = thermal_components.get("cycle_monitor")
-            if cycle_monitor and hasattr(cycle_monitor, 'get_average_off_duration'):
-                return cycle_monitor.get_average_off_duration()
+            _, off_duration = self._cycle_durations(cycle_monitor)
+            return off_duration
+        except (AttributeError, TypeError, ValueError):
             return None
-        except (AttributeError, TypeError):
-            return None
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return cycle monitor context."""
+        thermal_components = self._get_thermal_components() or {}
+        cycle_monitor = thermal_components.get("cycle_monitor")
+        return {
+            "cycle_monitor_configured": cycle_monitor is not None,
+            "recorded_cycles": self._cycle_history_count(cycle_monitor),
+            "status_detail": (
+                "Average off-cycle duration from recorded HVAC cycles"
+                if self._cycle_history_count(cycle_monitor) else
+                "No completed HVAC off-cycles recorded yet"
+            ),
+            "source": "thermal_components.cycle_monitor",
+        }
 
 
 # === DEBUG SENSORS (3) - Disabled by default ===
@@ -611,9 +690,27 @@ class ProbingActiveSensor(SmartClimateThermalSensor, BinarySensorEntity):
             return None
     
     @property
-    def native_value(self) -> None:
-        """Binary sensors don't have native_value."""
-        return None
+    def native_value(self) -> str:
+        """Return a stable text state for the sensor platform."""
+        return self._status_from_bool(self.is_on, "active", "inactive")
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return probe context for Home Assistant's detail view."""
+        thermal_components = self._get_thermal_components() or {}
+        thermal_manager = thermal_components.get("thermal_manager")
+        current_state = getattr(getattr(thermal_manager, "current_state", None), "value", None)
+        value = self.is_on
+        return {
+            "active": value,
+            "thermal_state": current_state,
+            "status_detail": (
+                "Thermal probing is currently active" if value is True
+                else "Thermal probing is inactive" if value is False
+                else "Thermal manager is not available"
+            ),
+            "source": "thermal_manager.current_state",
+        }
 
 
 # === CYCLE HEALTH BINARY SENSOR ===
@@ -651,9 +748,30 @@ class CycleHealthSensor(SmartClimateThermalSensor, BinarySensorEntity):
             return None
     
     @property
-    def native_value(self) -> None:
-        """Binary sensors don't have native_value."""
-        return None
+    def native_value(self) -> str:
+        """Return a stable text state for the sensor platform."""
+        return self._status_from_bool(self.is_on, "problem", "ok")
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return cycle health context."""
+        thermal_components = self._get_thermal_components() or {}
+        cycle_monitor = thermal_components.get("cycle_monitor")
+        on_duration, off_duration = self._cycle_durations(cycle_monitor)
+        value = self.is_on
+        return {
+            "problem": value,
+            "cycle_monitor_configured": cycle_monitor is not None,
+            "recorded_cycles": self._cycle_history_count(cycle_monitor),
+            "average_on_cycle_seconds": on_duration,
+            "average_off_cycle_seconds": off_duration,
+            "status_detail": (
+                "Cycle monitor detects short-cycling risk" if value is True
+                else "No short-cycling risk detected" if value is False
+                else "Thermal components are not available"
+            ),
+            "source": "thermal_components.cycle_monitor.needs_adjustment",
+        }
 
 
 # Export all thermal sensor classes for easy import

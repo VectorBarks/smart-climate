@@ -60,6 +60,7 @@ from .thermal_preferences import UserPreferences, PreferenceLevel
 from .thermal_model import PassiveThermalModel
 from .thermal_manager import ThermalManager
 from .thermal_sensor import SmartClimateStatusSensor
+from .cycle_monitor import CycleMonitor
 from .probe_manager import ProbeManager
 
 # Version and basic metadata
@@ -559,12 +560,19 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                 )
                 _LOGGER.info("[DEBUG] Probe manager created successfully")
                 
+                _LOGGER.info("[DEBUG] Creating cycle monitor for entity: %s", entity_id)
+                cycle_monitor = CycleMonitor(
+                    min_off_time=config.get("minimum_off_time", config.get("min_off_time", 600)),
+                    min_on_time=config.get("minimum_on_time", config.get("min_on_time", 300)),
+                )
+                _LOGGER.info("[DEBUG] Cycle monitor created successfully")
+
                 _LOGGER.info("[DEBUG] Creating status sensor for entity: %s", entity_id)
                 status_sensor = SmartClimateStatusSensor(
                     hass=hass,
                     thermal_manager=thermal_manager,
                     offset_engine=None,  # Will be set after OffsetEngine creation
-                    cycle_monitor=None   # Will be set after creation
+                    cycle_monitor=cycle_monitor
                 )
                 _LOGGER.info("[DEBUG] Status sensor created successfully")
             
@@ -574,6 +582,7 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                     "user_preferences": user_preferences,
                     "thermal_manager": thermal_manager,
                     "probe_manager": probe_manager,
+                    "cycle_monitor": cycle_monitor,
                     "status_sensor": status_sensor,
                     "shadow_mode": shadow_mode
                 }

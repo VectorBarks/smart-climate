@@ -66,16 +66,53 @@ class TemperatureWindowSensor(SmartClimateDashboardSensor):
         self._attr_entity_category = None
         
     @property
-    def native_value(self) -> Optional[str]:
-        """Return the temperature window string."""
+    def native_value(self) -> str:
+        """Return the temperature window string or an explicit learning state."""
         if self.coordinator.data is None:
-            return None
+            return "unknown"
             
         try:
             ac_behavior = self.coordinator.data.get("ac_behavior", {})
-            return ac_behavior.get("temperature_window")
+            value = ac_behavior.get("temperature_window")
+            if value:
+                return value
+
+            learning_info = self.coordinator.data.get("learning_info", {})
+            if not learning_info.get("hysteresis_enabled", False):
+                return "disabled"
+            return "learning"
         except (TypeError, KeyError, AttributeError):
-            return None
+            return "unknown"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return context explaining why the window is not yet numeric."""
+        attrs = {
+            "status_detail": "Waiting for coordinator data",
+            "source": "dashboard_coordinator.ac_behavior.temperature_window",
+        }
+        if self.coordinator.data is None:
+            return attrs
+
+        try:
+            ac_behavior = self.coordinator.data.get("ac_behavior", {})
+            learning_info = self.coordinator.data.get("learning_info", {})
+            attrs.update({
+                "hysteresis_enabled": learning_info.get("hysteresis_enabled", False),
+                "hysteresis_ready": learning_info.get("hysteresis_ready", False),
+                "hysteresis_state": learning_info.get("hysteresis_state", "unknown"),
+                "start_samples": learning_info.get("start_samples_collected", 0),
+                "stop_samples": learning_info.get("stop_samples_collected", 0),
+                "hysteresis_cycle_count": ac_behavior.get("hysteresis_cycle_count", 0),
+                "status_detail": (
+                    "Temperature window learned" if ac_behavior.get("temperature_window")
+                    else "Power sensor is disabled; hysteresis learning is unavailable" if not learning_info.get("hysteresis_enabled", False)
+                    else "Collecting compressor start/stop samples before a window can be calculated"
+                ),
+            })
+        except (TypeError, KeyError, AttributeError):
+            attrs["status_detail"] = "Coordinator data shape is invalid"
+        return attrs
 
 
 class PowerCorrelationSensor(SmartClimateDashboardSensor):

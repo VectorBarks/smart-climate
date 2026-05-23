@@ -52,6 +52,105 @@ sys.modules['homeassistant.components'] = MagicMock()
 sys.modules['homeassistant.components.climate'] = MagicMock()
 sys.modules['homeassistant.components.climate.const'] = MagicMock()
 
+persistent_notification_module = MagicMock()
+persistent_notification_module.async_create = MagicMock()
+sys.modules['homeassistant.components.persistent_notification'] = persistent_notification_module
+
+# Minimal HA entity/platform stubs used by sensor unit tests.
+class MockCoordinatorEntity:
+    def __init__(self, coordinator=None):
+        self.coordinator = coordinator
+
+class MockSensorEntity:
+    def __init__(self):
+        pass
+    @property
+    def name(self):
+        return getattr(self, "_attr_name", None)
+    @property
+    def icon(self):
+        return getattr(self, "_attr_icon", None)
+    @property
+    def native_unit_of_measurement(self):
+        return getattr(self, "_attr_native_unit_of_measurement", None)
+    @property
+    def state_class(self):
+        return getattr(self, "_attr_state_class", None)
+
+class MockBinarySensorEntity:
+    def __init__(self):
+        pass
+    @property
+    def name(self):
+        return getattr(self, "_attr_name", None)
+    @property
+    def icon(self):
+        return getattr(self, "_attr_icon", None)
+
+class MockDeviceInfo(dict):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+class MockDataUpdateCoordinator:
+    pass
+
+class MockUpdateFailed(Exception):
+    pass
+
+class _Const:
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return self.value
+
+class MockSensorStateClass:
+    MEASUREMENT = "measurement"
+    TOTAL_INCREASING = "total_increasing"
+
+class MockSensorDeviceClass:
+    TEMPERATURE = "temperature"
+    DURATION = "duration"
+    DATA_SIZE = "data_size"
+    HUMIDITY = "humidity"
+    POWER = "power"
+
+class MockBinarySensorDeviceClass:
+    PROBLEM = "problem"
+    SAFETY = "safety"
+    RUNNING = "running"
+
+class MockEntityCategory:
+    DIAGNOSTIC = "diagnostic"
+
+sensor_module = MagicMock()
+sensor_module.SensorEntity = MockSensorEntity
+sensor_module.SensorStateClass = MockSensorStateClass
+sensor_module.SensorDeviceClass = MockSensorDeviceClass
+sys.modules['homeassistant.components.sensor'] = sensor_module
+
+binary_sensor_module = MagicMock()
+binary_sensor_module.BinarySensorEntity = MockBinarySensorEntity
+binary_sensor_module.BinarySensorDeviceClass = MockBinarySensorDeviceClass
+sys.modules['homeassistant.components.binary_sensor'] = binary_sensor_module
+
+config_entries_module = MagicMock()
+config_entries_module.ConfigEntry = MagicMock
+sys.modules['homeassistant.config_entries'] = config_entries_module
+
+update_coordinator_module = MagicMock()
+update_coordinator_module.CoordinatorEntity = MockCoordinatorEntity
+update_coordinator_module.DataUpdateCoordinator = MockDataUpdateCoordinator
+update_coordinator_module.UpdateFailed = MockUpdateFailed
+sys.modules['homeassistant.helpers.update_coordinator'] = update_coordinator_module
+
+device_registry_module = MagicMock()
+device_registry_module.DeviceInfo = MockDeviceInfo
+sys.modules['homeassistant.helpers.device_registry'] = device_registry_module
+
+entity_platform_module = MagicMock()
+entity_platform_module.AddEntitiesCallback = MagicMock
+sys.modules['homeassistant.helpers.entity_platform'] = entity_platform_module
+
 # Mock Platform
 sys.modules['homeassistant.const'].Platform = MagicMock()
 sys.modules['homeassistant.const'].Platform.CLIMATE = "climate"
@@ -61,6 +160,11 @@ sys.modules['homeassistant.const'].STATE_UNAVAILABLE = "unavailable"
 sys.modules['homeassistant.const'].STATE_UNKNOWN = "unknown"
 sys.modules['homeassistant.const'].STATE_ON = "on"
 sys.modules['homeassistant.const'].STATE_OFF = "off"
+sys.modules['homeassistant.const'].PERCENTAGE = "%"
+sys.modules['homeassistant.const'].UnitOfTemperature = type("UnitOfTemperature", (), {"CELSIUS": "°C"})
+sys.modules['homeassistant.const'].UnitOfTime = type("UnitOfTime", (), {"SECONDS": "s", "MINUTES": "min"})
+sys.modules['homeassistant.const'].UnitOfInformation = type("UnitOfInformation", (), {"KIBIBYTES": "KiB"})
+sys.modules['homeassistant.const'].EntityCategory = MockEntityCategory
 
 # Mock climate constants
 sys.modules['homeassistant.components.climate.const'].HVAC_MODE_OFF = "off"
