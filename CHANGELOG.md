@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5-beta16] - 2026-05-23
+
+### Fixed
+- Rebuilt generated dashboards around live Home Assistant entity-registry data instead of guessing helper entity IDs from the climate entity name.
+- Removed HACS-only/custom Lovelace card dependencies from generated dashboards; runtime dashboards now use only core cards: thermostat, markdown, gauge, entities, and history-graph.
+- Prevented generated dashboards from referencing missing `sensor.<climate_entity>_*` entities on installs whose helpers use legacy or display-name-derived prefixes.
+
 ## [1.5.5-beta15] - 2026-05-23
 
 ### Fixed

@@ -917,9 +917,36 @@ async def handle_generate_dashboard(call: ServiceCall) -> None:
     _LOGGER.debug("Generating Advanced Analytics Dashboard for %s (%s)", climate_entity_id, friendly_name)
     
     try:
-        # Use the DashboardGenerator to create the Advanced Analytics Dashboard
+        # Use live entity-registry data so the dashboard references actual helper
+        # entities instead of guessing names from the climate entity id.
+        related_entities = []
+        for related_entry in entity_registry.entities.values():
+            if (
+                related_entry.platform == DOMAIN
+                and related_entry.config_entry_id == entity_entry.config_entry_id
+            ):
+                entity_id = getattr(related_entry, "entity_id", None)
+                if not isinstance(entity_id, str) or "." not in entity_id:
+                    continue
+                related_state = hass.states.get(entity_id)
+                related_entities.append({
+                    "entity_id": entity_id,
+                    "domain": entity_id.split(".", 1)[0],
+                    "friendly_name": (
+                        related_state.attributes.get("friendly_name")
+                        if related_state is not None
+                        else getattr(related_entry, "name", None)
+                        or getattr(related_entry, "original_name", None)
+                    ),
+                    "state": related_state.state if related_state is not None else None,
+                })
+
         generator = DashboardGenerator()
-        dashboard_yaml = generator.generate_dashboard(climate_entity_id, friendly_name)
+        dashboard_yaml = generator.generate_runtime_dashboard(
+            climate_entity_id,
+            friendly_name,
+            related_entities,
+        )
         
         _LOGGER.info("Successfully generated Advanced Analytics Dashboard (%d characters)", len(dashboard_yaml))
         

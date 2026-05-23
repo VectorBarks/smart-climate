@@ -10,7 +10,7 @@ import yaml
 import re
 import os
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from .templates import GraphTemplates
@@ -107,6 +107,34 @@ class DashboardGenerator:
         except Exception as e:
             _LOGGER.error("Failed to generate dashboard for entity '%s': %s", entity_id, str(e))
             raise
+
+    def generate_runtime_dashboard(
+        self,
+        entity_id: str,
+        friendly_name: str,
+        related_entities: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Generate a resilient HA-core-only dashboard from live entity data.
+
+        The legacy Advanced Analytics template guesses entity IDs from the climate
+        entity name. Real installs can have different helper prefixes, so the
+        runtime dashboard only references entities reported by Home Assistant.
+        """
+        self._validate_inputs(entity_id, friendly_name)
+        related_entities = related_entities or []
+        dashboard_config = {
+            "title": f"Smart Climate - {friendly_name}",
+            "views": self._build_runtime_views(entity_id, related_entities),
+        }
+        yaml_content = self._generate_header_comment(entity_id, friendly_name)
+        yaml_content += "\n" + yaml.dump(
+            dashboard_config,
+            default_flow_style=False,
+            allow_unicode=True,
+            sort_keys=False,
+        )
+        self._validate_runtime_yaml_output(yaml_content)
+        return yaml_content
     
     def save_dashboard(self, yaml_content: str, backup: bool = True) -> None:
         """Save dashboard to file with optional backup.
@@ -152,6 +180,215 @@ class DashboardGenerator:
             _LOGGER.error("Failed to save dashboard: %s", str(e))
             raise
     
+    def _build_runtime_views(self, climate_entity_id: str, related_entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Build five robust dashboard tabs using only existing core HA entities/cards."""
+        climate_card = {"type": "thermostat", "entity": climate_entity_id, "name": "Smart Climate Control"}
+        numeric_entities = [
+            entity for entity in related_entities
+            if entity.get("domain") == "sensor" and self._is_numeric_state(entity.get("state"))
+        ]
+        overview_entities = self._select_entities(
+            related_entities,
+            ["current_offset", "learning_progress", "current_accuracy", "compressor_state", "temperature_window", "weather_forecast", "convergence_trend", "quiet_mode"],
+            limit=14,
+        )
+        learning_entities = self._select_entities(
+            related_entities,
+            ["learning", "calibration", "hysteresis", "adaptive_delay", "sample", "window", "seasonal", "forecast"],
+            limit=24,
+        )
+        thermal_entities = self._select_entities(
+            related_entities,
+            ["thermal", "cycle", "tau", "compressor", "quiet", "comfort", "operating_window"],
+            limit=24,
+        )
+        performance_entities = self._select_entities(
+            related_entities,
+            ["accuracy", "offset", "model", "prediction", "correlation", "efficiency", "error", "latency", "mae", "mse", "r_squared"],
+            limit=28,
+        )
+        diagnostic_entities = self._dedupe_entities(related_entities)[:40]
+        history_entities = [entity["entity_id"] for entity in numeric_entities[:8]]
+
+        return [
+            {
+                "title": "Overview",
+                "path": "overview",
+                "icon": "mdi:view-dashboard",
+                "cards": [
+                    climate_card,
+                    self._build_markdown_status_card(climate_entity_id),
+                    *self._build_gauge_cards(numeric_entities),
+                    self._build_entities_card("Live Status", overview_entities),
+                ],
+            },
+            {
+                "title": "Learning",
+                "path": "learning",
+                "icon": "mdi:brain",
+                "cards": [self._build_entities_card("Learning & Forecast", learning_entities)],
+            },
+            {
+                "title": "Thermal",
+                "path": "thermal",
+                "icon": "mdi:thermometer-lines",
+                "cards": [self._build_entities_card("Thermal & Quiet Mode", thermal_entities)],
+            },
+            {
+                "title": "Performance",
+                "path": "performance",
+                "icon": "mdi:chart-line",
+                "cards": [
+                    self._build_history_card("Numeric Trends", history_entities),
+                    self._build_entities_card("Performance Metrics", performance_entities),
+                ],
+            },
+            {
+                "title": "Diagnostics",
+                "path": "diagnostics",
+                "icon": "mdi:stethoscope",
+                "cards": [
+                    self._build_entities_card("All Smart Climate Entities", diagnostic_entities),
+                    self._build_markdown_reference_card(climate_entity_id),
+                ],
+            },
+        ]
+
+    @staticmethod
+    def _is_numeric_state(state: Any) -> bool:
+        """Return true when a HA state can safely feed gauge/history cards."""
+        try:
+            float(state)
+            return True
+        except (TypeError, ValueError):
+            return False
+
+    def _select_entities(self, entities: List[Dict[str, Any]], keywords: List[str], limit: int) -> List[Dict[str, Any]]:
+        """Select related entities matching any keyword in entity id or friendly name."""
+        selected = []
+        for entity in self._dedupe_entities(entities):
+            haystack = f"{entity.get('entity_id', '')} {entity.get('friendly_name', '')}".lower()
+            if any(keyword in haystack for keyword in keywords):
+                selected.append(entity)
+            if len(selected) >= limit:
+                break
+        return selected
+
+    @staticmethod
+    def _dedupe_entities(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Return entities sorted and deduplicated by entity_id."""
+        seen = set()
+        result = []
+        for entity in sorted(entities, key=lambda item: item.get("entity_id", "")):
+            entity_id = entity.get("entity_id")
+            if not entity_id or entity_id in seen:
+                continue
+            seen.add(entity_id)
+            result.append(entity)
+        return result
+
+    def _build_gauge_cards(self, numeric_entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Build safe gauge cards only for known numeric entities."""
+        preferred = [
+            "current_offset",
+            "learning_progress",
+            "current_accuracy",
+            "model_confidence",
+            "energy_efficiency_score",
+            "sensor_availability",
+        ]
+        cards = []
+        used = set()
+        for keyword in preferred:
+            match = next((entity for entity in numeric_entities if keyword in entity.get("entity_id", "")), None)
+            if not match or match["entity_id"] in used:
+                continue
+            used.add(match["entity_id"])
+            min_value, max_value = self._gauge_range(match["entity_id"])
+            cards.append({
+                "type": "gauge",
+                "entity": match["entity_id"],
+                "name": self._display_name(match),
+                "min": min_value,
+                "max": max_value,
+                "needle": True,
+            })
+            if len(cards) >= 4:
+                break
+        return cards
+
+    @staticmethod
+    def _gauge_range(entity_id: str) -> tuple[float, float]:
+        """Return sensible gauge min/max values for common dashboard metrics."""
+        if "offset" in entity_id:
+            return -5, 5
+        if any(part in entity_id for part in ("progress", "accuracy", "confidence", "efficiency", "availability")):
+            return 0, 100
+        return 0, 10
+
+    @staticmethod
+    def _display_name(entity: Dict[str, Any]) -> str:
+        """Return a compact display name for an entity."""
+        return entity.get("friendly_name") or entity.get("entity_id", "")
+
+    def _build_entities_card(self, title: str, entities: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Build a core entities card."""
+        return {
+            "type": "entities",
+            "title": title,
+            "show_header_toggle": False,
+            "entities": [entity["entity_id"] for entity in self._dedupe_entities(entities)],
+        }
+
+    @staticmethod
+    def _build_history_card(title: str, entity_ids: List[str]) -> Dict[str, Any]:
+        """Build a core history graph card."""
+        return {
+            "type": "history-graph",
+            "title": title,
+            "hours_to_show": 24,
+            "entities": entity_ids,
+        }
+
+    @staticmethod
+    def _build_markdown_status_card(climate_entity_id: str) -> Dict[str, Any]:
+        """Build a templated status card for the main climate entity."""
+        return {
+            "type": "markdown",
+            "title": "Status Details",
+            "content": (
+                f"### {{{{ state_attr('{climate_entity_id}', 'friendly_name') or '{climate_entity_id}' }}}}\n"
+                f"- HVAC: `{{{{ states('{climate_entity_id}') }}}}`\n"
+                f"- Predictive strategy: `{{{{ state_attr('{climate_entity_id}', 'predictive_strategy') }}}}`\n"
+                f"- Strategy detail: {{{{ state_attr('{climate_entity_id}', 'predictive_strategy_status_detail') }}}}\n"
+                f"- Temperature window: `{{{{ state_attr('{climate_entity_id}', 'temperature_window_learned') }}}}`\n"
+                f"- Window detail: {{{{ state_attr('{climate_entity_id}', 'temperature_window_status_detail') }}}}\n"
+            ),
+        }
+
+    @staticmethod
+    def _build_markdown_reference_card(climate_entity_id: str) -> Dict[str, Any]:
+        """Build a small reference card explaining dashboard design."""
+        return {
+            "type": "markdown",
+            "title": "Dashboard Notes",
+            "content": (
+                "This dashboard is generated from the live Home Assistant entity registry. "
+                "It intentionally uses only built-in Home Assistant cards and only references "
+                f"entities that exist for `{climate_entity_id}`."
+            ),
+        }
+
+    def _validate_runtime_yaml_output(self, yaml_content: str) -> None:
+        """Validate runtime dashboard structure."""
+        parsed = yaml.safe_load(yaml_content)
+        if not isinstance(parsed, dict):
+            raise ValueError("Dashboard YAML must be a dictionary")
+        if "views" not in parsed or not isinstance(parsed["views"], list):
+            raise ValueError("Dashboard YAML must contain a views list")
+        if len(parsed["views"]) != 5:
+            raise ValueError(f"Runtime dashboard must have exactly 5 views, got {len(parsed['views'])}")
+
     def _validate_inputs(self, entity_id: str, friendly_name: str) -> None:
         """Validate input parameters for dashboard generation.
         

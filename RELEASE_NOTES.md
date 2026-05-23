@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.5.5-beta16 (2026-05-23)
+
+### Summary
+Dashboard generation is now rebuilt for real Home Assistant installs. The service no longer emits the old advanced template that guessed dozens of missing helper entity IDs and required custom Lovelace cards.
+
+### Fixed
+- Dashboard service now discovers related Smart Climate entities from the live entity registry/config entry.
+- Generated dashboards reference only entities that exist in Home Assistant for the selected climate entity.
+- Generated dashboards use only built-in Home Assistant cards: thermostat, markdown, gauge, entities, and history-graph.
+
+### Verification
+- Runtime dashboard generated for `climate.smart_klimaanlage_tu_climate` referenced 52 entities with 0 missing entity IDs.
+
 ## v1.5.5-beta15 (2026-05-23)
 
 ### Summary
