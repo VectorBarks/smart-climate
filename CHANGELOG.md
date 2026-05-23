@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5-beta14] - 2026-05-23
+
+### Added
+- Added entity-detail explanations for convergence trend, Quiet Mode status, Quiet Mode suppressions, and compressor state so the remaining diagnostic states explain their source and meaning.
+
 ## [1.5.5-beta13] - 2026-05-23
 
 ### Fixed

@@ -24,7 +24,7 @@ Key Features:
 """
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -286,6 +286,32 @@ class ConvergenceTrendSensor(SmartClimateDashboardSensor):
         except (AttributeError, TypeError, KeyError):
             # Return cached value on any error
             return self._last_known_value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return convergence context for the entity detail view."""
+        trend = self.native_value
+        detail_map = {
+            "improving": "Learning accuracy is improving",
+            "stable": "Learning accuracy has stabilized",
+            "unstable": "Learning accuracy is fluctuating or degrading",
+            "learning": "Collecting enough samples to evaluate convergence",
+            "not_learning": "Learning is disabled or no new samples are being collected",
+            "unknown": "Waiting for system health data",
+        }
+        attrs: dict[str, Any] = {
+            "status_detail": detail_map.get(trend, "Waiting for system health data"),
+            "source": "dashboard_coordinator.system_health.convergence_trend",
+        }
+        if isinstance(self.coordinator.data, dict):
+            system_health = self.coordinator.data.get("system_health", {}) or {}
+            if isinstance(system_health, dict):
+                attrs.update({
+                    "samples_per_day": system_health.get("samples_per_day"),
+                    "accuracy": system_health.get("accuracy"),
+                    "outlier_detection_active": system_health.get("outlier_detection_active"),
+                })
+        return attrs
 
 
 # Export all sensor classes for easy import

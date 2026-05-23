@@ -4,6 +4,9 @@ from unittest.mock import Mock
 
 from custom_components.smart_climate.cycle_monitor import CycleMonitor
 from custom_components.smart_climate.sensor import (
+    CompressorStateSensor,
+    QuietModeStatusSensor,
+    QuietModeSuppressionSensor,
     SeasonalAdaptationSensor,
     WeatherForecastSensor,
 )
@@ -76,6 +79,24 @@ def test_convergence_trend_accepts_learning_state_from_offset_engine():
     )
 
     assert sensor.native_value == "learning"
+    assert "Collecting enough samples" in sensor.extra_state_attributes["status_detail"]
+
+
+def test_quiet_mode_sensors_explain_state_source():
+    entry = _config_entry()
+    data = {
+        "quiet_mode_status": "enabled",
+        "quiet_mode_suppressions": 4,
+        "compressor_state": "idle",
+    }
+
+    status = QuietModeStatusSensor(_coordinator(data), "climate.test", entry)
+    suppressions = QuietModeSuppressionSensor(_coordinator(data), "climate.test", entry)
+    compressor = CompressorStateSensor(_coordinator(data), "climate.test", entry)
+
+    assert status.extra_state_attributes["source"] == "dashboard_coordinator.quiet_mode_status"
+    assert suppressions.extra_state_attributes["status_detail"] == "Quiet Mode has suppressed 4 non-useful adjustment beep(s)"
+    assert compressor.extra_state_attributes["status_detail"] == "Compressor is idle according to the configured power sensor"
 
 
 def test_temperature_window_reports_learning_instead_of_unknown_with_context():

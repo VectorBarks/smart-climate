@@ -1,5 +1,14 @@
 # Release Notes
 
+## v1.5.5-beta14 (2026-05-23)
+
+### Summary
+Finishes the diagnostic polish pass by adding explanatory detail attributes for convergence, Quiet Mode, suppressions, and compressor state.
+
+### Added
+- `status_detail` and `source` attributes for `sensor.*_convergence_trend`.
+- `status_detail` and `source` attributes for `sensor.*_quiet_mode_status`, `sensor.*_quiet_mode_suppressions`, and `sensor.*_compressor_state`.
+
 ## v1.5.5-beta13 (2026-05-23)
 
 ### Summary

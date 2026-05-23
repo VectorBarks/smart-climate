@@ -1019,6 +1019,21 @@ class QuietModeStatusSensor(SmartClimateDashboardSensor):
         else:
             return "mdi:volume-off"
 
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return quiet-mode context for Home Assistant's detail view."""
+        status = self.native_value
+        return {
+            "status_detail": (
+                "Quiet Mode is suppressing non-useful AC beeps when the compressor cannot respond"
+                if status == "enabled"
+                else "Quiet Mode is disabled; temperature changes are sent immediately"
+                if status == "disabled"
+                else "Waiting for quiet-mode coordinator data"
+            ),
+            "source": "dashboard_coordinator.quiet_mode_status",
+        }
+
 
 class QuietModeSuppressionSensor(SmartClimateDashboardSensor):
     """Sensor for quiet mode suppression count."""
@@ -1046,6 +1061,19 @@ class QuietModeSuppressionSensor(SmartClimateDashboardSensor):
             return self._data_value("quiet_mode_suppressions")
         except (AttributeError, TypeError):
             return None
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return quiet-mode suppression context."""
+        value = self.native_value
+        return {
+            "status_detail": (
+                f"Quiet Mode has suppressed {value} non-useful adjustment beep(s)"
+                if value is not None
+                else "Waiting for quiet-mode suppression data"
+            ),
+            "source": "dashboard_coordinator.quiet_mode_suppressions",
+        }
 
 
 class CompressorStateSensor(SmartClimateDashboardSensor):
@@ -1082,4 +1110,19 @@ class CompressorStateSensor(SmartClimateDashboardSensor):
             return "mdi:pause"
         else:
             return "mdi:help-circle"
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return compressor-state context for Home Assistant's detail view."""
+        state = self.native_value
+        return {
+            "status_detail": (
+                "Compressor is active according to the configured power sensor"
+                if state == "active"
+                else "Compressor is idle according to the configured power sensor"
+                if state == "idle"
+                else "Waiting for power-sensor based compressor state"
+            ),
+            "source": "dashboard_coordinator.compressor_state",
+        }
 
