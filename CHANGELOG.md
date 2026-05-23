@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5-beta10] - 2026-05-23
+
+### Fixed
+- Publish Quiet Mode dashboard data through the coordinator so `quiet_mode_status`, `quiet_mode_suppressions`, and `compressor_state` sensors no longer stay `unknown` when an AC power sensor is configured.
+- Classify compressor state from live power readings using the configured idle threshold, reporting `idle` below threshold and `active` above threshold.
+
+### Tests
+- Added a focused regression test that constructs real `SmartClimateData` with Quiet Mode fields and verifies the coordinator populates them.
+
 ## [1.5.5-beta9] - 2026-05-23
 
 ### Fixed

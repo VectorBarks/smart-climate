@@ -107,6 +107,10 @@ class SmartClimateData:
     learning_target: Optional[float] = None
     # Humidity monitoring data
     humidity_data: Optional[dict] = None
+    # Quiet mode data for dashboard sensors
+    quiet_mode_status: Optional[str] = None
+    quiet_mode_suppressions: int = 0
+    compressor_state: Optional[str] = None
     
     def __post_init__(self):
         """Initialize default values for outlier fields."""

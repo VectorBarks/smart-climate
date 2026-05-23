@@ -1,5 +1,19 @@
 # Release Notes
 
+## v1.5.5-beta10 (2026-05-23)
+
+### Summary
+Quiet Mode dashboard sensors now receive live coordinator data instead of reading fields that were never populated.
+
+### Fixed
+- `sensor.*_compressor_state` now reports `idle` or `active` from the configured AC power sensor and idle threshold.
+- `sensor.*_quiet_mode_status` now reports enabled/disabled coordinator state.
+- `sensor.*_quiet_mode_suppressions` now mirrors the live Quiet Mode controller suppression count.
+
+### Validation
+- Added a focused regression test for real `SmartClimateData` Quiet Mode fields and coordinator population.
+- Verified focused tests and Python compile checks locally before release.
+
 ## v1.5.5-beta9 (2026-05-23)
 
 ### Summary

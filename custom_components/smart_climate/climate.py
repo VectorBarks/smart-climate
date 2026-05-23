@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult, ModeAdjustments
 from .thermal_models import ThermalState
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
 from .config_helpers import build_predictive_config
@@ -161,6 +161,8 @@ class SmartClimateEntity(ClimateEntity):
                 analyzer=analyzer,
                 logger=_LOGGER
             )
+        if self._coordinator is not None:
+            self._coordinator._quiet_mode_controller = self._quiet_mode_controller
         
         _LOGGER.debug(
             "SmartClimateEntity initialized for wrapped entity: %s",
@@ -3329,7 +3331,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry, async_add_entitie
             cycle_monitor=thermal_components.get("cycle_monitor"),
             comfort_band_controller=thermal_components.get("comfort_band_controller"),
             wrapped_entity_id=config["climate_entity"],
-            entity_id=climate_entity_id  # Pass the actual Smart Climate entity ID
+            entity_id=climate_entity_id,  # Pass the actual Smart Climate entity ID
+            quiet_mode_enabled=config.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED),
+            quiet_mode_power_threshold=config.get(CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD),
         )
         
         # Wire the forecast engine to the offset engine for dashboard data

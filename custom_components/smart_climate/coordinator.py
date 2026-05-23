@@ -14,7 +14,7 @@ from .errors import SmartClimateError
 from .outlier_detector import OutlierDetector
 from .dto import SystemHealthData
 from .thermal_models import ThermalState
-from .const import DOMAIN, SEASONAL_LEARNER_STORAGE_VERSION, POST_COOL_RISE_PERIOD_MINUTES, SEASONAL_SAVE_INTERVAL_MINUTES
+from .const import DOMAIN, SEASONAL_LEARNER_STORAGE_VERSION, POST_COOL_RISE_PERIOD_MINUTES, SEASONAL_SAVE_INTERVAL_MINUTES, DEFAULT_POWER_IDLE_THRESHOLD
 
 if TYPE_CHECKING:
     from .sensor_manager import SensorManager
@@ -50,7 +50,9 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         thermal_efficiency_enabled: bool = False,
         wrapped_entity_id: Optional[str] = None,
         entity_id: Optional[str] = None,  # Smart Climate entity ID for looking up ThermalManager
-        humidity_monitor: Optional["HumidityMonitor"] = None
+        humidity_monitor: Optional["HumidityMonitor"] = None,
+        quiet_mode_enabled: bool = False,
+        quiet_mode_power_threshold: float = DEFAULT_POWER_IDLE_THRESHOLD,
     ):
         """Initialize the coordinator."""
         super().__init__(
@@ -66,6 +68,9 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         self._wrapped_entity_id = wrapped_entity_id
         self._entity_id = entity_id  # Store Smart Climate entity ID for ThermalManager lookup
         self._humidity_monitor = humidity_monitor
+        self._quiet_mode_enabled = quiet_mode_enabled
+        self._quiet_mode_power_threshold = quiet_mode_power_threshold
+        self._quiet_mode_controller = None
         self._is_startup = True  # Flag for startup calculation
         
         # Initialize thermal efficiency components (Phase 1)
@@ -746,6 +751,16 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             # Determine Phase 2 state information
             thermal_state = None
             learning_active = False
+            quiet_mode_status = "disabled" if not self._quiet_mode_enabled else "enabled"
+            quiet_mode_suppressions = 0
+            compressor_state = "unknown"
+
+            if self._quiet_mode_enabled:
+                if power is not None:
+                    quiet_mode_power_threshold = self._quiet_mode_power_threshold
+                    compressor_state = "idle" if power < quiet_mode_power_threshold else "active"
+                if self._quiet_mode_controller is not None:
+                    quiet_mode_suppressions = self._quiet_mode_controller.get_suppression_count()
             
             thermal_manager = self.get_thermal_manager(self._entity_id) if self._entity_id else None
             if self.thermal_efficiency_enabled and thermal_manager:
@@ -771,7 +786,11 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 learning_active=learning_active,
                 learning_target=learning_target,
                 # Humidity monitoring data
-                humidity_data=humidity_data
+                humidity_data=humidity_data,
+                # Quiet mode dashboard data
+                quiet_mode_status=quiet_mode_status,
+                quiet_mode_suppressions=quiet_mode_suppressions,
+                compressor_state=compressor_state
             )
             
         except Exception as err:
