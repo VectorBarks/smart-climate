@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5-beta15] - 2026-05-23
+
+### Fixed
+- Replaced ambiguous `predictive_strategy: null` on the main climate entity with explicit `disabled`, `no_active_strategy`, or `error` states plus explanatory detail/source attributes.
+- Replaced `temperature_window_learned: Unknown` with explicit `learning`, `disabled`, `not_available`, or `error` states plus explanatory detail/source attributes.
+
 ## [1.5.5-beta14] - 2026-05-23
 
 ### Added

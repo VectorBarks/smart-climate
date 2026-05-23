@@ -786,15 +786,25 @@ class SmartClimateEntity(ClimateEntity):
         
         # Get predictive offset and strategy info
         predictive_offset = 0.0
-        active_strategy = None
+        active_strategy = "disabled"
+        predictive_strategy_detail = "Weather forecast engine is disabled"
+        predictive_strategy_source = "forecast_engine.active_strategy_info"
         
         if self._forecast_engine:
             try:
                 offset = self._forecast_engine.predictive_offset
                 predictive_offset = offset if offset is not None else 0.0
-                active_strategy = self._forecast_engine.active_strategy_info
+                strategy_info = self._forecast_engine.active_strategy_info
+                if strategy_info:
+                    active_strategy = strategy_info
+                    predictive_strategy_detail = "Active predictive weather strategy is currently adjusting the offset"
+                else:
+                    active_strategy = "no_active_strategy"
+                    predictive_strategy_detail = "Forecast engine is enabled, but no predictive strategy is active right now"
             except Exception as exc:
                 _LOGGER.warning("Could not get attributes from ForecastEngine: %s", exc)
+                active_strategy = "error"
+                predictive_strategy_detail = f"Forecast engine attribute lookup failed: {exc}"
         
         # Add forecast-related attributes
         attributes.update({
@@ -802,6 +812,8 @@ class SmartClimateEntity(ClimateEntity):
             "predictive_offset": predictive_offset,
             "total_offset": self._last_offset + predictive_offset,
             "predictive_strategy": active_strategy,
+            "predictive_strategy_status_detail": predictive_strategy_detail,
+            "predictive_strategy_source": predictive_strategy_source,
         })
         
         # Quiet mode attributes
@@ -882,6 +894,10 @@ class SmartClimateEntity(ClimateEntity):
             # Temperature window learned from hysteresis patterns
             temperature_window_learned = self._get_temperature_window_learned()
             attributes["temperature_window_learned"] = temperature_window_learned
+            attributes["temperature_window_status_detail"] = self._get_temperature_window_status_detail(
+                temperature_window_learned
+            )
+            attributes["temperature_window_source"] = "offset_engine.hysteresis_learner"
             
             # Power monitoring correlation accuracy
             power_correlation_accuracy = self._calculate_power_correlation_accuracy()
@@ -895,7 +911,9 @@ class SmartClimateEntity(ClimateEntity):
             _LOGGER.warning("Error getting AC learning attributes: %s", exc)
             # Provide safe fallbacks on error
             attributes.update({
-                "temperature_window_learned": "Unknown",
+                "temperature_window_learned": "error",
+                "temperature_window_status_detail": f"Temperature window lookup failed: {exc}",
+                "temperature_window_source": "offset_engine.hysteresis_learner",
                 "power_correlation_accuracy": 0.0,
                 "hysteresis_cycle_count": 0,
             })
@@ -1436,7 +1454,7 @@ class SmartClimateEntity(ClimateEntity):
         """Get learned temperature window from hysteresis patterns.
         
         Returns:
-            str: Formatted temperature window (e.g., "2.5°C") or "Unknown" if not available
+            str: Formatted temperature window, or explicit diagnostic state.
         """
         try:
             if (hasattr(self._offset_engine, '_hysteresis_learner') and 
@@ -1455,12 +1473,29 @@ class SmartClimateEntity(ClimateEntity):
                     # Calculate temperature window (difference between start and stop thresholds)
                     window = hysteresis_learner.learned_start_threshold - hysteresis_learner.learned_stop_threshold
                     return f"{window:.1f}°C"
+
+                if not self._power_sensor_id:
+                    return "disabled"
+
+                return "learning"
             
-            return "Unknown"
+            return "not_available"
             
         except Exception as exc:
             _LOGGER.debug("Error getting temperature window learned: %s", exc)
-            return "Unknown"
+            return "error"
+
+    def _get_temperature_window_status_detail(self, temperature_window: str) -> str:
+        """Return explanatory detail for the learned temperature window attribute."""
+        if temperature_window == "disabled":
+            return "Power sensor is not configured; hysteresis temperature-window learning is disabled"
+        if temperature_window == "learning":
+            return "Collecting compressor start/stop samples before a temperature window can be calculated"
+        if temperature_window == "not_available":
+            return "Hysteresis learner is not available for this entity"
+        if temperature_window == "error":
+            return "Temperature-window lookup failed; check integration logs"
+        return "Temperature window learned from compressor start/stop thresholds"
     
     def _calculate_power_correlation_accuracy(self) -> float:
         """Calculate power monitoring correlation accuracy percentage.

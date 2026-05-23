@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.5.5-beta15 (2026-05-23)
+
+### Summary
+The main `Smart Klimaanlage TU Climate` entity now uses explicit diagnostic states instead of ambiguous `None`/`Unknown` attributes.
+
+### Fixed
+- `predictive_strategy` now reports `disabled`, `no_active_strategy`, or `error` when no active strategy dict exists.
+- `temperature_window_learned` now reports `learning`, `disabled`, `not_available`, or `error` instead of `Unknown`.
+
+### Added
+- `predictive_strategy_status_detail` and `predictive_strategy_source` attributes.
+- `temperature_window_status_detail` and `temperature_window_source` attributes.
+
 ## v1.5.5-beta14 (2026-05-23)
 
 ### Summary

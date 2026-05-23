@@ -5,7 +5,7 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
-> 🧭 **v1.5.5-beta14 Current**: Diagnostic/debug entities now publish explicit states instead of persistent `unknown`, with detail attributes explaining learning, probing, cycle, weather, seasonal, convergence, Quiet Mode, and compressor status. [Latest Release](https://github.com/VectorBarks/smart-climate/releases)
+> 🧭 **v1.5.5-beta15 Current**: The main Smart Climate entity now avoids ambiguous `None`/`Unknown` diagnostic attributes, with explicit forecast-strategy and temperature-window learning explanations. [Latest Release](https://github.com/VectorBarks/smart-climate/releases)
 
 Transform any climate device with inaccurate sensors into an intelligent, ML-powered climate control system with predictive algorithms and adaptive learning.
 

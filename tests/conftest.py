@@ -151,6 +151,15 @@ entity_platform_module = MagicMock()
 entity_platform_module.AddEntitiesCallback = MagicMock
 sys.modules['homeassistant.helpers.entity_platform'] = entity_platform_module
 
+storage_module = MagicMock()
+storage_module.Store = MagicMock
+sys.modules['homeassistant.helpers.storage'] = storage_module
+
+util_module = MagicMock()
+dt_module = MagicMock()
+sys.modules['homeassistant.util'] = util_module
+sys.modules['homeassistant.util.dt'] = dt_module
+
 # Mock Platform
 sys.modules['homeassistant.const'].Platform = MagicMock()
 sys.modules['homeassistant.const'].Platform.CLIMATE = "climate"

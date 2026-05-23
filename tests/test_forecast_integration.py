@@ -387,7 +387,34 @@ class TestForecastEngineIntegration:
         assert attributes["reactive_offset"] == 1.5
         assert attributes["predictive_offset"] == 0.0
         assert attributes["total_offset"] == 1.5
-        assert attributes["predictive_strategy"] is None
+        assert attributes["predictive_strategy"] == "disabled"
+        assert attributes["predictive_strategy_status_detail"] == "Weather forecast engine is disabled"
+
+    def test_extra_state_attributes_with_forecast_engine_but_no_active_strategy(
+        self, predictive_config, mock_forecast_engine
+    ):
+        """Test forecast engine idle state is explicit instead of None."""
+        mock_hass = create_mock_hass()
+        mock_forecast_engine.predictive_offset = 0.0
+        mock_forecast_engine.active_strategy_info = None
+
+        entity = SmartClimateEntity(
+            hass=mock_hass,
+            config=predictive_config,
+            wrapped_entity_id="climate.test_ac",
+            room_sensor_id="sensor.room_temp",
+            offset_engine=Mock(),
+            sensor_manager=Mock(),
+            mode_manager=Mock(),
+            temperature_controller=Mock(),
+            coordinator=Mock(),
+            forecast_engine=mock_forecast_engine
+        )
+
+        attributes = entity.extra_state_attributes
+
+        assert attributes["predictive_strategy"] == "no_active_strategy"
+        assert "no predictive strategy is active" in attributes["predictive_strategy_status_detail"]
 
     def test_coordinator_update_with_total_offset_monitoring(
         self, predictive_config, mock_forecast_engine

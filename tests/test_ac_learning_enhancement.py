@@ -90,7 +90,8 @@ class TestACLearningAttributes:
         
         # Assert
         assert "temperature_window_learned" in attributes
-        assert attributes["temperature_window_learned"] == "Unknown"
+        assert attributes["temperature_window_learned"] == "learning"
+        assert "Collecting compressor" in attributes["temperature_window_status_detail"]
 
     def test_temperature_window_learned_no_hysteresis_learner(self, smart_climate_entity):
         """Test temperature_window_learned when no hysteresis learner available."""
@@ -102,7 +103,8 @@ class TestACLearningAttributes:
         
         # Assert
         assert "temperature_window_learned" in attributes
-        assert attributes["temperature_window_learned"] == "Unknown"
+        assert attributes["temperature_window_learned"] == "not_available"
+        assert attributes["temperature_window_source"] == "offset_engine.hysteresis_learner"
 
     def test_power_correlation_accuracy_with_power_data(self, smart_climate_entity):
         """Test power_correlation_accuracy calculation with available power sensor data."""
@@ -245,7 +247,8 @@ class TestACLearningAttributes:
         
         # Assert - Should not crash and return safe defaults
         assert "temperature_window_learned" in attributes
-        assert attributes["temperature_window_learned"] == "Unknown"
+        assert attributes["temperature_window_learned"] == "error"
+        assert "Temperature-window" in attributes["temperature_window_status_detail"]
         assert "power_correlation_accuracy" in attributes
         assert attributes["power_correlation_accuracy"] == 0.0
         assert "hysteresis_cycle_count" in attributes
