@@ -250,6 +250,13 @@ async def async_setup_entry(
 
 class SmartClimateDashboardSensor(SmartClimateSensorEntity):
     """Base class for Smart Climate dashboard sensors."""
+
+    def _data_value(self, key: str, default: Any = None) -> Any:
+        """Return a coordinator value from either dict or object payloads."""
+        data = self.coordinator.data
+        if isinstance(data, dict):
+            return data.get(key, default)
+        return getattr(data, key, default)
     
     def _get_thermal_persistence_diagnostics(self) -> Dict[str, Any]:
         """Get thermal persistence diagnostic attributes per §10.8.1.
@@ -954,7 +961,7 @@ class QuietModeStatusSensor(SmartClimateDashboardSensor):
             return None
         
         try:
-            return getattr(self.coordinator.data, "quiet_mode_status", None)
+            return self._data_value("quiet_mode_status")
         except (AttributeError, TypeError):
             return None
     
@@ -991,7 +998,7 @@ class QuietModeSuppressionSensor(SmartClimateDashboardSensor):
             return None
         
         try:
-            return getattr(self.coordinator.data, "quiet_mode_suppressions", None)
+            return self._data_value("quiet_mode_suppressions")
         except (AttributeError, TypeError):
             return None
 
@@ -1016,7 +1023,7 @@ class CompressorStateSensor(SmartClimateDashboardSensor):
             return None
         
         try:
-            return getattr(self.coordinator.data, "compressor_state", None)
+            return self._data_value("compressor_state")
         except (AttributeError, TypeError):
             return None
     

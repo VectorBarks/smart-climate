@@ -38,7 +38,11 @@ from .const import (
     CONF_ROOM_SENSOR,
     CONF_OUTDOOR_SENSOR,
     CONF_POWER_SENSOR,
+    CONF_POWER_IDLE_THRESHOLD,
+    CONF_QUIET_MODE_ENABLED,
     CONF_STARTUP_TIMEOUT,
+    DEFAULT_POWER_IDLE_THRESHOLD,
+    DEFAULT_QUIET_MODE_ENABLED,
     STARTUP_TIMEOUT_SEC,
 )
 from .data_store import SmartClimateDataStore
@@ -105,6 +109,47 @@ def _read_file_sync(file_path: str) -> str:
         return file.read()
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _augment_quiet_mode_dashboard_data(
+    hass: HomeAssistant,
+    config: Dict[str, Any],
+    entity_id: str,
+    data: Any,
+) -> Any:
+    """Add quiet-mode display fields to dashboard coordinator data.
+
+    The sensor platform coordinator returns the OffsetEngine dashboard payload as
+    a dict. Quiet-mode sensors read that coordinator, not the primary climate
+    entity coordinator, so the display-only quiet-mode values must be attached
+    here before sensor entities render their native values.
+    """
+    if not isinstance(data, dict):
+        return data
+
+    quiet_mode_enabled = config.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
+    data["quiet_mode_status"] = "enabled" if quiet_mode_enabled else "disabled"
+
+    climate_state = hass.states.get(entity_id)
+    climate_attrs = climate_state.attributes if climate_state else {}
+    data["quiet_mode_suppressions"] = climate_attrs.get("quiet_mode_suppressions", 0)
+
+    compressor_state = "unknown"
+    power_sensor_id = config.get(CONF_POWER_SENSOR)
+    if power_sensor_id:
+        power_state = hass.states.get(power_sensor_id)
+        if power_state and power_state.state not in ("unknown", "unavailable", None):
+            try:
+                power = float(power_state.state)
+                idle_threshold = float(
+                    config.get(CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD)
+                )
+                compressor_state = "idle" if power < idle_threshold else "active"
+            except (TypeError, ValueError):
+                compressor_state = "unknown"
+    data["compressor_state"] = compressor_state
+
+    return data
 
 # Retry configuration defaults
 DEFAULT_RETRY_ENABLED = True
@@ -670,6 +715,7 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
             """Fetch data from offset engine."""
             try:
                 data = await offset_engine.async_get_dashboard_data()
+                data = _augment_quiet_mode_dashboard_data(hass, config, entity_id, data)
                 return data
             except Exception as exc:
                 _LOGGER.error("Error fetching dashboard data for %s: %s", entity_id, exc)
