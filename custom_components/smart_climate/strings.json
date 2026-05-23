@@ -9,9 +9,9 @@
           "room_sensor": "Room Temperature Sensor",
           "outdoor_sensor": "Outdoor Temperature Sensor (Optional)",
           "power_sensor": "Power Sensor (Optional)",
-          "max_offset": "Maximum Temperature Offset (°C)",
-          "min_temperature": "Minimum Temperature (°C)",
-          "max_temperature": "Maximum Temperature (°C)",
+          "max_offset": "Maximum Temperature Offset (\u00b0C)",
+          "min_temperature": "Minimum Temperature (\u00b0C)",
+          "max_temperature": "Maximum Temperature (\u00b0C)",
           "update_interval": "Update Interval (seconds)",
           "ml_enabled": "Enable ML Learning",
           "thermal_efficiency_enabled": "Enable Thermal Efficiency",
@@ -19,9 +19,9 @@
           "shadow_mode": "Shadow Mode (observe only)",
           "priming_duration_hours": "Priming Duration (hours)",
           "recovery_duration_minutes": "Recovery Duration (minutes)",
-          "probe_drift_limit": "Probe Drift Limit (°C)",
+          "probe_drift_limit": "Probe Drift Limit (\u00b0C)",
           "calibration_idle_minutes": "Calibration Idle Threshold (minutes)",
-          "calibration_drift_threshold": "Calibration Temperature Stability (°C)"
+          "calibration_drift_threshold": "Calibration Temperature Stability (\u00b0C)"
         },
         "data_description": {
           "climate_entity": "Select the climate entity you want to control",
@@ -38,9 +38,9 @@
           "shadow_mode": "Enable to observe thermal patterns without controlling the AC",
           "priming_duration_hours": "Initial learning period duration (24-48 hours)",
           "recovery_duration_minutes": "Recovery time after mode changes (30-60 minutes)",
-          "probe_drift_limit": "Maximum temperature drift during probing (1.0-3.0°C)",
+          "probe_drift_limit": "Maximum temperature drift during probing (1.0-3.0\u00b0C)",
           "calibration_idle_minutes": "Minutes AC must be idle for opportunistic calibration (15-120)",
-          "calibration_drift_threshold": "Maximum temperature drift for calibration stability. 0.2-0.3°C for modern homes, 0.4-0.5°C for standard homes, 0.6-1.0°C for older/drafty buildings (0.1-1.0°C)"
+          "calibration_drift_threshold": "Maximum temperature drift for calibration stability. 0.2-0.3\u00b0C for modern homes, 0.4-0.5\u00b0C for standard homes, 0.6-1.0\u00b0C for older/drafty buildings (0.1-1.0\u00b0C)"
         }
       }
     },
@@ -63,13 +63,17 @@
         "data": {
           "thermal_efficiency_enabled": "Enable Thermal Efficiency",
           "quiet_mode_enabled": "Enable Quiet Mode",
+          "power_sensor": "Power Sensor (Optional)",
+          "power_idle_threshold": "Power Idle Threshold (W)",
+          "power_min_threshold": "Power Minimum Threshold (W)",
+          "power_max_threshold": "Power Maximum Threshold (W)",
           "preference_level": "Comfort vs Savings Preference",
           "shadow_mode": "Shadow Mode (observe only)",
           "priming_duration_hours": "Priming Duration (hours)",
           "recovery_duration_minutes": "Recovery Duration (minutes)",
-          "probe_drift_limit": "Probe Drift Limit (°C)",
+          "probe_drift_limit": "Probe Drift Limit (\u00b0C)",
           "calibration_idle_minutes": "Calibration Idle Threshold (minutes)",
-          "calibration_drift_threshold": "Calibration Temperature Stability (°C)"
+          "calibration_drift_threshold": "Calibration Temperature Stability (\u00b0C)"
         },
         "data_description": {
           "thermal_efficiency_enabled": "Enable advanced thermal efficiency optimization for energy savings",
@@ -78,9 +82,13 @@
           "shadow_mode": "Enable to monitor thermal patterns without controlling the AC",
           "priming_duration_hours": "Duration for initial thermal learning (24-48 hours recommended)",
           "recovery_duration_minutes": "Time to recover after mode changes (30-60 minutes)",
-          "probe_drift_limit": "Maximum temperature drift during active learning (1.0-3.0°C)",
+          "probe_drift_limit": "Maximum temperature drift during active learning (1.0-3.0\u00b0C)",
           "calibration_idle_minutes": "Minutes AC must be idle before opportunistic calibration triggers (15-120)",
-          "calibration_drift_threshold": "Maximum temperature drift to consider conditions stable for calibration. 0.2-0.3°C for modern homes, 0.4-0.5°C for standard homes, 0.6-1.0°C for older/drafty buildings (0.1-1.0°C)"
+          "calibration_drift_threshold": "Maximum temperature drift to consider conditions stable for calibration. 0.2-0.3\u00b0C for modern homes, 0.4-0.5\u00b0C for standard homes, 0.6-1.0\u00b0C for older/drafty buildings (0.1-1.0\u00b0C)",
+          "power_sensor": "Select a power sensor from the AC smart plug to detect compressor state and running power",
+          "power_idle_threshold": "Power consumption below this value indicates the AC is idle or off",
+          "power_min_threshold": "Power consumption below this value indicates the AC is running at minimum capacity",
+          "power_max_threshold": "Power consumption above this value indicates the AC is running at high capacity"
         }
       }
     }
@@ -90,7 +98,7 @@
       "options": {
         "max_comfort": "Maximum Comfort - Tightest temperature control",
         "comfort_priority": "Comfort Priority - Balanced toward comfort",
-        "balanced": "Balanced - Equal comfort and savings", 
+        "balanced": "Balanced - Equal comfort and savings",
         "savings_priority": "Savings Priority - Balanced toward savings",
         "max_savings": "Maximum Savings - Most energy efficient"
       }

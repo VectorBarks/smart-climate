@@ -243,7 +243,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Optional entities (enhance functionality, allow degraded operation)
     optional_entities = [
         entity_id for key in [CONF_OUTDOOR_SENSOR, CONF_POWER_SENSOR, CONF_INDOOR_HUMIDITY_SENSOR, CONF_OUTDOOR_HUMIDITY_SENSOR]
-        if (entity_id := entry.options.get(key))
+        if (entity_id := config.get(key))
     ]
     
     _LOGGER.info("Waiting for required entities: %s", required_entities)

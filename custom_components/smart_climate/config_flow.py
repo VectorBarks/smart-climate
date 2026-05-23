@@ -725,7 +725,7 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _get_power_sensors(self) -> Dict[str, str]:
         """Get all power sensors."""
         entities = {}
-        
+
         for state in self.hass.states.async_all():
             if (
                 state.entity_id.startswith("sensor.") and
@@ -733,7 +733,7 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ):
                 friendly_name = state.attributes.get("friendly_name", state.entity_id)
                 entities[state.entity_id] = friendly_name
-        
+
         return entities
 
     async def _get_humidity_sensors(self) -> Dict[str, str]:
@@ -830,6 +830,20 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 friendly_name = state.attributes.get("friendly_name", state.entity_id)
                 entities[state.entity_id] = friendly_name
         
+        return entities
+
+    async def _get_power_sensors(self) -> Dict[str, str]:
+        """Get all power sensors."""
+        entities = {}
+
+        for state in self.hass.states.async_all():
+            if (
+                state.entity_id.startswith("sensor.") and
+                state.attributes.get("device_class") == "power"
+            ):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                entities[state.entity_id] = friendly_name
+
         return entities
 
     def _get_options_schema(self) -> vol.Schema:
@@ -931,6 +945,11 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         """Clean empty string entity IDs to None for optional entities."""
         cleaned = user_input.copy()
         optional_entities = [
+            CONF_OUTDOOR_SENSOR,
+            CONF_POWER_SENSOR,
+            CONF_INDOOR_HUMIDITY_SENSOR,
+            CONF_OUTDOOR_HUMIDITY_SENSOR,
+            CONF_WEATHER_ENTITY,
             CONF_PRESENCE_ENTITY_ID,
             CONF_WEATHER_ENTITY_ID,
             CONF_CALENDAR_ENTITY_ID, 
@@ -1003,8 +1022,16 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         current_config = self.config_entry.data
         current_options = self.config_entry.options
         
-        # Get available humidity sensors for selectors
+        # Get available humidity and power sensors for selectors
         humidity_sensors = await self._get_humidity_sensors()
+        power_sensors = await self._get_power_sensors()
+        power_options = [
+            selector.SelectOptionDict(value="", label="(Optional) None")
+        ]
+        power_options.extend(
+            selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+            for entity_id, friendly_name in sorted(power_sensors.items())
+        )
         
         # Create the combined schema with existing options + ProbeScheduler options
         probe_scheduler_schema = self._get_options_schema()
@@ -1127,6 +1154,15 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 CONF_ENABLE_LEARNING,
                 default=current_options.get(CONF_ENABLE_LEARNING, current_config.get(CONF_ENABLE_LEARNING, DEFAULT_ENABLE_LEARNING))
             ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_POWER_SENSOR,
+                default=current_options.get(CONF_POWER_SENSOR, current_config.get(CONF_POWER_SENSOR)) or ""
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=power_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             
             # Humidity sensor configuration
             vol.Optional(
@@ -1607,9 +1643,9 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             })
             data_schema = vol.Schema(schema_dict)
 
-        # Add power threshold fields if power sensor is configured
-        if current_config.get(CONF_POWER_SENSOR):
-            data_schema = self._add_power_threshold_fields_options(data_schema, current_config, current_options)
+        # Always expose power thresholds in options so an existing entry can add
+        # a power sensor later and tune compressor-state detection in one pass.
+        data_schema = self._add_power_threshold_fields_options(data_schema, current_config, current_options)
 
         return self.async_show_form(
             step_id="init",
