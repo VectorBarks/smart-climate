@@ -70,15 +70,26 @@ class CompressorStateAnalyzer:
             _LOGGER.debug("HVAC mode '%s' not supported for compressor activation analysis", hvac_mode)
             return False
         
-        # Check if we have learned thresholds
+        # Prefer setpoint-relative thresholds: AC starts when room_temp >= new_setpoint + learned_start_offset.
+        start_offset = getattr(hysteresis_learner, "learned_start_offset", None)
+        if start_offset is not None:
+            activation_room_temp = new_setpoint + start_offset
+            would_activate = current_room_temp >= activation_room_temp
+            _LOGGER.debug(
+                "Activation analysis: room_temp=%.1f°C, new_setpoint=%.1f°C, "
+                "start_offset=%+.1f°C, activation_room_temp=%.1f°C, hvac_mode=%s, would_activate=%s",
+                current_room_temp, new_setpoint, start_offset, activation_room_temp, hvac_mode, would_activate
+            )
+            return would_activate
+
+        # Fall back to legacy absolute room-temperature threshold if old data has no setpoint context.
         if hysteresis_learner.learned_start_threshold is None:
             _LOGGER.debug("No learned start threshold available, cannot determine activation")
             return None
         
         start_threshold = hysteresis_learner.learned_start_threshold
         
-        # For cooling modes, compressor activates when setpoint goes below start threshold
-        # and room temperature is above the setpoint
+        # Legacy behavior: compressor activates when lowering setpoint far enough while room temp is above it.
         would_activate = new_setpoint < start_threshold and current_room_temp > new_setpoint
         
         _LOGGER.debug(
@@ -112,12 +123,23 @@ class CompressorStateAnalyzer:
             _LOGGER.debug("HVAC mode '%s' not supported for activation calculation", hvac_mode)
             return None
         
-        # Check if we have learned thresholds
+        # Prefer setpoint-relative threshold: setpoint must be room_temp - learned_start_offset.
+        start_offset = getattr(hysteresis_learner, "learned_start_offset", None)
+        if start_offset is not None:
+            activation_setpoint = current_room_temp - start_offset
+            _LOGGER.debug(
+                "Activation setpoint calculation: room_temp=%.1f°C, hvac_mode=%s, "
+                "start_offset=%+.1f°C, activation_setpoint=%.1f°C",
+                current_room_temp, hvac_mode, start_offset, activation_setpoint
+            )
+            return activation_setpoint
+
+        # Fall back to legacy absolute room-temperature threshold if old data has no setpoint context.
         if hysteresis_learner.learned_start_threshold is None:
             _LOGGER.debug("No learned start threshold available, cannot calculate activation setpoint")
             return None
         
-        # Return the start threshold - this is the setpoint that would activate the compressor
+        # Return the start threshold - this is the legacy setpoint that would activate compressor
         activation_setpoint = hysteresis_learner.learned_start_threshold
         
         _LOGGER.debug(

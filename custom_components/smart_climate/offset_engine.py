@@ -90,11 +90,21 @@ class HysteresisLearner:
         self._min_samples: int = min_samples
         self._start_temps: deque[float] = deque(maxlen=max_samples)
         self._stop_temps: deque[float] = deque(maxlen=max_samples)
+        self._start_offsets: deque[float] = deque(maxlen=max_samples)
+        self._stop_offsets: deque[float] = deque(maxlen=max_samples)
+        self._start_probe_bounds: deque[dict[str, Optional[float]]] = deque(maxlen=max_samples)
+        self._stop_probe_bounds: deque[dict[str, Optional[float]]] = deque(maxlen=max_samples)
         self._transition_events: deque[dict] = deque(maxlen=max_samples)
 
         # Publicly accessible learned thresholds
         self.learned_start_threshold: Optional[float] = None
         self.learned_stop_threshold: Optional[float] = None
+        self.learned_start_offset: Optional[float] = None
+        self.learned_stop_offset: Optional[float] = None
+        self.learned_start_offset_lower_bound: Optional[float] = None
+        self.learned_start_offset_upper_bound: Optional[float] = None
+        self.learned_stop_offset_lower_bound: Optional[float] = None
+        self.learned_stop_offset_upper_bound: Optional[float] = None
 
     @property
     def has_sufficient_data(self) -> bool:
@@ -108,11 +118,87 @@ class HysteresisLearner:
 
     def has_learned_thresholds(self) -> bool:
         """Return True when both hysteresis thresholds are learned and usable."""
-        return (
+        absolute_thresholds_available = (
             self.has_sufficient_data
             and self.learned_start_threshold is not None
             and self.learned_stop_threshold is not None
         )
+        relative_offsets_available = (
+            len(self._start_offsets) >= self._min_samples
+            and len(self._stop_offsets) >= self._min_samples
+            and self.learned_start_offset is not None
+            and self.learned_stop_offset is not None
+        )
+        return absolute_thresholds_available or relative_offsets_available
+
+    def _offset_from_setpoint(
+        self,
+        room_temp: Optional[float],
+        ac_setpoint_before: Optional[float],
+        ac_setpoint_after: Optional[float],
+    ) -> Optional[float]:
+        """Calculate signed room-temperature delta from the active AC setpoint."""
+        if room_temp is None:
+            return None
+        active_setpoint = ac_setpoint_after if ac_setpoint_after is not None else ac_setpoint_before
+        if active_setpoint is None:
+            return None
+        return float(room_temp) - float(active_setpoint)
+
+    def _probe_offset_bounds(
+        self,
+        transition_type: Literal['start', 'stop'],
+        room_temp: Optional[float],
+        ac_setpoint_before: Optional[float],
+        ac_setpoint_after: Optional[float],
+    ) -> tuple[Optional[float], Optional[float]]:
+        """Calculate interval bounds for a probe-induced transition.
+
+        A probe is a command-caused transition, so the resulting offset is a
+        constraint, not an exact threshold sample. With both pre/post setpoints
+        available, the threshold lies between their room-temp-relative offsets.
+        """
+        if room_temp is None:
+            return None, None
+
+        before_offset = (
+            float(room_temp) - float(ac_setpoint_before)
+            if ac_setpoint_before is not None
+            else None
+        )
+        after_offset = (
+            float(room_temp) - float(ac_setpoint_after)
+            if ac_setpoint_after is not None
+            else None
+        )
+
+        available = [value for value in (before_offset, after_offset) if value is not None]
+        if len(available) >= 2:
+            return min(available), max(available)
+        if not available:
+            return None, None
+
+        # Single-sided constraint: start proves threshold is at or below the
+        # observed offset; stop proves it is at or above the observed offset.
+        value = available[0]
+        if transition_type == 'start':
+            return None, value
+        return value, None
+
+    def _append_probe_bound(
+        self,
+        transition_type: Literal['start', 'stop'],
+        lower_bound: Optional[float],
+        upper_bound: Optional[float],
+    ) -> None:
+        """Store a probe interval/single-sided bound separately from exact samples."""
+        if lower_bound is None and upper_bound is None:
+            return
+        bound = {"lower": lower_bound, "upper": upper_bound}
+        if transition_type == 'start':
+            self._start_probe_bounds.append(bound)
+        else:
+            self._stop_probe_bounds.append(bound)
 
     def record_threshold(self, transition_type: Literal['start', 'stop'], room_temp: float, **kwargs: Any) -> None:
         """Backward-compatible alias for recording a hysteresis transition."""
@@ -136,16 +222,45 @@ class HysteresisLearner:
             transition_type: 'start' for idle->high power, 'stop' for high->idle power.
             room_temp: The current room temperature at the moment of transition.
         """
-        if transition_type == 'start':
-            self._start_temps.append(room_temp)
-        elif transition_type == 'stop':
-            self._stop_temps.append(room_temp)
+        offset_from_setpoint = self._offset_from_setpoint(
+            room_temp,
+            ac_setpoint_before,
+            ac_setpoint_after,
+        )
+        is_natural_sample = transition_cause == "natural"
+        is_probe_constraint = transition_cause == "probe"
+        lower_bound: Optional[float] = None
+        upper_bound: Optional[float] = None
+
+        if is_natural_sample:
+            if transition_type == 'start':
+                self._start_temps.append(room_temp)
+                if offset_from_setpoint is not None:
+                    self._start_offsets.append(offset_from_setpoint)
+            elif transition_type == 'stop':
+                self._stop_temps.append(room_temp)
+                if offset_from_setpoint is not None:
+                    self._stop_offsets.append(offset_from_setpoint)
+        elif is_probe_constraint:
+            lower_bound, upper_bound = self._probe_offset_bounds(
+                transition_type,
+                room_temp,
+                ac_setpoint_before,
+                ac_setpoint_after,
+            )
+            self._append_probe_bound(transition_type, lower_bound, upper_bound)
 
         self._transition_events.append({
             "transition_type": transition_type,
             "room_temp_at_transition": float(room_temp),
             "ac_setpoint_before": ac_setpoint_before,
             "ac_setpoint_after": ac_setpoint_after,
+            "offset_from_setpoint": offset_from_setpoint,
+            "offset_lower_bound": lower_bound,
+            "offset_upper_bound": upper_bound,
+            "transition_sample_type": (
+                "exact" if is_natural_sample else "constraint" if is_probe_constraint else "ignored"
+            ),
             "power_before": power_before,
             "power_after": power_after,
             "transition_cause": transition_cause,
@@ -213,6 +328,10 @@ class HysteresisLearner:
         return {
             "start_temps": list(self._start_temps),
             "stop_temps": list(self._stop_temps),
+            "start_offsets": list(self._start_offsets),
+            "stop_offsets": list(self._stop_offsets),
+            "start_probe_bounds": list(self._start_probe_bounds),
+            "stop_probe_bounds": list(self._stop_probe_bounds),
             "transition_events": list(self._transition_events),
         }
 
@@ -239,15 +358,113 @@ class HysteresisLearner:
                     if isinstance(temp, (int, float)):
                         self._stop_temps.append(float(temp))
 
+            start_offsets = data.get("start_offsets", [])
+            stop_offsets = data.get("stop_offsets", [])
+            if isinstance(start_offsets, list):
+                self._start_offsets.clear()
+                for offset in start_offsets:
+                    if isinstance(offset, (int, float)):
+                        self._start_offsets.append(float(offset))
+
+            if isinstance(stop_offsets, list):
+                self._stop_offsets.clear()
+                for offset in stop_offsets:
+                    if isinstance(offset, (int, float)):
+                        self._stop_offsets.append(float(offset))
+
+            self._start_probe_bounds.clear()
+            self._stop_probe_bounds.clear()
+            for raw_bound in data.get("start_probe_bounds", []):
+                if isinstance(raw_bound, dict):
+                    lower = raw_bound.get("lower")
+                    upper = raw_bound.get("upper")
+                    self._append_probe_bound(
+                        "start",
+                        float(lower) if isinstance(lower, (int, float)) else None,
+                        float(upper) if isinstance(upper, (int, float)) else None,
+                    )
+            for raw_bound in data.get("stop_probe_bounds", []):
+                if isinstance(raw_bound, dict):
+                    lower = raw_bound.get("lower")
+                    upper = raw_bound.get("upper")
+                    self._append_probe_bound(
+                        "stop",
+                        float(lower) if isinstance(lower, (int, float)) else None,
+                        float(upper) if isinstance(upper, (int, float)) else None,
+                    )
+
+            derive_offsets_from_events = not self._start_offsets and not self._stop_offsets
+            derive_probe_bounds_from_events = not self._start_probe_bounds and not self._stop_probe_bounds
             transition_events = data.get("transition_events", [])
             self._transition_events.clear()
             if isinstance(transition_events, list):
                 for event in transition_events:
                     if isinstance(event, dict):
+                        if "offset_from_setpoint" not in event:
+                            event_offset = self._offset_from_setpoint(
+                                event.get("room_temp_at_transition"),
+                                event.get("ac_setpoint_before"),
+                                event.get("ac_setpoint_after"),
+                            )
+                            event["offset_from_setpoint"] = event_offset
+                        else:
+                            event_offset = event.get("offset_from_setpoint")
+
+                        transition_type = event.get("transition_type")
+                        transition_cause = event.get("transition_cause", "natural")
+                        if "transition_sample_type" not in event:
+                            event["transition_sample_type"] = (
+                                "exact" if transition_cause == "natural"
+                                else "constraint" if transition_cause == "probe"
+                                else "ignored"
+                            )
+
+                        if transition_cause == "probe":
+                            lower_bound = event.get("offset_lower_bound")
+                            upper_bound = event.get("offset_upper_bound")
+                            if lower_bound is None and upper_bound is None and transition_type in ("start", "stop"):
+                                lower_bound, upper_bound = self._probe_offset_bounds(
+                                    transition_type,
+                                    event.get("room_temp_at_transition"),
+                                    event.get("ac_setpoint_before"),
+                                    event.get("ac_setpoint_after"),
+                                )
+                                event["offset_lower_bound"] = lower_bound
+                                event["offset_upper_bound"] = upper_bound
+                            if derive_probe_bounds_from_events and transition_type in ("start", "stop"):
+                                self._append_probe_bound(
+                                    transition_type,
+                                    float(lower_bound) if isinstance(lower_bound, (int, float)) else None,
+                                    float(upper_bound) if isinstance(upper_bound, (int, float)) else None,
+                                )
+                        elif derive_offsets_from_events and isinstance(event_offset, (int, float)):
+                            if transition_type == "start":
+                                self._start_offsets.append(float(event_offset))
+                            elif transition_type == "stop":
+                                self._stop_offsets.append(float(event_offset))
+
                         self._transition_events.append(event)
             
             # Update thresholds after restoring data
             self._update_thresholds()
+
+    def _combine_probe_bounds(
+        self,
+        bounds: deque[dict[str, Optional[float]]],
+    ) -> tuple[Optional[float], Optional[float]]:
+        """Combine probe constraints into the tightest known interval."""
+        lower_values: list[float] = []
+        upper_values: list[float] = []
+        for bound in bounds:
+            lower = bound.get("lower")
+            upper = bound.get("upper")
+            if isinstance(lower, (int, float)):
+                lower_values.append(float(lower))
+            if isinstance(upper, (int, float)):
+                upper_values.append(float(upper))
+        lower = max(lower_values) if lower_values else None
+        upper = min(upper_values) if upper_values else None
+        return lower, upper
 
     def _update_thresholds(self) -> None:
         """
@@ -260,6 +477,25 @@ class HysteresisLearner:
         else:
             self.learned_start_threshold = None
             self.learned_stop_threshold = None
+
+        if len(self._start_offsets) >= self._min_samples:
+            self.learned_start_offset = statistics.median(self._start_offsets)
+        else:
+            self.learned_start_offset = None
+
+        if len(self._stop_offsets) >= self._min_samples:
+            self.learned_stop_offset = statistics.median(self._stop_offsets)
+        else:
+            self.learned_stop_offset = None
+
+        (
+            self.learned_start_offset_lower_bound,
+            self.learned_start_offset_upper_bound,
+        ) = self._combine_probe_bounds(self._start_probe_bounds)
+        (
+            self.learned_stop_offset_lower_bound,
+            self.learned_stop_offset_upper_bound,
+        ) = self._combine_probe_bounds(self._stop_probe_bounds)
 
 
 
@@ -319,6 +555,8 @@ class OffsetEngine:
         self._last_power_consumption: Optional[float] = None
         self._last_ac_setpoint: Optional[float] = None
         self._last_adjustment_was_learning_probe = False
+        self._last_probe_setpoint_before: Optional[float] = None
+        self._last_probe_setpoint_after: Optional[float] = None
         
         # Add state for the stable calibration offset
         self._stable_calibration_offset: Optional[float] = None
@@ -1186,6 +1424,13 @@ class OffsetEngine:
             current_power_state = self._get_power_state(input_data.power_consumption)
             current_setpoint = getattr(input_data, "ac_setpoint", None)
             transition_cause = "probe" if self._last_adjustment_was_learning_probe else "natural"
+            transition_recorded = False
+            if transition_cause == "probe":
+                transition_setpoint_before = self._last_probe_setpoint_before
+                transition_setpoint_after = self._last_probe_setpoint_after or current_setpoint
+            else:
+                transition_setpoint_before = self._last_ac_setpoint
+                transition_setpoint_after = current_setpoint
             
             # Check for transitions if we have a previous state
             if self._last_power_state is not None and self._last_power_state != current_power_state:
@@ -1195,8 +1440,8 @@ class OffsetEngine:
                     self._hysteresis_learner.record_transition(
                         'start',
                         input_data.room_temp,
-                        ac_setpoint_before=self._last_ac_setpoint,
-                        ac_setpoint_after=current_setpoint,
+                        ac_setpoint_before=transition_setpoint_before,
+                        ac_setpoint_after=transition_setpoint_after,
                         power_before=self._last_power_consumption,
                         power_after=input_data.power_consumption,
                         transition_cause=transition_cause,
@@ -1205,6 +1450,7 @@ class OffsetEngine:
                         "Hysteresis transition detected: %s -> %s (start at %.1f°C, cause=%s)",
                         self._last_power_state, current_power_state, input_data.room_temp, transition_cause
                     )
+                    transition_recorded = True
                 
                 # Detect AC stopping: any transition to idle from a higher power state
                 elif (self._last_power_state in ("low", "moderate", "high") and 
@@ -1212,8 +1458,8 @@ class OffsetEngine:
                     self._hysteresis_learner.record_transition(
                         'stop',
                         input_data.room_temp,
-                        ac_setpoint_before=self._last_ac_setpoint,
-                        ac_setpoint_after=current_setpoint,
+                        ac_setpoint_before=transition_setpoint_before,
+                        ac_setpoint_after=transition_setpoint_after,
                         power_before=self._last_power_consumption,
                         power_after=input_data.power_consumption,
                         transition_cause=transition_cause,
@@ -1222,18 +1468,34 @@ class OffsetEngine:
                         "Hysteresis transition detected: %s -> %s (stop at %.1f°C, cause=%s)",
                         self._last_power_state, current_power_state, input_data.room_temp, transition_cause
                     )
+                    transition_recorded = True
             
             # Update the last power/setpoint context
             self._last_power_state = current_power_state
             self._last_power_consumption = input_data.power_consumption
             if current_setpoint is not None:
                 self._last_ac_setpoint = current_setpoint
+            if transition_recorded and transition_cause == "probe":
+                self._last_adjustment_was_learning_probe = False
+                self._last_probe_setpoint_before = None
+                self._last_probe_setpoint_after = None
             
         except Exception as exc:
             _LOGGER.warning("Error in hysteresis transition detection: %s", exc)
     
-    def record_setpoint_command(self, setpoint: float, was_learning_probe: bool = False) -> None:
+    def record_setpoint_command(
+        self,
+        setpoint: float,
+        was_learning_probe: bool = False,
+        previous_setpoint: Optional[float] = None,
+    ) -> None:
         """Record the last commanded AC setpoint for transition-cause telemetry."""
+        if was_learning_probe:
+            self._last_probe_setpoint_before = previous_setpoint if previous_setpoint is not None else self._last_ac_setpoint
+            self._last_probe_setpoint_after = setpoint
+        else:
+            self._last_probe_setpoint_before = None
+            self._last_probe_setpoint_after = None
         self._last_ac_setpoint = setpoint
         self._last_adjustment_was_learning_probe = was_learning_probe
 
@@ -1678,6 +1940,8 @@ class OffsetEngine:
                 # Power sensor configured - get hysteresis data
                 start_samples = len(self._hysteresis_learner._start_temps)
                 stop_samples = len(self._hysteresis_learner._stop_temps)
+                start_probe_bounds = len(self._hysteresis_learner._start_probe_bounds)
+                stop_probe_bounds = len(self._hysteresis_learner._stop_probe_bounds)
                 has_sufficient = self._hysteresis_learner.has_sufficient_data
                 
                 # Determine hysteresis state
@@ -1706,9 +1970,17 @@ class OffsetEngine:
                     "hysteresis_state": hysteresis_state,
                     "learned_start_threshold": start_threshold,
                     "learned_stop_threshold": stop_threshold,
+                    "learned_start_offset": self._hysteresis_learner.learned_start_offset,
+                    "learned_stop_offset": self._hysteresis_learner.learned_stop_offset,
+                    "learned_start_offset_lower_bound": self._hysteresis_learner.learned_start_offset_lower_bound,
+                    "learned_start_offset_upper_bound": self._hysteresis_learner.learned_start_offset_upper_bound,
+                    "learned_stop_offset_lower_bound": self._hysteresis_learner.learned_stop_offset_lower_bound,
+                    "learned_stop_offset_upper_bound": self._hysteresis_learner.learned_stop_offset_upper_bound,
                     "temperature_window": temperature_window,
                     "start_samples_collected": start_samples,
                     "stop_samples_collected": stop_samples,
+                    "start_probe_bounds_collected": start_probe_bounds,
+                    "stop_probe_bounds_collected": stop_probe_bounds,
                     "hysteresis_ready": has_sufficient
                 })
                 

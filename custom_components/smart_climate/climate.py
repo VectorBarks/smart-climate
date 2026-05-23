@@ -900,6 +900,14 @@ class SmartClimateEntity(ClimateEntity):
                 temperature_window_learned
             )
             attributes["temperature_window_source"] = "offset_engine.hysteresis_learner"
+            if hasattr(self._offset_engine, "_hysteresis_learner"):
+                hysteresis_learner = self._offset_engine._hysteresis_learner
+                attributes["compressor_start_offset"] = getattr(hysteresis_learner, "learned_start_offset", None)
+                attributes["compressor_stop_offset"] = getattr(hysteresis_learner, "learned_stop_offset", None)
+                attributes["compressor_start_offset_lower_bound"] = getattr(hysteresis_learner, "learned_start_offset_lower_bound", None)
+                attributes["compressor_start_offset_upper_bound"] = getattr(hysteresis_learner, "learned_start_offset_upper_bound", None)
+                attributes["compressor_stop_offset_lower_bound"] = getattr(hysteresis_learner, "learned_stop_offset_lower_bound", None)
+                attributes["compressor_stop_offset_upper_bound"] = getattr(hysteresis_learner, "learned_stop_offset_upper_bound", None)
             
             # Power monitoring correlation accuracy
             power_correlation_accuracy = self._calculate_power_correlation_accuracy()
@@ -919,6 +927,10 @@ class SmartClimateEntity(ClimateEntity):
                 attributes["last_transition_ac_setpoint_after"] = latest_transition.get("ac_setpoint_after")
                 attributes["last_transition_power_before"] = latest_transition.get("power_before")
                 attributes["last_transition_power_after"] = latest_transition.get("power_after")
+                attributes["last_transition_offset_from_setpoint"] = latest_transition.get("offset_from_setpoint")
+                attributes["last_transition_offset_lower_bound"] = latest_transition.get("offset_lower_bound")
+                attributes["last_transition_offset_upper_bound"] = latest_transition.get("offset_upper_bound")
+                attributes["last_transition_sample_type"] = latest_transition.get("transition_sample_type")
                 attributes["last_transition_cause"] = latest_transition.get("transition_cause")
             
         except Exception as exc:
@@ -1476,7 +1488,15 @@ class SmartClimateEntity(ClimateEntity):
                 
                 hysteresis_learner = self._offset_engine._hysteresis_learner
                 
-                # Check if we have sufficient data and learned thresholds
+                # Prefer setpoint-relative compressor offsets when available.
+                if (hasattr(hysteresis_learner, 'learned_start_offset') and
+                    hasattr(hysteresis_learner, 'learned_stop_offset') and
+                    hysteresis_learner.learned_start_offset is not None and
+                    hysteresis_learner.learned_stop_offset is not None):
+                    window = hysteresis_learner.learned_start_offset - hysteresis_learner.learned_stop_offset
+                    return f"{window:.1f}°C"
+
+                # Fall back to legacy absolute room-temperature thresholds.
                 if (hasattr(hysteresis_learner, 'has_sufficient_data') and 
                     hysteresis_learner.has_sufficient_data and
                     hasattr(hysteresis_learner, 'learned_start_threshold') and
@@ -1945,6 +1965,7 @@ class SmartClimateEntity(ClimateEntity):
                 self._offset_engine.record_setpoint_command(
                     adjusted_temp,
                     was_learning_probe=was_learning_probe,
+                    previous_setpoint=current_setpoint,
                 )
             
             _LOGGER.info(

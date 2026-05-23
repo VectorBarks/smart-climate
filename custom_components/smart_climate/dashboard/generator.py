@@ -362,6 +362,12 @@ class DashboardGenerator:
                 f"- Predictive strategy: `{{{{ state_attr('{climate_entity_id}', 'predictive_strategy') }}}}`\n"
                 f"- Strategy detail: {{{{ state_attr('{climate_entity_id}', 'predictive_strategy_status_detail') }}}}\n"
                 f"- Temperature window: `{{{{ state_attr('{climate_entity_id}', 'temperature_window_learned') }}}}`\n"
+                f"- Compressor offsets: start `{{{{ state_attr('{climate_entity_id}', 'compressor_start_offset') }}}}°C`, "
+                f"stop `{{{{ state_attr('{climate_entity_id}', 'compressor_stop_offset') }}}}°C`\n"
+                f"- Probe bounds: start `{{{{ state_attr('{climate_entity_id}', 'compressor_start_offset_lower_bound') }}}}` → "
+                f"`{{{{ state_attr('{climate_entity_id}', 'compressor_start_offset_upper_bound') }}}}°C`, "
+                f"stop `{{{{ state_attr('{climate_entity_id}', 'compressor_stop_offset_lower_bound') }}}}` → "
+                f"`{{{{ state_attr('{climate_entity_id}', 'compressor_stop_offset_upper_bound') }}}}°C`\n"
                 f"- Window detail: {{{{ state_attr('{climate_entity_id}', 'temperature_window_status_detail') }}}}\n"
                 f"- Learning probe step: `{{{{ state_attr('{climate_entity_id}', 'learning_probe_step') }}}}°C`\n"
                 f"- Last transition: `{{{{ state_attr('{climate_entity_id}', 'last_hysteresis_transition') }}}}` "
@@ -369,6 +375,10 @@ class DashboardGenerator:
                 f"at `{{{{ state_attr('{climate_entity_id}', 'last_transition_room_temp') }}}}°C`\n"
                 f"- Transition setpoint: `{{{{ state_attr('{climate_entity_id}', 'last_transition_ac_setpoint_before') }}}}` → "
                 f"`{{{{ state_attr('{climate_entity_id}', 'last_transition_ac_setpoint_after') }}}}`\n"
+                f"- Transition offset: `{{{{ state_attr('{climate_entity_id}', 'last_transition_offset_from_setpoint') }}}}°C`\n"
+                f"- Transition bounds/type: `{{{{ state_attr('{climate_entity_id}', 'last_transition_offset_lower_bound') }}}}` → "
+                f"`{{{{ state_attr('{climate_entity_id}', 'last_transition_offset_upper_bound') }}}}`, "
+                f"`{{{{ state_attr('{climate_entity_id}', 'last_transition_sample_type') }}}}`\n"
             ),
         }
 

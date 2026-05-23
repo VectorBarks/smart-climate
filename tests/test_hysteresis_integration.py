@@ -3,8 +3,10 @@
 import pytest
 import time
 import unittest.mock as mock
+from dataclasses import replace
 from datetime import datetime, time as dt_time
 
+from custom_components.smart_climate.compressor_state_analyzer import CompressorStateAnalyzer
 from custom_components.smart_climate.offset_engine import OffsetEngine, HysteresisLearner
 from custom_components.smart_climate.lightweight_learner import LightweightOffsetLearner
 from custom_components.smart_climate.models import OffsetInput
@@ -49,6 +51,133 @@ class TestHysteresisIntegration:
             power_consumption=200.0
         )
 
+    def test_records_setpoint_relative_hysteresis_offsets(self):
+        """Learn compressor thresholds as room-temp offsets from active AC setpoint."""
+        learner = HysteresisLearner(min_samples=2)
+
+        learner.record_transition("start", 24.6, ac_setpoint_after=24.0)
+        learner.record_transition("start", 25.1, ac_setpoint_after=24.5)
+        learner.record_transition("stop", 23.6, ac_setpoint_after=24.0)
+        learner.record_transition("stop", 24.1, ac_setpoint_after=24.5)
+
+        assert learner.learned_start_offset == pytest.approx(0.6)
+        assert learner.learned_stop_offset == pytest.approx(-0.4)
+        latest_transition = learner.get_latest_transition_event()
+        assert latest_transition is not None
+        assert latest_transition["offset_from_setpoint"] == pytest.approx(-0.4)
+
+    def test_compressor_activation_uses_setpoint_relative_start_offset(self):
+        """Activation analysis should compare room temp against new setpoint + learned offset."""
+        learner = HysteresisLearner(min_samples=2)
+        for setpoint in (24.0, 25.0):
+            learner.record_transition("start", setpoint + 0.6, ac_setpoint_after=setpoint)
+            learner.record_transition("stop", setpoint - 0.4, ac_setpoint_after=setpoint)
+
+        analyzer = CompressorStateAnalyzer(power_threshold=50.0)
+
+        assert analyzer.would_adjustment_activate_compressor(
+            current_room_temp=23.9,
+            new_setpoint=23.2,
+            hysteresis_learner=learner,
+            hvac_mode="cool",
+        ) is True
+        assert analyzer.would_adjustment_activate_compressor(
+            current_room_temp=23.9,
+            new_setpoint=23.95,
+            hysteresis_learner=learner,
+            hvac_mode="cool",
+        ) is False
+        assert analyzer.get_adjustment_needed_to_activate(23.9, learner, "cool") == pytest.approx(23.3)
+
+    def test_probe_start_records_bounds_without_promoting_to_exact_samples(self):
+        """Probe starts constrain the threshold interval but must not count as exact samples."""
+        learner = HysteresisLearner(min_samples=1)
+
+        learner.record_transition(
+            "start",
+            23.6,
+            ac_setpoint_before=23.8,
+            ac_setpoint_after=22.8,
+            power_before=4.0,
+            power_after=511.0,
+            transition_cause="probe",
+        )
+
+        assert list(learner._start_temps) == []
+        assert list(learner._start_offsets) == []
+        assert learner.learned_start_threshold is None
+        assert learner.learned_start_offset is None
+        assert learner.has_sufficient_data is False
+        assert learner.learned_start_offset_lower_bound == pytest.approx(-0.2)
+        assert learner.learned_start_offset_upper_bound == pytest.approx(0.8)
+
+        latest_transition = learner.get_latest_transition_event()
+        assert latest_transition["transition_sample_type"] == "constraint"
+        assert latest_transition["offset_from_setpoint"] == pytest.approx(0.8)
+        assert latest_transition["offset_lower_bound"] == pytest.approx(-0.2)
+        assert latest_transition["offset_upper_bound"] == pytest.approx(0.8)
+
+        persisted = learner.serialize_for_persistence()
+        assert persisted["start_probe_bounds"] == [
+            {"lower": pytest.approx(-0.2), "upper": pytest.approx(0.8)}
+        ]
+
+    def test_probe_bounds_restore_without_becoming_exact_samples(self):
+        """Restored probe bounds stay separate from natural threshold samples."""
+        learner = HysteresisLearner(min_samples=1)
+
+        learner.restore_from_persistence({
+            "start_probe_bounds": [{"lower": -0.2, "upper": 0.8}],
+            "stop_probe_bounds": [{"lower": -0.5, "upper": -0.1}],
+            "transition_events": [
+                {
+                    "transition_type": "start",
+                    "room_temp_at_transition": 23.6,
+                    "ac_setpoint_before": 23.8,
+                    "ac_setpoint_after": 22.8,
+                    "transition_cause": "probe",
+                }
+            ],
+        })
+
+        assert list(learner._start_temps) == []
+        assert list(learner._stop_temps) == []
+        assert learner.has_sufficient_data is False
+        assert learner.learned_start_offset_lower_bound == pytest.approx(-0.2)
+        assert learner.learned_start_offset_upper_bound == pytest.approx(0.8)
+        assert learner.learned_stop_offset_lower_bound == pytest.approx(-0.5)
+        assert learner.learned_stop_offset_upper_bound == pytest.approx(-0.1)
+        assert learner.get_latest_transition_event()["offset_from_setpoint"] == pytest.approx(0.8)
+
+    def test_probe_command_preserves_pre_and_post_setpoint_context(self, config_with_hysteresis, sample_input_data):
+        """Probe transition telemetry should keep both setpoints for interval learning."""
+        engine = OffsetEngine(config_with_hysteresis)
+
+        idle_input = replace(
+            sample_input_data,
+            room_temp=23.6,
+            power_consumption=4.0,
+            ac_setpoint=23.8,
+        )
+        engine.calculate_offset(idle_input)
+        engine.record_setpoint_command(22.8, was_learning_probe=True, previous_setpoint=23.8)
+
+        active_input = replace(
+            sample_input_data,
+            room_temp=23.6,
+            power_consumption=511.0,
+            ac_setpoint=22.8,
+        )
+        engine.calculate_offset(active_input)
+
+        latest_transition = engine._hysteresis_learner.get_latest_transition_event()
+        assert latest_transition["transition_cause"] == "probe"
+        assert latest_transition["ac_setpoint_before"] == pytest.approx(23.8)
+        assert latest_transition["ac_setpoint_after"] == pytest.approx(22.8)
+        assert latest_transition["offset_lower_bound"] == pytest.approx(-0.2)
+        assert latest_transition["offset_upper_bound"] == pytest.approx(0.8)
+        assert list(engine._hysteresis_learner._start_offsets) == []
+
     def test_hysteresis_enabled_initialization(self, config_with_hysteresis):
         """Test that hysteresis learning is properly enabled when power sensor configured."""
         engine = OffsetEngine(config_with_hysteresis)
@@ -79,17 +208,25 @@ class TestHysteresisIntegration:
         engine = OffsetEngine(config_with_hysteresis)
         
         # First call with low power (idle state)
-        low_power_input = sample_input_data.__replace__(power_consumption=30.0)  # Below idle threshold
+        low_power_input = replace(sample_input_data, power_consumption=30.0)  # Below idle threshold
         engine.calculate_offset(low_power_input)
         assert engine._last_power_state == "idle"
         
         # Second call with high power (should detect start transition)
-        high_power_input = sample_input_data.__replace__(power_consumption=300.0)  # Above max threshold
+        high_power_input = replace(sample_input_data, power_consumption=300.0)  # Above max threshold
         with mock.patch.object(engine._hysteresis_learner, 'record_transition') as mock_record:
             engine.calculate_offset(high_power_input)
             
             # Verify transition was recorded
-            mock_record.assert_called_once_with('start', sample_input_data.room_temp)
+            mock_record.assert_called_once_with(
+                'start',
+                sample_input_data.room_temp,
+                ac_setpoint_before=None,
+                ac_setpoint_after=None,
+                power_before=30.0,
+                power_after=300.0,
+                transition_cause='natural',
+            )
             assert engine._last_power_state == "high"
 
     def test_power_transition_detection_stop(self, config_with_hysteresis, sample_input_data):
@@ -97,17 +234,25 @@ class TestHysteresisIntegration:
         engine = OffsetEngine(config_with_hysteresis)
         
         # First call with high power (active state)
-        high_power_input = sample_input_data.__replace__(power_consumption=300.0)
+        high_power_input = replace(sample_input_data, power_consumption=300.0)
         engine.calculate_offset(high_power_input)
         assert engine._last_power_state == "high"
         
         # Second call with low power (should detect stop transition)
-        low_power_input = sample_input_data.__replace__(power_consumption=30.0)
+        low_power_input = replace(sample_input_data, power_consumption=30.0)
         with mock.patch.object(engine._hysteresis_learner, 'record_transition') as mock_record:
             engine.calculate_offset(low_power_input)
             
             # Verify transition was recorded
-            mock_record.assert_called_once_with('stop', sample_input_data.room_temp)
+            mock_record.assert_called_once_with(
+                'stop',
+                sample_input_data.room_temp,
+                ac_setpoint_before=None,
+                ac_setpoint_after=None,
+                power_before=300.0,
+                power_after=30.0,
+                transition_cause='natural',
+            )
             assert engine._last_power_state == "idle"
 
     def test_hysteresis_state_calculation_with_sufficient_data(self, config_with_hysteresis, sample_input_data):
@@ -122,7 +267,7 @@ class TestHysteresisIntegration:
         engine._hysteresis_learner._update_thresholds()
         
         # Test with moderate power (should be active_phase)
-        moderate_power_input = sample_input_data.__replace__(power_consumption=150.0)
+        moderate_power_input = replace(sample_input_data, power_consumption=150.0)
         
         with mock.patch.object(engine._hysteresis_learner, 'get_hysteresis_state') as mock_get_state:
             mock_get_state.return_value = "active_phase"
