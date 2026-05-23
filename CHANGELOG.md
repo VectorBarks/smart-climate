@@ -7,15 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.5.5-beta11] - 2026-05-23
+## [1.5.5-beta12] - 2026-05-23
 
 ### Fixed
 - Publish Quiet Mode dashboard data through the coordinator so `quiet_mode_status`, `quiet_mode_suppressions`, and `compressor_state` sensors no longer stay `unknown` when an AC power sensor is configured.
 - Classify compressor state from live power readings using the configured idle threshold, reporting `idle` below threshold and `active` above threshold.
 - Read Quiet Mode dashboard coordinator payloads as dicts, matching the actual sensor platform data contract.
+- Read suppression counts from the matching Smart Climate entity instead of the wrapped source climate entity.
 
 ### Tests
 - Added focused regression coverage for real `SmartClimateData`, dashboard data augmentation, and dict-backed Quiet Mode sensor payloads.
+
+## [1.5.5-beta11] - 2026-05-23
+
+### Fixed
+- Wired the actual dashboard sensor coordinator path for Quiet Mode status and compressor state. Superseded by `1.5.5-beta12`, which also mirrors the Smart Climate suppression count correctly.
 
 ## [1.5.5-beta10] - 2026-05-23
 

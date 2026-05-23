@@ -68,6 +68,9 @@ def test_dashboard_sensor_coordinator_augments_quiet_mode_fields():
     source = INIT_SOURCE.read_text()
 
     assert "def _augment_quiet_mode_dashboard_data" in source
+    assert "def _get_quiet_mode_climate_attrs" in source
+    assert 'for state in hass.states.async_all("climate"):' in source
+    assert 'attrs.get("friendly_name") == f"Smart {wrapped_name}"' in source
     assert 'data["quiet_mode_status"] = "enabled" if quiet_mode_enabled else "disabled"' in source
     assert 'data["quiet_mode_suppressions"] = climate_attrs.get("quiet_mode_suppressions", 0)' in source
     assert 'data["compressor_state"] = compressor_state' in source

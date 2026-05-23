@@ -1,15 +1,16 @@
 # Release Notes
 
-## v1.5.5-beta11 (2026-05-23)
+## v1.5.5-beta12 (2026-05-23)
 
 ### Summary
-Quiet Mode dashboard sensors now receive live data on the actual dashboard sensor coordinator path instead of staying `unknown`.
+Quiet Mode dashboard sensors now receive live data on the actual dashboard sensor coordinator path instead of staying `unknown`, including the matching Smart Climate suppression count.
 
 ### Fixed
 - `sensor.*_compressor_state` now reports `idle` or `active` from the configured AC power sensor and idle threshold.
 - `sensor.*_quiet_mode_status` now reports enabled/disabled coordinator state.
 - `sensor.*_quiet_mode_suppressions` now mirrors the live Quiet Mode controller suppression count.
 - Dict-backed dashboard coordinator payloads are read correctly by the Quiet Mode sensor entities.
+- Suppression lookup follows the Smart Climate entity associated with the wrapped source climate entity.
 
 ### Validation
 - Added focused regression coverage for real `SmartClimateData`, dashboard data augmentation, and dict-backed Quiet Mode sensor payloads.

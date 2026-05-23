@@ -111,6 +111,24 @@ def _read_file_sync(file_path: str) -> str:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _get_quiet_mode_climate_attrs(hass: HomeAssistant, wrapped_entity_id: str) -> Dict[str, Any]:
+    """Return attrs from the Smart Climate entity associated with a wrapped entity."""
+    wrapped_state = hass.states.get(wrapped_entity_id)
+    wrapped_name = wrapped_state.attributes.get("friendly_name") if wrapped_state else None
+    fallback_attrs: Dict[str, Any] = {}
+
+    for state in hass.states.async_all("climate"):
+        attrs = state.attributes
+        if "quiet_mode_suppressions" not in attrs:
+            continue
+        if not fallback_attrs:
+            fallback_attrs = attrs
+        if wrapped_name and attrs.get("friendly_name") == f"Smart {wrapped_name}":
+            return attrs
+
+    return fallback_attrs
+
+
 def _augment_quiet_mode_dashboard_data(
     hass: HomeAssistant,
     config: Dict[str, Any],
@@ -130,8 +148,7 @@ def _augment_quiet_mode_dashboard_data(
     quiet_mode_enabled = config.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
     data["quiet_mode_status"] = "enabled" if quiet_mode_enabled else "disabled"
 
-    climate_state = hass.states.get(entity_id)
-    climate_attrs = climate_state.attributes if climate_state else {}
+    climate_attrs = _get_quiet_mode_climate_attrs(hass, entity_id)
     data["quiet_mode_suppressions"] = climate_attrs.get("quiet_mode_suppressions", 0)
 
     compressor_state = "unknown"
