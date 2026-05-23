@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5-beta19] - 2026-05-23
+
+### Fixed
+- Limit Quiet Mode hysteresis learning probes to idle compressor periods when power telemetry is available; active cooling cycles now keep the normal gradual setpoint stepping path instead of forcing probe-sized jumps.
+
+### Tests
+- Added regression coverage for active-compressor learning suppression at both controller and Smart Climate entity level.
+
 ## [1.5.5-beta17] - 2026-05-23
 
 ### Added

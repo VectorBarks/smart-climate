@@ -1908,6 +1908,7 @@ class SmartClimateEntity(ClimateEntity):
                         hysteresis_learner=hysteresis_learner,
                         hvac_mode=self.hvac_mode,
                         target_setpoint=raw_adjusted_temp,
+                        power=power_consumption,
                     )
                     if progressive_setpoint is not None:
                         _LOGGER.info(

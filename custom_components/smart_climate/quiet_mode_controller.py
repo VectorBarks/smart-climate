@@ -142,6 +142,7 @@ class QuietModeController:
         hysteresis_learner: HysteresisLearner,
         hvac_mode: str,
         target_setpoint: Optional[float] = None,
+        power: Optional[float] = None,
     ) -> Optional[float]:
         """Get progressive learning setpoint when thresholds are unknown.
         
@@ -155,6 +156,9 @@ class QuietModeController:
             hvac_mode: Current HVAC mode
             target_setpoint: Requested calculated setpoint to move toward. When
                 omitted, one learning probe step below the current setpoint is returned.
+            power: Current power consumption in watts. When provided, learning
+                probes are only emitted while the compressor is idle so active
+                compressor operation keeps normal gradual stepping.
             
         Returns:
             Progressive setpoint for learning, or None if mode not supported
@@ -162,6 +166,9 @@ class QuietModeController:
         # Only support cooling modes
         supported_modes = ["cool", "dry", "auto"]
         if hvac_mode.lower() not in supported_modes:
+            return None
+
+        if power is not None and not self._analyzer.is_compressor_idle(power):
             return None
 
         if self._has_learned_thresholds(hysteresis_learner):
