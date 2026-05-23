@@ -245,7 +245,7 @@ async def async_setup_entry(
         else:
             _LOGGER.debug("HumidityMonitor not available for entity %s, skipping humidity sensors", entity_id)
     
-    async_add_entities(sensors)
+    async_add_entities(sensors, True)
 
 
 class SmartClimateDashboardSensor(SmartClimateSensorEntity):
