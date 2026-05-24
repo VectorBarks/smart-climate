@@ -1,13 +1,13 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.5.5--beta20-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.5--beta21-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 Smart Climate Control wraps an existing Home Assistant climate entity and makes it behave like the room you actually care about, not like the AC unit's badly placed internal sensor.
 
-Current release: **v1.5.5-beta20**. The current learning model separates natural compressor samples from deliberate probe constraints, so Quiet Mode calibration can learn without poisoning the real hysteresis data.
+Current release: **v1.5.5-beta21**. The current learning model separates natural compressor samples from deliberate probe constraints and ignores fan-only power activity, so Quiet Mode calibration can learn without poisoning the real hysteresis data.
 
 ## What it does
 

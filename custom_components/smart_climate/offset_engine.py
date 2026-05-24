@@ -40,6 +40,7 @@ from .const import (
     DEFAULT_VALIDATION_RATE_LIMIT_SECONDS,
     CONF_FORECAST_ENABLED,
     CONF_OUTDOOR_SENSOR,
+    LEARNING_HVAC_MODES,
 )
 
 if TYPE_CHECKING:
@@ -1418,6 +1419,22 @@ class OffsetEngine:
         
         # Early return if no power data available
         if input_data.power_consumption is None:
+            return
+
+        hvac_mode = getattr(input_data, "hvac_mode", None)
+        if hvac_mode is not None and hvac_mode not in LEARNING_HVAC_MODES:
+            # Fan-only/off/dry power draw is not compressor hysteresis data. Reset
+            # transition context so we do not bridge stale cool/heat baselines
+            # across a non-learnable operating mode.
+            _LOGGER.debug(
+                "Ignoring power transition detection in non-learning HVAC mode %s",
+                hvac_mode,
+            )
+            self._last_power_state = None
+            self._last_power_consumption = None
+            self._last_adjustment_was_learning_probe = False
+            self._last_probe_setpoint_before = None
+            self._last_probe_setpoint_after = None
             return
         
         try:

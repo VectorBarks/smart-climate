@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.5.5-beta21 (2026-05-24)
+
+### Summary
+Fan-only power activity is now excluded from compressor hysteresis learning. Power changes while the wrapped climate entity is not in a learnable heating/cooling mode no longer create compressor start/stop samples.
+
+### Fixed
+- Ignored fan-only/off/dry power transitions for compressor hysteresis learning.
+- Reset hysteresis transition baselines when entering non-learnable HVAC modes so stale cool/heat state cannot bridge into later samples.
+
+### Verification
+- `pytest tests/test_hysteresis_integration.py::TestHysteresisIntegration::test_fan_only_power_changes_are_ignored_for_hysteresis_learning tests/test_hysteresis_integration.py::TestHysteresisIntegration::test_power_transition_detection_start tests/test_hysteresis_integration.py::TestHysteresisIntegration::test_power_transition_detection_stop tests/test_quiet_mode_learning_mode_behavior.py tests/test_quiet_mode_learning.py -q`
+- `python -m py_compile custom_components/smart_climate/offset_engine.py tests/test_hysteresis_integration.py`
+
 ## v1.5.5-beta20 (2026-05-23)
 
 ### Summary

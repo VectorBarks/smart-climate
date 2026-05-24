@@ -203,6 +203,48 @@ class TestHysteresisIntegration:
         assert engine._enable_learning is True
         assert engine._learner is not None
 
+    def test_fan_only_power_changes_are_ignored_for_hysteresis_learning(self, config_with_hysteresis, sample_input_data):
+        """Fan-only power activity must not teach compressor hysteresis thresholds."""
+        engine = OffsetEngine(config_with_hysteresis)
+
+        # Establish an idle baseline while cooling mode is learnable.
+        engine.calculate_offset(replace(
+            sample_input_data,
+            hvac_mode="cool",
+            power_consumption=20.0,
+            ac_setpoint=24.0,
+        ))
+
+        # Fan-only can draw power, but it is not compressor cooling and must be ignored.
+        engine.calculate_offset(replace(
+            sample_input_data,
+            hvac_mode="fan_only",
+            power_consumption=160.0,
+            ac_setpoint=24.0,
+        ))
+        engine.calculate_offset(replace(
+            sample_input_data,
+            hvac_mode="fan_only",
+            power_consumption=20.0,
+            ac_setpoint=24.0,
+        ))
+
+        assert engine._hysteresis_learner.get_transition_events() == []
+        assert list(engine._hysteresis_learner._start_temps) == []
+        assert list(engine._hysteresis_learner._stop_temps) == []
+        assert engine._last_power_state is None
+        assert engine._last_power_consumption is None
+
+        # Returning to cool should establish a fresh baseline, not bridge across fan-only.
+        engine.calculate_offset(replace(
+            sample_input_data,
+            hvac_mode="cool",
+            power_consumption=180.0,
+            ac_setpoint=24.0,
+        ))
+        assert engine._hysteresis_learner.get_transition_events() == []
+        assert engine._last_power_state == "moderate"
+
     def test_power_transition_detection_start(self, config_with_hysteresis, sample_input_data):
         """Test detection of AC start transition (idle/low to moderate/high)."""
         engine = OffsetEngine(config_with_hysteresis)
