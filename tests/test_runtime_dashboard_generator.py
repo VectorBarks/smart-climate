@@ -103,3 +103,19 @@ def test_runtime_dashboard_uses_core_cards_and_keeps_five_views():
         "diagnostics",
     ]
     assert _card_types(dashboard) <= {"thermostat", "markdown", "gauge", "entities", "history-graph"}
+
+
+def test_runtime_dashboard_explains_hysteresis_learning_metrics():
+    """Status card should distinguish exact offsets, probe constraints, and correlation readiness."""
+    yaml_content = DashboardGenerator().generate_runtime_dashboard(
+        "climate.smart_klimaanlage_tu_climate",
+        "Smart Klimaanlage TU Climate",
+        RELATED_ENTITIES,
+    )
+
+    assert "Exact compressor offsets" in yaml_content
+    assert "Probe-derived bounds" in yaml_content
+    assert "Sample progress" in yaml_content
+    assert "Power correlation" in yaml_content
+    assert "power_correlation_status_detail" in yaml_content
+    assert "power_correlation_sample_count" in yaml_content

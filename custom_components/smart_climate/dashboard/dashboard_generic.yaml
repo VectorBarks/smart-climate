@@ -882,13 +882,21 @@ views:
                 entity: REPLACE_ME_CLIMATE
                 primary: >-
                   {% set correlation = state_attr('REPLACE_ME_CLIMATE', 'power_correlation_accuracy') | default(0) %}
-                  {{ correlation | round(1) }}%
-                secondary: Power Correlation
+                  {% set samples = state_attr('REPLACE_ME_CLIMATE', 'power_correlation_sample_count') | default(0) %}
+                  {% if samples < 5 %}
+                    collecting data ({{ samples }}/5)
+                  {% else %}
+                    {{ correlation | round(1) }}%
+                  {% endif %}
+                secondary: Power Correlation Readiness
                 icon: mdi:lightning-bolt
                 layout: vertical
                 badge_color: >-
                   {% set correlation = state_attr('REPLACE_ME_CLIMATE', 'power_correlation_accuracy') | default(0) %}
-                  {% if correlation >= 90 %}
+                  {% set samples = state_attr('REPLACE_ME_CLIMATE', 'power_correlation_sample_count') | default(0) %}
+                  {% if samples < 5 %}
+                    grey
+                  {% elif correlation >= 90 %}
                     green
                   {% elif correlation >= 70 %}
                     yellow

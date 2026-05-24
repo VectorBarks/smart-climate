@@ -290,6 +290,11 @@ class TestPowerCorrelationCalculation:
         """Test basic power correlation accuracy calculation."""
         # Arrange
         entity = smart_climate_entity_for_power_calc
+        entity._config.update({
+            "power_idle_threshold": 200,
+            "power_min_threshold": 800,
+            "power_max_threshold": 800,
+        })
         
         # Mock power state history for correlation calculation
         # Simulate 10 predictions with 8 correct correlations
@@ -324,6 +329,96 @@ class TestPowerCorrelationCalculation:
             
             # Assert
             assert accuracy == 0.0
+
+    def test_power_prediction_history_uses_hysteresis_transition_events(self, smart_climate_entity_for_power_calc):
+        """Power prediction history should come from recorded hysteresis transition power telemetry."""
+        entity = smart_climate_entity_for_power_calc
+        hysteresis_learner = Mock()
+        hysteresis_learner.get_transition_events.return_value = [
+            {
+                "transition_type": "start",
+                "power_before": 20.0,
+                "power_after": 420.0,
+                "timestamp": "2026-05-24T10:00:00",
+            },
+            {
+                "transition_type": "stop",
+                "power_before": 410.0,
+                "power_after": 15.0,
+                "timestamp": "2026-05-24T10:12:00",
+            },
+        ]
+        entity._offset_engine._hysteresis_learner = hysteresis_learner
+
+        history = entity._get_power_prediction_history()
+
+        assert history == [
+            {
+                "timestamp": "2026-05-24T10:00:00",
+                "transition_type": "start",
+                "transition_side": "before",
+                "predicted_state": "idle",
+                "actual_power": 20.0,
+            },
+            {
+                "timestamp": "2026-05-24T10:00:00",
+                "transition_type": "start",
+                "transition_side": "after",
+                "predicted_state": "active",
+                "actual_power": 420.0,
+            },
+            {
+                "timestamp": "2026-05-24T10:12:00",
+                "transition_type": "stop",
+                "transition_side": "before",
+                "predicted_state": "active",
+                "actual_power": 410.0,
+            },
+            {
+                "timestamp": "2026-05-24T10:12:00",
+                "transition_type": "stop",
+                "transition_side": "after",
+                "predicted_state": "idle",
+                "actual_power": 15.0,
+            },
+        ]
+
+    def test_power_correlation_accuracy_uses_transition_telemetry(self, smart_climate_entity_for_power_calc):
+        """Accuracy should measure expected active/idle transition sides against actual power."""
+        entity = smart_climate_entity_for_power_calc
+        hysteresis_learner = Mock()
+        hysteresis_learner.get_transition_events.return_value = [
+            {"transition_type": "start", "power_before": 20.0, "power_after": 420.0},
+            {"transition_type": "stop", "power_before": 420.0, "power_after": 15.0},
+            {"transition_type": "start", "power_before": 320.0, "power_after": 450.0},
+        ]
+        entity._offset_engine._hysteresis_learner = hysteresis_learner
+
+        assert entity._calculate_power_correlation_accuracy() == 83.3
+
+    def test_power_correlation_status_attributes_explain_sample_count(self, smart_climate_entity_for_power_calc):
+        """Climate attributes should expose correlation readiness instead of a silent placeholder zero."""
+        entity = smart_climate_entity_for_power_calc
+        hysteresis_learner = Mock()
+        hysteresis_learner.has_sufficient_data = False
+        hysteresis_learner.learned_start_offset = None
+        hysteresis_learner.learned_stop_offset = None
+        hysteresis_learner.learned_start_offset_lower_bound = None
+        hysteresis_learner.learned_start_offset_upper_bound = None
+        hysteresis_learner.learned_stop_offset_lower_bound = None
+        hysteresis_learner.learned_stop_offset_upper_bound = None
+        hysteresis_learner.get_latest_transition_event.return_value = None
+        hysteresis_learner.get_transition_events.return_value = [
+            {"transition_type": "start", "power_before": 20.0, "power_after": 420.0},
+            {"transition_type": "stop", "power_before": 420.0, "power_after": 15.0},
+        ]
+        entity._offset_engine._hysteresis_learner = hysteresis_learner
+
+        attributes = entity.extra_state_attributes
+
+        assert attributes["power_correlation_sample_count"] == 4
+        assert attributes["power_correlation_source"] == "offset_engine.hysteresis_learner.transition_events"
+        assert attributes["power_correlation_status_detail"] == "Collecting transition power checks: 4/5 available"
 
     def test_calculate_power_correlation_accuracy_no_power_sensor(self, smart_climate_entity_for_power_calc):
         """Test power correlation accuracy when no power sensor configured."""

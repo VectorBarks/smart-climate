@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult, ModeAdjustments
 from .thermal_models import ThermalState
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD, CONF_POWER_MIN_THRESHOLD, DEFAULT_POWER_MIN_THRESHOLD, CONF_POWER_MAX_THRESHOLD, DEFAULT_POWER_MAX_THRESHOLD
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
 from .config_helpers import build_predictive_config
@@ -900,27 +900,34 @@ class SmartClimateEntity(ClimateEntity):
                 temperature_window_learned
             )
             attributes["temperature_window_source"] = "offset_engine.hysteresis_learner"
-            if hasattr(self._offset_engine, "_hysteresis_learner"):
-                hysteresis_learner = self._offset_engine._hysteresis_learner
-                attributes["compressor_start_offset"] = getattr(hysteresis_learner, "learned_start_offset", None)
-                attributes["compressor_stop_offset"] = getattr(hysteresis_learner, "learned_stop_offset", None)
-                attributes["compressor_start_offset_lower_bound"] = getattr(hysteresis_learner, "learned_start_offset_lower_bound", None)
-                attributes["compressor_start_offset_upper_bound"] = getattr(hysteresis_learner, "learned_start_offset_upper_bound", None)
-                attributes["compressor_stop_offset_lower_bound"] = getattr(hysteresis_learner, "learned_stop_offset_lower_bound", None)
-                attributes["compressor_stop_offset_upper_bound"] = getattr(hysteresis_learner, "learned_stop_offset_upper_bound", None)
+
+            hysteresis_learner = self._get_hysteresis_learner()
+            if hysteresis_learner is not None:
+                attributes["compressor_start_offset"] = self._numeric_or_none(getattr(hysteresis_learner, "learned_start_offset", None))
+                attributes["compressor_stop_offset"] = self._numeric_or_none(getattr(hysteresis_learner, "learned_stop_offset", None))
+                attributes["compressor_start_offset_lower_bound"] = self._numeric_or_none(getattr(hysteresis_learner, "learned_start_offset_lower_bound", None))
+                attributes["compressor_start_offset_upper_bound"] = self._numeric_or_none(getattr(hysteresis_learner, "learned_start_offset_upper_bound", None))
+                attributes["compressor_stop_offset_lower_bound"] = self._numeric_or_none(getattr(hysteresis_learner, "learned_stop_offset_lower_bound", None))
+                attributes["compressor_stop_offset_upper_bound"] = self._numeric_or_none(getattr(hysteresis_learner, "learned_stop_offset_upper_bound", None))
             
             # Power monitoring correlation accuracy
-            power_correlation_accuracy = self._calculate_power_correlation_accuracy()
+            power_history = self._get_power_prediction_history()
+            power_correlation_accuracy = self._calculate_power_correlation_accuracy(power_history)
             attributes["power_correlation_accuracy"] = power_correlation_accuracy
+            attributes["power_correlation_sample_count"] = len(power_history)
+            attributes["power_correlation_status_detail"] = self._get_power_correlation_status_detail(power_history)
+            attributes["power_correlation_source"] = "offset_engine.hysteresis_learner.transition_events"
             
             # Number of completed AC hysteresis cycles
             hysteresis_cycle_count = self._get_hysteresis_cycle_count()
             attributes["hysteresis_cycle_count"] = hysteresis_cycle_count
 
             latest_transition = None
-            if hasattr(self._offset_engine, "_hysteresis_learner"):
-                latest_transition = self._offset_engine._hysteresis_learner.get_latest_transition_event()
-            if latest_transition:
+            if hysteresis_learner is not None:
+                get_latest_transition = getattr(hysteresis_learner, "get_latest_transition_event", None)
+                if callable(get_latest_transition):
+                    latest_transition = get_latest_transition()
+            if isinstance(latest_transition, dict):
                 attributes["last_hysteresis_transition"] = latest_transition.get("transition_type")
                 attributes["last_transition_room_temp"] = latest_transition.get("room_temp_at_transition")
                 attributes["last_transition_ac_setpoint_before"] = latest_transition.get("ac_setpoint_before")
@@ -941,6 +948,9 @@ class SmartClimateEntity(ClimateEntity):
                 "temperature_window_status_detail": f"Temperature window lookup failed: {exc}",
                 "temperature_window_source": "offset_engine.hysteresis_learner",
                 "power_correlation_accuracy": 0.0,
+                "power_correlation_sample_count": 0,
+                "power_correlation_status_detail": "Power correlation lookup failed; check integration logs",
+                "power_correlation_source": "offset_engine.hysteresis_learner.transition_events",
                 "hysteresis_cycle_count": 0,
             })
         
@@ -1476,6 +1486,17 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id
             )
     
+    @staticmethod
+    def _numeric_or_none(value) -> Optional[float]:
+        """Return numeric values as float and reject Mock/unknown placeholders."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value)
+
+    def _get_hysteresis_learner(self):
+        """Return the offset engine hysteresis learner if it exists."""
+        return getattr(self._offset_engine, "_hysteresis_learner", None)
+
     def _get_temperature_window_learned(self) -> str:
         """Get learned temperature window from hysteresis patterns.
         
@@ -1483,37 +1504,31 @@ class SmartClimateEntity(ClimateEntity):
             str: Formatted temperature window, or explicit diagnostic state.
         """
         try:
-            if (hasattr(self._offset_engine, '_hysteresis_learner') and 
-                self._offset_engine._hysteresis_learner is not None):
-                
-                hysteresis_learner = self._offset_engine._hysteresis_learner
-                
-                # Prefer setpoint-relative compressor offsets when available.
-                if (hasattr(hysteresis_learner, 'learned_start_offset') and
-                    hasattr(hysteresis_learner, 'learned_stop_offset') and
-                    hysteresis_learner.learned_start_offset is not None and
-                    hysteresis_learner.learned_stop_offset is not None):
-                    window = hysteresis_learner.learned_start_offset - hysteresis_learner.learned_stop_offset
-                    return f"{window:.1f}°C"
+            hysteresis_learner = self._get_hysteresis_learner()
+            if hysteresis_learner is None:
+                return "not_available"
 
-                # Fall back to legacy absolute room-temperature thresholds.
-                if (hasattr(hysteresis_learner, 'has_sufficient_data') and 
-                    hysteresis_learner.has_sufficient_data and
-                    hasattr(hysteresis_learner, 'learned_start_threshold') and
-                    hasattr(hysteresis_learner, 'learned_stop_threshold') and
-                    hysteresis_learner.learned_start_threshold is not None and
-                    hysteresis_learner.learned_stop_threshold is not None):
-                    
-                    # Calculate temperature window (difference between start and stop thresholds)
-                    window = hysteresis_learner.learned_start_threshold - hysteresis_learner.learned_stop_threshold
-                    return f"{window:.1f}°C"
+            # Prefer setpoint-relative compressor offsets when available.
+            start_offset = self._numeric_or_none(getattr(hysteresis_learner, 'learned_start_offset', None))
+            stop_offset = self._numeric_or_none(getattr(hysteresis_learner, 'learned_stop_offset', None))
+            if start_offset is not None and stop_offset is not None:
+                window = start_offset - stop_offset
+                return f"{window:.1f}°C"
 
-                if not self._power_sensor_id:
-                    return "disabled"
+            # Fall back to legacy absolute room-temperature thresholds.
+            has_sufficient_data = getattr(hysteresis_learner, 'has_sufficient_data', False)
+            if callable(has_sufficient_data):
+                has_sufficient_data = has_sufficient_data()
+            start_threshold = self._numeric_or_none(getattr(hysteresis_learner, 'learned_start_threshold', None))
+            stop_threshold = self._numeric_or_none(getattr(hysteresis_learner, 'learned_stop_threshold', None))
+            if has_sufficient_data and start_threshold is not None and stop_threshold is not None:
+                window = start_threshold - stop_threshold
+                return f"{window:.1f}°C"
 
-                return "learning"
-            
-            return "not_available"
+            if not self._power_sensor_id:
+                return "disabled"
+
+            return "learning"
             
         except Exception as exc:
             _LOGGER.debug("Error getting temperature window learned: %s", exc)
@@ -1530,43 +1545,82 @@ class SmartClimateEntity(ClimateEntity):
         if temperature_window == "error":
             return "Temperature-window lookup failed; check integration logs"
         return "Temperature window learned from compressor start/stop thresholds"
+
+    def _classify_actual_power_state(self, actual_power) -> Optional[str]:
+        """Classify an actual power reading using the offset engine thresholds when possible."""
+        power = self._numeric_or_none(actual_power)
+        if power is None:
+            return None
+
+        engine_classifier = getattr(self._offset_engine, "_get_power_state", None)
+        if callable(engine_classifier):
+            try:
+                state = engine_classifier(power)
+                if state in ("idle", "low", "moderate", "high"):
+                    return state
+            except Exception as exc:
+                _LOGGER.debug("Offset engine power-state classification failed: %s", exc)
+
+        idle_threshold = self._config.get(CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD)
+        min_threshold = self._config.get(CONF_POWER_MIN_THRESHOLD, DEFAULT_POWER_MIN_THRESHOLD)
+        max_threshold = self._config.get(CONF_POWER_MAX_THRESHOLD, DEFAULT_POWER_MAX_THRESHOLD)
+        if power < idle_threshold:
+            return "idle"
+        if power < min_threshold:
+            return "low"
+        if power < max_threshold:
+            return "moderate"
+        return "high"
+
+    def _power_prediction_matches(self, predicted_state, actual_power) -> bool:
+        """Return whether a predicted compressor power state matches the actual power reading."""
+        actual_state = self._classify_actual_power_state(actual_power)
+        if actual_state is None:
+            return False
+        if predicted_state == "active":
+            return actual_state in ("low", "moderate", "high")
+        if predicted_state == "idle":
+            return actual_state == "idle"
+        if predicted_state in ("low", "moderate", "high"):
+            return actual_state == predicted_state
+        return False
+
+    def _get_power_correlation_status_detail(self, power_history: Optional[List[dict]] = None) -> str:
+        """Return explanatory detail for the power-correlation metric."""
+        if not self._power_sensor_id:
+            return "Power sensor is not configured; power correlation is disabled"
+        history = power_history if power_history is not None else self._get_power_prediction_history()
+        sample_count = len(history)
+        if sample_count == 0:
+            return "Waiting for compressor transition power checks before correlation can be calculated"
+        if sample_count < 5:
+            return f"Collecting transition power checks: {sample_count}/5 available"
+        return f"Power correlation calculated from {sample_count} transition power checks"
     
-    def _calculate_power_correlation_accuracy(self) -> float:
+    def _calculate_power_correlation_accuracy(self, power_history: Optional[List[dict]] = None) -> float:
         """Calculate power monitoring correlation accuracy percentage.
         
         Returns:
             float: Correlation accuracy as percentage (0.0-100.0)
         """
         try:
-            # Check if power sensor is configured
             if not self._power_sensor_id:
                 return 0.0
             
-            # Get power prediction history for correlation calculation
-            power_history = self._get_power_prediction_history()
-            
-            if not power_history or len(power_history) < 5:
+            history = power_history if power_history is not None else self._get_power_prediction_history()
+            if not history or len(history) < 5:
                 # Need at least 5 data points for meaningful correlation
                 return 0.0
             
-            # Calculate correlation accuracy
-            correct_predictions = 0
-            total_predictions = len(power_history)
-            
-            for entry in power_history:
-                predicted_state = entry.get("predicted_state")
-                actual_power = entry.get("actual_power", 0)
-                
-                # Define power thresholds for state classification
-                if predicted_state == "high" and actual_power > 800:  # High power threshold
-                    correct_predictions += 1
-                elif predicted_state == "idle" and actual_power < 200:  # Idle power threshold
-                    correct_predictions += 1
-                elif predicted_state == "moderate" and 200 <= actual_power <= 800:
-                    correct_predictions += 1
-            
-            # Calculate percentage accuracy
-            accuracy = (correct_predictions / total_predictions) * 100
+            correct_predictions = sum(
+                1
+                for entry in history
+                if self._power_prediction_matches(
+                    entry.get("predicted_state"),
+                    entry.get("actual_power"),
+                )
+            )
+            accuracy = (correct_predictions / len(history)) * 100
             return round(accuracy, 1)
             
         except Exception as exc:
@@ -1574,22 +1628,58 @@ class SmartClimateEntity(ClimateEntity):
             return 0.0
     
     def _get_power_prediction_history(self) -> List[dict]:
-        """Get historical power prediction data for correlation analysis.
+        """Get transition-derived power prediction checks for correlation analysis.
         
         Returns:
             List[dict]: List of power prediction entries with timestamps, predicted states, and actual power
         """
         try:
-            # This would typically be stored by the offset engine during learning
-            # For now, return empty list as this is a complex feature requiring
-            # additional state tracking implementation
-            
-            # In a full implementation, this would:
-            # 1. Access stored prediction history from offset engine
-            # 2. Correlate predictions with actual power sensor readings
-            # 3. Return last N entries for correlation calculation
-            
-            return []
+            if not self._power_sensor_id:
+                return []
+
+            hysteresis_learner = self._get_hysteresis_learner()
+            if hysteresis_learner is None:
+                return []
+
+            get_transition_events = getattr(hysteresis_learner, "get_transition_events", None)
+            if not callable(get_transition_events):
+                return []
+
+            transition_events = get_transition_events()
+            if not isinstance(transition_events, list):
+                return []
+
+            history: List[dict] = []
+            for event in transition_events:
+                if not isinstance(event, dict):
+                    continue
+                transition_type = event.get("transition_type")
+                if transition_type == "start":
+                    expected_sides = (
+                        ("before", "idle", "power_before"),
+                        ("after", "active", "power_after"),
+                    )
+                elif transition_type == "stop":
+                    expected_sides = (
+                        ("before", "active", "power_before"),
+                        ("after", "idle", "power_after"),
+                    )
+                else:
+                    continue
+
+                for side, predicted_state, power_key in expected_sides:
+                    actual_power = self._numeric_or_none(event.get(power_key))
+                    if actual_power is None:
+                        continue
+                    history.append({
+                        "timestamp": event.get("timestamp"),
+                        "transition_type": transition_type,
+                        "transition_side": side,
+                        "predicted_state": predicted_state,
+                        "actual_power": actual_power,
+                    })
+
+            return history
             
         except Exception as exc:
             _LOGGER.debug("Error getting power prediction history: %s", exc)
