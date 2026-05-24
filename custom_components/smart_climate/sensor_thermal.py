@@ -36,12 +36,16 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
     EntityCategory,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .entity import SmartClimateSensorEntity
+from .integration import get_unique_id
 from .thermal_models import ThermalState, PreferenceLevel
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,6 +110,103 @@ class SmartClimateThermalSensor(SmartClimateSensorEntity):
         """Return recorded cycle count when the monitor exposes history."""
         history = getattr(cycle_monitor, "_cycle_history", None)
         return len(history) if history is not None else 0
+
+    @staticmethod
+    def _as_float(value: Any) -> Optional[float]:
+        """Return value as float when it is a real numeric state."""
+        if value in (None, "", STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _merged_config(self) -> Dict[str, Any]:
+        """Return config-entry data merged with options."""
+        data = getattr(self._config_entry, "data", None) or {}
+        options = getattr(self._config_entry, "options", None) or {}
+        return {**data, **options}
+
+    def _get_smart_climate_entity_id(self) -> Optional[str]:
+        """Resolve the Smart Climate entity ID from its unique ID."""
+        try:
+            unique_id = get_unique_id(self._merged_config())
+            registry = er.async_get(self.hass)
+            return registry.async_get_entity_id("climate", DOMAIN, unique_id)
+        except (KeyError, AttributeError, TypeError, ValueError):
+            return None
+
+    def _state_value(self, entity_id: Optional[str], attr_keys: tuple[str, ...] = ()) -> Optional[Any]:
+        """Read a value from a HA state object, preferring attributes then state."""
+        if not entity_id:
+            return None
+        try:
+            state = self.hass.states.get(entity_id)
+        except AttributeError:
+            return None
+        if state is None or getattr(state, "state", None) in (STATE_UNAVAILABLE, STATE_UNKNOWN, None):
+            return None
+        attributes = getattr(state, "attributes", {}) or {}
+        for key in attr_keys:
+            value = attributes.get(key)
+            if value not in (None, "", STATE_UNAVAILABLE, STATE_UNKNOWN):
+                return value
+        return getattr(state, "state", None)
+
+    def _get_current_setpoint(self, coordinator_data: Optional[Dict[str, Any]]) -> Optional[float]:
+        """Return the current user-facing Smart Climate setpoint.
+
+        Operating-window sensors must not silently fall back to the historical
+        24.0°C default when dashboard coordinator data lacks a setpoint. That
+        produces a believable but wrong comfort window.
+        """
+        data = coordinator_data or {}
+        for key in ("setpoint", "target_temperature", "temperature"):
+            value = self._as_float(data.get(key))
+            if value is not None:
+                return value
+
+        smart_entity_id = self._get_smart_climate_entity_id()
+        value = self._as_float(
+            self._state_value(smart_entity_id, ("temperature", "target_temperature"))
+        )
+        if value is not None:
+            return value
+
+        config = self._merged_config()
+        for key in ("target_temperature", "default_target_temperature"):
+            value = self._as_float(config.get(key))
+            if value is not None:
+                return value
+
+        return None
+
+    def _get_current_outdoor_temp(self, coordinator_data: Optional[Dict[str, Any]]) -> Optional[float]:
+        """Return outdoor temperature without hardcoded defaults."""
+        data = coordinator_data or {}
+        value = self._as_float(data.get("outdoor_temp"))
+        if value is not None:
+            return value
+
+        outdoor_sensor = self._merged_config().get("outdoor_sensor")
+        return self._as_float(self._state_value(outdoor_sensor))
+
+    def _get_current_hvac_mode(self, coordinator_data: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Return current HVAC mode without hardcoded defaults."""
+        data = coordinator_data or {}
+        hvac_mode = data.get("hvac_mode")
+        if hvac_mode not in (None, "", STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return str(hvac_mode)
+
+        smart_mode = self._state_value(self._get_smart_climate_entity_id())
+        if smart_mode is not None:
+            return str(smart_mode)
+
+        wrapped_mode = self._state_value(self._base_entity_id)
+        if wrapped_mode is not None:
+            return str(wrapped_mode)
+
+        return None
 
 
 # === DASHBOARD SENSORS (5) ===
@@ -172,13 +273,13 @@ class OperatingWindowLowerSensor(SmartClimateThermalSensor):
                 return None
             
             # Get current setpoint and outdoor temp from coordinator if available
-            coordinator_data = self.coordinator.data
-            if not coordinator_data:
-                return None
+            coordinator_data = self.coordinator.data or {}
             
-            setpoint = coordinator_data.get("setpoint", 24.0)  # Default fallback
-            outdoor_temp = coordinator_data.get("outdoor_temp", 25.0)  # Default fallback
-            hvac_mode = coordinator_data.get("hvac_mode", "cool")  # Default fallback
+            setpoint = self._get_current_setpoint(coordinator_data)
+            if setpoint is None:
+                return None
+            outdoor_temp = self._get_current_outdoor_temp(coordinator_data)
+            hvac_mode = self._get_current_hvac_mode(coordinator_data)
             
             lower_bound, _ = thermal_manager.get_operating_window(setpoint, outdoor_temp, hvac_mode)
             return lower_bound
@@ -217,13 +318,13 @@ class OperatingWindowUpperSensor(SmartClimateThermalSensor):
                 return None
             
             # Get current setpoint and outdoor temp from coordinator if available
-            coordinator_data = self.coordinator.data
-            if not coordinator_data:
-                return None
+            coordinator_data = self.coordinator.data or {}
             
-            setpoint = coordinator_data.get("setpoint", 24.0)  # Default fallback
-            outdoor_temp = coordinator_data.get("outdoor_temp", 25.0)  # Default fallback
-            hvac_mode = coordinator_data.get("hvac_mode", "cool")  # Default fallback
+            setpoint = self._get_current_setpoint(coordinator_data)
+            if setpoint is None:
+                return None
+            outdoor_temp = self._get_current_outdoor_temp(coordinator_data)
+            hvac_mode = self._get_current_hvac_mode(coordinator_data)
             
             _, upper_bound = thermal_manager.get_operating_window(setpoint, outdoor_temp, hvac_mode)
             return upper_bound

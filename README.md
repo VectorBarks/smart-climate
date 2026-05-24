@@ -7,7 +7,7 @@
 
 Smart Climate Control wraps an existing Home Assistant climate entity and makes it behave like the room you actually care about, not like the AC unit's badly placed internal sensor.
 
-Current release: **v1.5.5-beta22**. The current learning model separates natural compressor samples from deliberate probe constraints, ignores fan-only power activity, and reports real transition-based power correlation instead of dashboard placeholder values.
+Current release: **v1.5.5-beta23**. Operating-window helper sensors now use the live Smart Climate target temperature instead of the historical 24.0°C fallback, so Max Comfort windows stay centered on the configured room target.
 
 ## What it does
 

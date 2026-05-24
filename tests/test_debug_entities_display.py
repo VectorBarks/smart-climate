@@ -16,6 +16,8 @@ from custom_components.smart_climate.sensor_thermal import (
     AverageOffCycleSensor,
     AverageOnCycleSensor,
     CycleHealthSensor,
+    OperatingWindowLowerSensor,
+    OperatingWindowUpperSensor,
     ProbingActiveSensor,
     ShadowModeSensor,
 )
@@ -35,8 +37,18 @@ def _config_entry():
     entry.entry_id = "entry-1"
     entry.unique_id = "uid-1"
     entry.title = "SCC Test"
+    entry.data = {
+        "climate_entity": "climate.test_ac",
+        "room_sensor": "sensor.test_room_temperature",
+    }
     entry.options = {}
     return entry
+
+
+def _thermal_components(window=(23.0, 24.0)):
+    thermal_manager = Mock()
+    thermal_manager.get_operating_window.return_value = window
+    return {"thermal_manager": thermal_manager}, thermal_manager
 
 
 def test_weather_forecast_sensor_has_text_state_in_sensor_platform():
@@ -160,3 +172,41 @@ def test_average_cycle_sensors_use_cycle_monitor_tuple_api():
     assert avg_on.native_value == 480.0
     assert avg_off.native_value == 720.0
     assert avg_on.extra_state_attributes["recorded_cycles"] == 2
+
+
+def test_operating_window_uses_current_smart_climate_temperature_not_24_default():
+    entry = _config_entry()
+    coordinator = _coordinator({"learning_info": {}})
+    components, thermal_manager = _thermal_components((23.0, 24.0))
+
+    hass = Mock()
+    hass.states.get.return_value = Mock(
+        state="cool",
+        attributes={"temperature": 23.5},
+    )
+
+    lower = OperatingWindowLowerSensor(coordinator, "climate.test_ac", entry)
+    upper = OperatingWindowUpperSensor(coordinator, "climate.test_ac", entry)
+    for sensor in (lower, upper):
+        sensor.hass = hass
+        sensor._get_thermal_components = lambda: components
+        sensor._get_smart_climate_entity_id = lambda: "climate.smart_test_ac"
+
+    assert lower.native_value == 23.0
+    assert upper.native_value == 24.0
+    thermal_manager.get_operating_window.assert_called_with(23.5, None, "cool")
+
+
+def test_operating_window_returns_unknown_instead_of_hardcoded_24_when_setpoint_missing():
+    entry = _config_entry()
+    coordinator = _coordinator({"learning_info": {}})
+    components, thermal_manager = _thermal_components()
+
+    sensor = OperatingWindowLowerSensor(coordinator, "climate.test_ac", entry)
+    sensor.hass = Mock()
+    sensor.hass.states.get.return_value = None
+    sensor._get_thermal_components = lambda: components
+    sensor._get_smart_climate_entity_id = lambda: None
+
+    assert sensor.native_value is None
+    thermal_manager.get_operating_window.assert_not_called()

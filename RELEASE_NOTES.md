@@ -1,5 +1,19 @@
 # Release Notes
 
+## v1.5.5-beta23 (2026-05-24)
+
+### Summary
+Operating-window helper sensors now use the live Smart Climate target temperature instead of falling back to the historical 24.0°C default. Max Comfort windows stay centered on the configured room target.
+
+### Fixed
+- Replaced the hardcoded `24.0°C` operating-window setpoint fallback with the current Smart Climate climate-entity target.
+- Removed hardcoded outdoor-temperature and HVAC-mode fallbacks from operating-window helper sensors.
+- Return `unknown` instead of a plausible-but-wrong operating window when no real setpoint can be resolved.
+
+### Verification
+- `python -m py_compile custom_components/smart_climate/sensor_thermal.py tests/test_debug_entities_display.py`
+- `pytest tests/test_debug_entities_display.py tests/test_quiet_mode_learning_mode_behavior.py tests/test_quiet_mode_config.py tests/test_quiet_mode_sensors.py tests/test_quiet_mode_controller.py tests/test_quiet_mode_e2e.py tests/test_quiet_mode_coordinator_data.py tests/test_quiet_mode_learning.py -q`
+
 ## v1.5.5-beta22 (2026-05-24)
 
 ### Summary
