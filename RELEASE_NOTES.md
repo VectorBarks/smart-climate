@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.5.5-beta22 (2026-05-24)
+
+### Summary
+Power-correlation telemetry is now based on actual compressor transition events instead of fixed placeholder values. Dashboard labels now make learned/placeholder telemetry clearer.
+
+### Added
+- Transition-based power-correlation accuracy derived from observed compressor start/stop power deltas.
+- Dashboard wording that distinguishes real learning telemetry from fallback/default values.
+
+### Fixed
+- Removed the fixed 85% power-correlation placeholder from the climate attribute path.
+- Guarded learning telemetry attributes against non-numeric test/harness placeholder values.
+
+### Verification
+- `pytest tests/test_ac_learning_enhancement.py tests/test_runtime_dashboard_generator.py -q`
+- `python -m py_compile custom_components/smart_climate/climate.py custom_components/smart_climate/dashboard/generator.py`
+- `python - <<'PY'` + `yaml.safe_load('custom_components/smart_climate/dashboard/dashboard_generic.yaml')`
+
 ## v1.5.5-beta21 (2026-05-24)
 
 ### Summary
