@@ -9,6 +9,7 @@ from datetime import datetime
 
 from .compressor_state_analyzer import CompressorStateAnalyzer
 from .offset_engine import HysteresisLearner
+from .const import QUIET_MODE_SUPPORTED_HVAC_MODES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,8 +85,7 @@ class QuietModeController:
             return False, "quiet mode disabled"
         
         # Only support cooling modes
-        supported_modes = ["cool", "dry", "auto"]
-        if hvac_mode.lower() not in supported_modes:
+        if hvac_mode.lower() not in QUIET_MODE_SUPPORTED_HVAC_MODES:
             return False, f"HVAC mode {hvac_mode} not supported for quiet mode"
         
         # Don't suppress if compressor is already active (power above threshold)
@@ -164,8 +164,7 @@ class QuietModeController:
             Progressive setpoint for learning, or None if mode not supported
         """
         # Only support cooling modes
-        supported_modes = ["cool", "dry", "auto"]
-        if hvac_mode.lower() not in supported_modes:
+        if hvac_mode.lower() not in QUIET_MODE_SUPPORTED_HVAC_MODES:
             return None
 
         if power is not None and not self._analyzer.is_compressor_idle(power):

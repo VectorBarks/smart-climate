@@ -8,6 +8,7 @@ from typing import Optional
 import logging
 
 from .offset_engine import HysteresisLearner
+from .const import DEFAULT_POWER_IDLE_THRESHOLD, QUIET_MODE_SUPPORTED_HVAC_MODES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 class CompressorStateAnalyzer:
     """Analyzes compressor state and activation conditions for Quiet Mode."""
     
-    def __init__(self, power_threshold: float = 50.0):
+    def __init__(self, power_threshold: float = DEFAULT_POWER_IDLE_THRESHOLD):
         """Initialize the CompressorStateAnalyzer.
         
         Args:
@@ -65,8 +66,7 @@ class CompressorStateAnalyzer:
             None if thresholds unknown or mode unsupported
         """
         # Only support cooling modes (cool, dry, auto)
-        supported_modes = ["cool", "dry", "auto"]
-        if hvac_mode.lower() not in supported_modes:
+        if hvac_mode.lower() not in QUIET_MODE_SUPPORTED_HVAC_MODES:
             _LOGGER.debug("HVAC mode '%s' not supported for compressor activation analysis", hvac_mode)
             return False
         
@@ -118,8 +118,7 @@ class CompressorStateAnalyzer:
             None if thresholds unknown or mode unsupported
         """
         # Only support cooling modes
-        supported_modes = ["cool", "dry", "auto"]
-        if hvac_mode.lower() not in supported_modes:
+        if hvac_mode.lower() not in QUIET_MODE_SUPPORTED_HVAC_MODES:
             _LOGGER.debug("HVAC mode '%s' not supported for activation calculation", hvac_mode)
             return None
         

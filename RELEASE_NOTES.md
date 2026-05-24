@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.5.5-beta24 (2026-05-24)
+
+### Summary
+Runtime fallback values are now centralized instead of scattered through Smart Climate production code. A regression guard blocks the known hardcoded-value class that caused the previous `24.0°C` operating-window drift.
+
+### Fixed
+- Replaced hardcoded target-temperature fallbacks with `DEFAULT_TARGET_TEMPERATURE` / config lookups.
+- Centralized thermal sensor fallback values for setpoint, outdoor/current temperature, comfort window, HVAC mode, and weather entity ID.
+- Aligned the coordinator Quiet Mode default with `DEFAULT_QUIET_MODE_ENABLED`.
+- Shared Quiet Mode supported HVAC modes between controller/analyzer code paths.
+
+### Added
+- `tests/test_no_runtime_magic_defaults.py` scanner guard for known unsafe runtime magic defaults.
+
+### Verification
+- `python -m py_compile custom_components/smart_climate/const.py custom_components/smart_climate/climate.py custom_components/smart_climate/thermal_sensor.py custom_components/smart_climate/thermal_manager.py custom_components/smart_climate/coordinator.py custom_components/smart_climate/quiet_mode_controller.py custom_components/smart_climate/compressor_state_analyzer.py custom_components/smart_climate/mode_manager.py custom_components/smart_climate/__init__.py custom_components/smart_climate/config_flow.py custom_components/smart_climate/migration.py`
+- `pytest tests/test_no_runtime_magic_defaults.py tests/test_quiet_mode_controller.py tests/test_quiet_mode_coordinator_data.py tests/test_thermal_sensor.py tests/test_thermal_manager.py tests/test_target_temperature.py -q`
+- `pytest tests/test_config_flow_power_options.py -q`
+- Full `pytest -q` still blocked by existing collection/harness issues unrelated to this change: missing HA component mocks/packages, stale imports, and invalid legacy test character in `tests/test_climate_thermal_priority.py`.
+
 ## v1.5.5-beta23 (2026-05-24)
 
 ### Summary

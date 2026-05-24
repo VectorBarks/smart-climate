@@ -14,7 +14,7 @@ from .errors import SmartClimateError
 from .outlier_detector import OutlierDetector
 from .dto import SystemHealthData
 from .thermal_models import ThermalState
-from .const import DOMAIN, SEASONAL_LEARNER_STORAGE_VERSION, POST_COOL_RISE_PERIOD_MINUTES, SEASONAL_SAVE_INTERVAL_MINUTES, DEFAULT_POWER_IDLE_THRESHOLD
+from .const import DOMAIN, SEASONAL_LEARNER_STORAGE_VERSION, POST_COOL_RISE_PERIOD_MINUTES, SEASONAL_SAVE_INTERVAL_MINUTES, DEFAULT_POWER_IDLE_THRESHOLD, DEFAULT_QUIET_MODE_ENABLED, DEFAULT_HVAC_MODE, DEFAULT_OUTDOOR_TEMPERATURE
 
 if TYPE_CHECKING:
     from .sensor_manager import SensorManager
@@ -51,7 +51,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         wrapped_entity_id: Optional[str] = None,
         entity_id: Optional[str] = None,  # Smart Climate entity ID for looking up ThermalManager
         humidity_monitor: Optional["HumidityMonitor"] = None,
-        quiet_mode_enabled: bool = False,
+        quiet_mode_enabled: bool = DEFAULT_QUIET_MODE_ENABLED,
         quiet_mode_power_threshold: float = DEFAULT_POWER_IDLE_THRESHOLD,
     ):
         """Initialize the coordinator."""
@@ -357,7 +357,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 self._current_cycle_data = {
                     "start_time": now,
                     "start_temp": room_temp,
-                    "outdoor_temp_at_start": outdoor_temp or 25.0,  # Default if None
+                    "outdoor_temp_at_start": outdoor_temp or DEFAULT_OUTDOOR_TEMPERATURE,  # Default if None
                 }
                 _LOGGER.info("AC cycle started: temp=%.1f°C, outdoor=%.1f°C", 
                            room_temp, self._current_cycle_data["outdoor_temp_at_start"])
@@ -596,8 +596,8 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                     # Calculate operating window using ThermalManager
                     thermal_window = thermal_manager.get_operating_window(
                         setpoint=setpoint,
-                        outdoor_temp=outdoor_temp or 25.0,  # Default outdoor temp
-                        hvac_mode=hvac_mode or "cool"
+                        outdoor_temp=outdoor_temp or DEFAULT_OUTDOOR_TEMPERATURE,  # Default outdoor temp
+                        hvac_mode=hvac_mode or DEFAULT_HVAC_MODE
                     )
                     
                     # Control OffsetEngine learning based on current state

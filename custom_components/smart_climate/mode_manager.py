@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from homeassistant.util import dt as dt_util
 
 from .models import ModeAdjustments
+from .const import DEFAULT_AWAY_TEMPERATURE, DEFAULT_SLEEP_OFFSET, DEFAULT_BOOST_OFFSET
 
 
 class ModeManager:
@@ -51,7 +52,7 @@ class ModeManager:
             )
         elif self._current_mode == "away":
             return ModeAdjustments(
-                temperature_override=self._config.get("away_temperature", 19.0),
+                temperature_override=self._config.get("away_temperature", DEFAULT_AWAY_TEMPERATURE),
                 offset_adjustment=0.0,
                 update_interval_override=None,
                 boost_offset=0.0,
@@ -60,7 +61,7 @@ class ModeManager:
         elif self._current_mode == "sleep":
             return ModeAdjustments(
                 temperature_override=None,
-                offset_adjustment=self._config.get("sleep_offset", 1.0),
+                offset_adjustment=self._config.get("sleep_offset", DEFAULT_SLEEP_OFFSET),
                 update_interval_override=None,
                 boost_offset=0.0,
                 force_operation=False
@@ -70,7 +71,7 @@ class ModeManager:
                 temperature_override=None,
                 offset_adjustment=0.0,
                 update_interval_override=None,
-                boost_offset=self._config.get("boost_offset", -2.0),
+                boost_offset=self._config.get("boost_offset", DEFAULT_BOOST_OFFSET),
                 force_operation=True
             )
         else:

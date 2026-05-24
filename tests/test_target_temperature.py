@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.const import TEMP_CELSIUS
 
 from custom_components.smart_climate.climate import SmartClimateEntity
+from custom_components.smart_climate.const import DEFAULT_TARGET_TEMPERATURE
 
 
 class TestTargetTemperature:
@@ -92,7 +93,7 @@ class TestTargetTemperature:
         # Assert - should return default, not None
         assert result is not None
         assert isinstance(result, float)
-        assert result == 22.0  # Default fallback temperature
+        assert result == DEFAULT_TARGET_TEMPERATURE  # Central default fallback temperature
     
     def test_target_temperature_handles_wrapped_entity_missing_target_temp(self, smart_climate_entity):
         """Test that target_temperature handles wrapped entity missing target_temperature."""
@@ -110,7 +111,7 @@ class TestTargetTemperature:
         # Assert - should return default, not None
         assert result is not None
         assert isinstance(result, float)
-        assert result == 22.0  # Default fallback temperature
+        assert result == DEFAULT_TARGET_TEMPERATURE  # Central default fallback temperature
     
     def test_target_temperature_handles_wrapped_entity_invalid_target_temp(self, smart_climate_entity):
         """Test that target_temperature handles wrapped entity with invalid target_temperature."""
@@ -128,7 +129,7 @@ class TestTargetTemperature:
         # Assert - should return default, not None
         assert result is not None
         assert isinstance(result, float)
-        assert result == 22.0  # Default fallback temperature
+        assert result == DEFAULT_TARGET_TEMPERATURE  # Central default fallback temperature
     
     def test_target_temperature_handles_wrapped_entity_not_found(self, smart_climate_entity):
         """Test that target_temperature handles wrapped entity not found."""
@@ -142,7 +143,7 @@ class TestTargetTemperature:
         # Assert - should return default, not None
         assert result is not None
         assert isinstance(result, float)
-        assert result == 22.0  # Default fallback temperature
+        assert result == DEFAULT_TARGET_TEMPERATURE  # Central default fallback temperature
     
     def test_target_temperature_handles_exception_gracefully(self, smart_climate_entity):
         """Test that target_temperature handles exceptions gracefully."""
@@ -156,7 +157,7 @@ class TestTargetTemperature:
         # Assert - should return default, not None
         assert result is not None
         assert isinstance(result, float)
-        assert result == 22.0  # Default fallback temperature
+        assert result == DEFAULT_TARGET_TEMPERATURE  # Central default fallback temperature
     
     def test_target_temperature_never_returns_none(self, smart_climate_entity):
         """Test that target_temperature NEVER returns None under any circumstances."""
@@ -249,7 +250,7 @@ class TestTargetTemperature:
         """Test that target_temperature always returns reasonable values."""
         # Test various edge cases
         test_cases = [
-            (None, None, 22.0),  # Default case
+            (None, None, DEFAULT_TARGET_TEMPERATURE),  # Central default case
             (15.0, None, 15.0),  # Stored value
             (None, 28.0, 28.0),  # Wrapped value
             (30.0, 25.0, 30.0),  # Stored takes precedence

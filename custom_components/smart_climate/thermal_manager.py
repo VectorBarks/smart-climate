@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from .thermal_models import ThermalState, ThermalConstants
 from .thermal_preferences import UserPreferences
 from .thermal_model import PassiveThermalModel
+from .const import CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_HVAC_MODE, DEFAULT_TARGET_TEMPERATURE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,8 +103,8 @@ class ThermalManager:
         self._persistence_callback = persistence_callback
         self._current_state = ThermalState.PRIMING  # Default to PRIMING for new users
         self._state_handlers: Dict[ThermalState, StateHandler] = {}
-        self._last_hvac_mode = "cool"  # Default assumption
-        self._setpoint = 24.0  # Default setpoint
+        self._last_hvac_mode = self._config.get("default_hvac_mode", DEFAULT_HVAC_MODE)  # Default assumption
+        self._setpoint = self._config.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)  # Default setpoint
         self._last_transition: Optional[datetime] = None
         self._last_probe_time: Optional[datetime] = None  # Track when last probe occurred
         

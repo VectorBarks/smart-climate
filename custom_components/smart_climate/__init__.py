@@ -43,6 +43,7 @@ from .const import (
     CONF_STARTUP_TIMEOUT,
     DEFAULT_POWER_IDLE_THRESHOLD,
     DEFAULT_QUIET_MODE_ENABLED,
+    DEFAULT_WEATHER_ENTITY_ID,
     STARTUP_TIMEOUT_SEC,
 )
 from .data_store import SmartClimateDataStore
@@ -528,7 +529,7 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                             hass=hass,
                             thermal_model=thermal_model,
                             presence_entity_id=options.get("presence_entity_id"),
-                            weather_entity_id=options.get("weather_entity_id", "weather.home"),
+                            weather_entity_id=options.get("weather_entity_id", DEFAULT_WEATHER_ENTITY_ID),
                             calendar_entity_id=options.get("calendar_entity_id"),
                             manual_override_entity_id=options.get("manual_override_entity_id"),
                             learning_profile=learning_profile

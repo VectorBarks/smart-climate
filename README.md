@@ -1,13 +1,13 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.5.5--beta22-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.5.5--beta24-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 Smart Climate Control wraps an existing Home Assistant climate entity and makes it behave like the room you actually care about, not like the AC unit's badly placed internal sensor.
 
-Current release: **v1.5.5-beta23**. Operating-window helper sensors now use the live Smart Climate target temperature instead of the historical 24.0°C fallback, so Max Comfort windows stay centered on the configured room target.
+Current release: **v1.5.5-beta24**. Runtime defaults now come from central constants/config instead of scattered hardcoded fallbacks, with a guard test preventing the old `24.0°C`/`weather.home` drift from returning.
 
 ## What it does
 

@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult, ModeAdjustments
 from .thermal_models import ThermalState
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD, CONF_POWER_MIN_THRESHOLD, DEFAULT_POWER_MIN_THRESHOLD, CONF_POWER_MAX_THRESHOLD, DEFAULT_POWER_MAX_THRESHOLD
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD, CONF_POWER_MIN_THRESHOLD, DEFAULT_POWER_MIN_THRESHOLD, CONF_POWER_MAX_THRESHOLD, DEFAULT_POWER_MAX_THRESHOLD, CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE, CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE, CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE, DEFAULT_TEMPERATURE_STEP, DEFAULT_EMA_COEFFICIENT, DEFAULT_EFFICIENCY_SCORE
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
 from .config_helpers import build_predictive_config
@@ -301,7 +301,7 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id
             )
             # Never return None - provide configurable default
-            return self._config.get("default_target_temperature", 24.0)
+            return self._config.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)
             
         except Exception as exc:
             _LOGGER.error(
@@ -310,7 +310,7 @@ class SmartClimateEntity(ClimateEntity):
                 exc
             )
             # Never return None - provide configurable default
-            return self._config.get("default_target_temperature", 24.0)
+            return self._config.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)
     
     @property
     def preset_modes(self) -> List[str]:
@@ -444,7 +444,7 @@ class SmartClimateEntity(ClimateEntity):
                 if min_temp is not None and isinstance(min_temp, (int, float)):
                     return float(min_temp)
                     
-            return 16.0  # Default minimum
+            return self._config.get(CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE)
             
         except Exception as exc:
             _LOGGER.error(
@@ -452,7 +452,7 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id,
                 exc
             )
-            return 16.0
+            return self._config.get(CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE)
     
     @property
     def max_temp(self) -> float:
@@ -464,7 +464,7 @@ class SmartClimateEntity(ClimateEntity):
                 if max_temp is not None and isinstance(max_temp, (int, float)):
                     return float(max_temp)
                     
-            return 30.0  # Default maximum
+            return self._config.get(CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE)
             
         except Exception as exc:
             _LOGGER.error(
@@ -472,7 +472,7 @@ class SmartClimateEntity(ClimateEntity):
                 self._wrapped_entity_id,
                 exc
             )
-            return 30.0
+            return self._config.get(CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE)
     
     @property
     def temperature_unit(self) -> str:
@@ -646,7 +646,7 @@ class SmartClimateEntity(ClimateEntity):
                 if temp_step is not None and isinstance(temp_step, (int, float)):
                     return float(temp_step)
                     
-            return 0.5  # Default step
+            return DEFAULT_TEMPERATURE_STEP
             
         except Exception as exc:
             _LOGGER.error(
@@ -2163,7 +2163,7 @@ class SmartClimateEntity(ClimateEntity):
             )
             # Initialize with default if wrapped entity not available
             if self._attr_target_temperature is None:
-                self._attr_target_temperature = self._config.get("default_target_temperature", 24.0)
+                self._attr_target_temperature = self._config.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)
                 _LOGGER.debug(
                     "Wrapped entity not available, using default target temperature: %.1f°C",
                     self._attr_target_temperature
@@ -2187,7 +2187,7 @@ class SmartClimateEntity(ClimateEntity):
                     )
                 else:
                     # Set sensible default if wrapped entity has no target temperature
-                    self._attr_target_temperature = self._config.get("default_target_temperature", 24.0)
+                    self._attr_target_temperature = self._config.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)
                     _LOGGER.debug(
                         "Wrapped entity has no valid target_temperature attribute (value: %s), using default: %.1f°C",
                         wrapped_target,
@@ -2195,7 +2195,7 @@ class SmartClimateEntity(ClimateEntity):
                     )
             elif self._attr_target_temperature is None:
                 # Fallback default if wrapped entity has no attributes
-                self._attr_target_temperature = self._config.get("default_target_temperature", 24.0)
+                self._attr_target_temperature = self._config.get(CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE)
                 _LOGGER.debug(
                     "No attributes from wrapped entity, using default target temperature: %.1f°C",
                     self._attr_target_temperature
@@ -2447,10 +2447,10 @@ class SmartClimateEntity(ClimateEntity):
                 # Ensure it's within valid bounds and not None
                 if coefficient is not None:
                     return max(0.0, min(1.0, float(coefficient)))
-            return 0.2  # Default EMA coefficient
+            return DEFAULT_EMA_COEFFICIENT
         except Exception as exc:
             _LOGGER.debug("Error getting EMA coefficient: %s", exc)
-            return 0.2
+            return DEFAULT_EMA_COEFFICIENT
     
     def _get_prediction_latency_ms(self) -> float:
         """Get ML prediction latency in milliseconds."""
@@ -2511,7 +2511,7 @@ class SmartClimateEntity(ClimateEntity):
             
         except Exception as exc:
             _LOGGER.debug("Error calculating energy efficiency score: %s", exc)
-            return 50  # Default/fallback value
+            return DEFAULT_EFFICIENCY_SCORE
     
     def _get_sensor_availability_score(self) -> float:
         """Get sensor availability uptime percentage (0.0-100.0)."""

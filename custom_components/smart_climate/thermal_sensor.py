@@ -10,6 +10,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.components.sensor import SensorEntity
 
 from .thermal_models import ThermalState
+from .const import (
+    DEFAULT_TARGET_TEMPERATURE,
+    DEFAULT_OUTDOOR_TEMPERATURE,
+    DEFAULT_CURRENT_TEMPERATURE,
+    DEFAULT_COMFORT_WINDOW,
+    DEFAULT_HVAC_MODE,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,12 +88,12 @@ class SmartClimateStatusSensor(SensorEntity):
     
     def _get_drifting_message(self) -> str:
         """Generate message for DRIFTING state."""
-        setpoint = getattr(self._thermal_manager, '_setpoint', 24.0)
+        setpoint = getattr(self._thermal_manager, '_setpoint', DEFAULT_TARGET_TEMPERATURE)
         return f"Idle - saving energy (drift to {setpoint:.1f}°C)"
     
     def _get_correcting_message(self) -> str:
         """Generate message for CORRECTING state."""
-        hvac_mode = getattr(self._thermal_manager, '_last_hvac_mode', 'cool')
+        hvac_mode = getattr(self._thermal_manager, '_last_hvac_mode', DEFAULT_HVAC_MODE)
         
         if hvac_mode == 'heat':
             return "Active heating to comfort zone"
@@ -175,17 +182,17 @@ class SmartClimateStatusSensor(SensorEntity):
         """Get current comfort window as list of floats."""
         try:
             window = self._thermal_manager.get_operating_window(
-                getattr(self._thermal_manager, '_setpoint', 24.0),
-                22.0,  # Default outdoor temp for window calculation
-                getattr(self._thermal_manager, '_last_hvac_mode', 'cool')
+                getattr(self._thermal_manager, '_setpoint', DEFAULT_TARGET_TEMPERATURE),
+                DEFAULT_OUTDOOR_TEMPERATURE,  # Central default outdoor temp for window calculation
+                getattr(self._thermal_manager, '_last_hvac_mode', DEFAULT_HVAC_MODE)
             )
             if window and len(window) == 2:
                 return [float(window[0]), float(window[1])]
             else:
-                return [20.0, 26.0]  # Fallback window
+                return list(DEFAULT_COMFORT_WINDOW)  # Fallback window
         except Exception as e:
             _LOGGER.warning("Error getting comfort window: %s", e)
-            return [20.0, 26.0]  # Fallback window
+            return list(DEFAULT_COMFORT_WINDOW)  # Fallback window
     
     def _get_offset_mode(self) -> str:
         """Get offset engine mode (active/paused)."""
@@ -215,13 +222,13 @@ class SmartClimateStatusSensor(SensorEntity):
         try:
             if hasattr(self._offset_engine, 'get_effective_target') and callable(self._offset_engine.get_effective_target):
                 target = self._offset_engine.get_effective_target()
-                return float(target) if target is not None else 24.0
+                return float(target) if target is not None else DEFAULT_TARGET_TEMPERATURE
             else:
                 # Fallback to thermal manager setpoint
-                return float(getattr(self._thermal_manager, '_setpoint', 24.0))
+                return float(getattr(self._thermal_manager, '_setpoint', DEFAULT_TARGET_TEMPERATURE))
         except Exception as e:
             _LOGGER.warning("Error getting effective target: %s", e)
-            return 24.0
+            return DEFAULT_TARGET_TEMPERATURE
     
     def _get_confidence(self) -> float:
         """Get confidence level from thermal model."""
@@ -313,9 +320,9 @@ class SmartClimateStatusSensor(SensorEntity):
         """Get current room temperature for probe scheduler analysis."""
         try:
             # Try to get from thermal manager or fallback to default
-            return getattr(self._thermal_manager, '_current_temp', 22.0)
+            return getattr(self._thermal_manager, '_current_temp', DEFAULT_CURRENT_TEMPERATURE)
         except Exception:
-            return 22.0
+            return DEFAULT_CURRENT_TEMPERATURE
     
     def _get_next_probe_eligible_time(self) -> str:
         """Get next time when probe would be eligible."""

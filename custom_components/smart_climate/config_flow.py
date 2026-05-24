@@ -153,6 +153,7 @@ from .const import (
     DEFAULT_MAX_PROBE_INTERVAL,
 
     DEFAULT_INFO_GAIN_THRESHOLD,
+    DEFAULT_WEATHER_ENTITY_ID,
     # Quiet Mode imports (v1.5.6+)
     CONF_QUIET_MODE_ENABLED,
     DEFAULT_QUIET_MODE_ENABLED,
@@ -938,7 +939,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
             ),
             vol.Optional(
                 CONF_WEATHER_ENTITY_ID,
-                default=current_options.get(CONF_WEATHER_ENTITY_ID, None) or "weather.home"
+                default=current_options.get(CONF_WEATHER_ENTITY_ID, None) or DEFAULT_WEATHER_ENTITY_ID
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=weather_options,

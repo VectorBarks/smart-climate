@@ -24,6 +24,7 @@ from .const import (
     DEFAULT_MAX_PROBE_INTERVAL,
 
     DEFAULT_INFO_GAIN_THRESHOLD,
+    DEFAULT_WEATHER_ENTITY_ID,
 )
 
 # ProbeScheduler enabled key - define locally as it's not in const.py yet
@@ -204,7 +205,7 @@ class MigrationManager:
         # Entity configurations - None means user must configure
         # This ensures ProbeScheduler doesn't make assumptions about user's setup
         migrated_data[CONF_PRESENCE_ENTITY_ID] = None
-        migrated_data[CONF_WEATHER_ENTITY_ID] = "weather.home"  # Common default
+        migrated_data[CONF_WEATHER_ENTITY_ID] = DEFAULT_WEATHER_ENTITY_ID  # Common default
         migrated_data[CONF_CALENDAR_ENTITY_ID] = None
         migrated_data[CONF_MANUAL_OVERRIDE_ENTITY_ID] = None
         
@@ -324,7 +325,7 @@ def create_default_v153_config(base_config: Dict[str, Any]) -> Dict[str, Any]:
     config[CONF_PROBE_SCHEDULER_ENABLED] = True
     config[CONF_LEARNING_PROFILE] = DEFAULT_LEARNING_PROFILE  # "balanced" for new users
     config[CONF_PRESENCE_ENTITY_ID] = None
-    config[CONF_WEATHER_ENTITY_ID] = "weather.home"
+    config[CONF_WEATHER_ENTITY_ID] = DEFAULT_WEATHER_ENTITY_ID
     config[CONF_CALENDAR_ENTITY_ID] = None
     config[CONF_MANUAL_OVERRIDE_ENTITY_ID] = None
     config[CONF_MIN_PROBE_INTERVAL] = DEFAULT_MIN_PROBE_INTERVAL  # 12h standard default

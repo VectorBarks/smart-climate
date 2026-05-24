@@ -541,7 +541,7 @@ class TestThermalManager:
         thermal_manager._state_handlers[ThermalState.PRIMING] = mock_handler
         
         # Mock passive learning
-        thermal_manager._handle_passive_learning = MagicMock(side_effect=lambda: execution_order.append('passive'))
+        thermal_manager._handle_passive_learning = MagicMock(side_effect=lambda *args, **kwargs: execution_order.append('passive'))
         
         thermal_manager.update_state()
         
