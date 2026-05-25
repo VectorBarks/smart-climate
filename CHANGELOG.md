@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-05-25
+
+### Fixed
+- Preserve learned thermal `probe_history`, tau values, and confidence when reloads produce empty/default thermal snapshots.
+- Restore learned thermal data from backup persistence if the primary JSON was already overwritten with a default snapshot.
+
+### Tests
+- Added regression coverage for empty/default thermal snapshot protection on save and load.
+
 ## [1.7.1] - 2026-05-25
 
 ### Fixed
@@ -1166,7 +1175,8 @@ This release was superseded by v1.2.0-beta5 which implements a more robust archi
 - Safe temperature limits to prevent extreme settings
 - Atomic file operations for data persistence
 
-[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.7.2...HEAD
+[1.7.2]: https://github.com/VectorBarks/smart-climate/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/VectorBarks/smart-climate/compare/v1.6.0...v1.7.1
 [1.6.0]: https://github.com/VectorBarks/smart-climate/compare/v1.5.5-beta24...v1.6.0
 [1.5.5-beta5]: https://github.com/VectorBarks/smart-climate/compare/v1.5.2-beta7...v1.5.5-beta5

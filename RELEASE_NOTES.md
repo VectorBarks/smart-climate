@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.7.2 (2026-05-25)
+
+### Summary
+Smart Climate Control v1.7.2 is a pre-release hotfix for thermal model persistence after integration reloads or wrapped climate entity recreation. It keeps existing hysteresis/learning data intact and prevents empty default thermal snapshots from replacing learned thermal probe history.
+
+### Fixed
+- Preserve existing learned `thermal_data` when a transient reload produces an empty/default thermal snapshot with default tau values and `confidence: 0.0`.
+- Recover restorable thermal data from the persistence backup during startup if the primary JSON was already overwritten with an empty/default thermal snapshot.
+
+### Verification
+- `python -m pytest tests/test_data_store_atomic_writes.py::TestThermalDataPreservation -q`
+- `python -m py_compile custom_components/smart_climate/data_store.py`
+
 ## v1.7.1 (2026-05-25)
 
 ### Summary

@@ -250,6 +250,116 @@ class TestSafeBackupStrategy:
             mock_atomic_write.assert_called_once()
 
 
+class TestThermalDataPreservation:
+    """Protect learned thermal model data from empty/default snapshots."""
+
+    @pytest.mark.asyncio
+    async def test_empty_default_thermal_snapshot_does_not_overwrite_existing_probe_history(self):
+        """An empty thermal snapshot after reload must not wipe restorable probe history."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            hass = Mock()
+            hass.config.config_dir = temp_dir
+            hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
+            store = SmartClimateDataStore(hass, "climate.klimaanlage_tu_climate")
+
+            learned_probe = {
+                "tau_value": 2133.0,
+                "confidence": 0.82,
+                "duration": 1800,
+                "fit_quality": 0.91,
+                "aborted": False,
+                "timestamp": "2026-05-25T04:47:28+00:00",
+                "outdoor_temp": 21.93,
+            }
+            learned_payload = {
+                "version": "2.1",
+                "learning_data": {"engine_state": {"enable_learning": True}, "marker": "old"},
+                "thermal_data": {
+                    "version": "2.1",
+                    "model": {"tau_cooling": 2133.0, "tau_warming": 150.0},
+                    "probe_history": [learned_probe],
+                    "confidence": 0.8,
+                },
+            }
+            await store.async_save_learning_data(learned_payload)
+
+            reload_payload = {
+                "version": "2.1",
+                "learning_data": {"engine_state": {"enable_learning": True}, "marker": "new"},
+                "thermal_data": {
+                    "version": "2.1",
+                    "model": {"tau_cooling": 90.0, "tau_warming": 150.0},
+                    "probe_history": [],
+                    "confidence": 0.0,
+                },
+            }
+            await store.async_save_learning_data(reload_payload)
+
+            loaded = await store.async_load_learning_data()
+            assert loaded["learning_data"]["marker"] == "new"
+            assert loaded["thermal_data"]["probe_history"] == [learned_probe]
+            assert loaded["thermal_data"]["model"]["tau_cooling"] == 2133.0
+            assert loaded["thermal_data"]["confidence"] == 0.8
+
+    @pytest.mark.asyncio
+    async def test_load_uses_backup_thermal_data_when_primary_contains_empty_default_snapshot(self):
+        """Startup restore should recover learned thermal data from backup if primary was overwritten."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            hass = Mock()
+            hass.config.config_dir = temp_dir
+            hass.async_add_executor_job = AsyncMock(side_effect=lambda func, *args: func(*args))
+            store = SmartClimateDataStore(hass, "climate.klimaanlage_tu_climate")
+            store._ensure_data_directory()
+
+            learned_probe = {
+                "tau_value": 2133.0,
+                "confidence": 0.82,
+                "duration": 1800,
+                "fit_quality": 0.91,
+                "aborted": False,
+                "timestamp": "2026-05-25T04:47:28+00:00",
+                "outdoor_temp": 21.93,
+            }
+            learned_payload = {
+                "version": "2.1",
+                "learning_data": {"engine_state": {"enable_learning": True}, "marker": "backup"},
+                "thermal_data": {
+                    "version": "2.1",
+                    "model": {"tau_cooling": 2133.0, "tau_warming": 150.0},
+                    "probe_history": [learned_probe],
+                    "confidence": 0.8,
+                },
+            }
+            empty_payload = {
+                "version": "2.1",
+                "learning_data": {"engine_state": {"enable_learning": True}, "marker": "primary"},
+                "thermal_data": {
+                    "version": "2.1",
+                    "model": {"tau_cooling": 90.0, "tau_warming": 150.0},
+                    "probe_history": [],
+                    "confidence": 0.0,
+                },
+            }
+            backup_file = store.get_data_file_path().with_suffix(".json.backup")
+            primary_file = store.get_data_file_path()
+            backup_file.write_text(json.dumps({
+                "version": "1.0",
+                "entity_id": "climate.klimaanlage_tu_climate",
+                "learning_data": learned_payload,
+            }), encoding="utf-8")
+            primary_file.write_text(json.dumps({
+                "version": "1.0",
+                "entity_id": "climate.klimaanlage_tu_climate",
+                "learning_data": empty_payload,
+            }), encoding="utf-8")
+
+            loaded = await store.async_load_learning_data()
+
+            assert loaded["learning_data"]["marker"] == "primary"
+            assert loaded["thermal_data"]["probe_history"] == [learned_probe]
+            assert loaded["thermal_data"]["model"]["tau_cooling"] == 2133.0
+
+
 class TestDataCorruptionRecovery:
     """Test recovery scenarios from corrupted data."""
     

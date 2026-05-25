@@ -1,6 +1,7 @@
 """Data persistence for Smart Climate Control learning data."""
 
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -148,6 +149,109 @@ class SmartClimateDataStore:
             
         except (json.JSONDecodeError, IOError, OSError, KeyError, TypeError):
             return False
+
+    @staticmethod
+    def _extract_thermal_data(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Extract v2.1 thermal_data from either wrapped or inner payloads."""
+        if not isinstance(payload, dict):
+            return None
+
+        # Inner v2.1 payload passed to async_save_learning_data().
+        thermal_data = payload.get("thermal_data")
+        if isinstance(thermal_data, dict):
+            return thermal_data
+
+        # On-disk wrapper written by SmartClimateDataStore.
+        learning_data = payload.get("learning_data")
+        if isinstance(learning_data, dict):
+            thermal_data = learning_data.get("thermal_data")
+            if isinstance(thermal_data, dict):
+                return thermal_data
+
+        return None
+
+    @staticmethod
+    def _thermal_data_has_restorable_model(thermal_data: Optional[Dict[str, Any]]) -> bool:
+        """Return True when thermal_data contains learned model state worth preserving."""
+        if not isinstance(thermal_data, dict):
+            return False
+
+        probe_history = thermal_data.get("probe_history")
+        if isinstance(probe_history, list) and len(probe_history) > 0:
+            return True
+
+        confidence = thermal_data.get("confidence")
+        if isinstance(confidence, (int, float)) and confidence > 0.0:
+            return True
+
+        model = thermal_data.get("model")
+        if isinstance(model, dict):
+            tau_cooling = model.get("tau_cooling")
+            tau_warming = model.get("tau_warming")
+            if isinstance(tau_cooling, (int, float)) and abs(float(tau_cooling) - 90.0) > 0.01:
+                return True
+            if isinstance(tau_warming, (int, float)) and abs(float(tau_warming) - 150.0) > 0.01:
+                return True
+
+        return False
+
+    @classmethod
+    def _thermal_data_is_empty_default_snapshot(cls, thermal_data: Optional[Dict[str, Any]]) -> bool:
+        """Detect a just-created/default thermal snapshot that would wipe learned state."""
+        if not isinstance(thermal_data, dict):
+            return False
+
+        probe_history = thermal_data.get("probe_history")
+        if probe_history not in (None, []):
+            return False
+
+        confidence = thermal_data.get("confidence")
+        if isinstance(confidence, (int, float)) and confidence > 0.0:
+            return False
+
+        return not cls._thermal_data_has_restorable_model(thermal_data)
+
+    def _load_restorable_thermal_data_from_existing_files(self) -> Optional[Dict[str, Any]]:
+        """Load the best existing thermal_data from primary/backup persistence files."""
+        candidates = [
+            self._data_file_path,
+            self._data_file_path.with_suffix(f"{self._data_file_path.suffix}.backup"),
+            self._data_file_path.with_suffix(f"{self._data_file_path.suffix}.deleted"),
+        ]
+
+        for file_path in candidates:
+            if not file_path.exists():
+                continue
+
+            try:
+                with file_path.open("r", encoding="utf-8") as f:
+                    payload = json.load(f)
+                thermal_data = self._extract_thermal_data(payload)
+                if self._thermal_data_has_restorable_model(thermal_data):
+                    _LOGGER.debug("Found restorable thermal data in %s", file_path)
+                    return copy.deepcopy(thermal_data)
+            except (json.JSONDecodeError, IOError, OSError, TypeError) as exc:
+                _LOGGER.debug("Could not inspect thermal data in %s: %s", file_path, exc)
+
+        return None
+
+    def _preserve_restorable_thermal_data(self, learning_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Avoid overwriting learned thermal_data with empty/default reload snapshots."""
+        incoming_thermal_data = self._extract_thermal_data(learning_data)
+        if not self._thermal_data_is_empty_default_snapshot(incoming_thermal_data):
+            return learning_data
+
+        existing_thermal_data = self._load_restorable_thermal_data_from_existing_files()
+        if not existing_thermal_data:
+            return learning_data
+
+        preserved = copy.deepcopy(learning_data)
+        preserved["thermal_data"] = existing_thermal_data
+        _LOGGER.warning(
+            "Preserved existing learned thermal data for %s instead of saving an empty/default thermal snapshot",
+            self._entity_id,
+        )
+        return preserved
     
     async def async_save_learning_data(self, learning_data: Dict[str, Any]) -> None:
         """Save learning data to JSON file safely and asynchronously.
@@ -163,6 +267,15 @@ class SmartClimateDataStore:
         """
         async with self._lock:
             try:
+                # Ensure directory exists before inspecting or writing persistence files
+                await self._hass.async_add_executor_job(self._ensure_data_directory)
+
+                # Preserve learned thermal model state if a transient reload produces
+                # an empty/default thermal snapshot while valid data already exists.
+                learning_data = await self._hass.async_add_executor_job(
+                    self._preserve_restorable_thermal_data, learning_data
+                )
+
                 # Prepare data structure with metadata
                 save_data = {
                     "version": DATA_FORMAT_VERSION,
@@ -171,9 +284,6 @@ class SmartClimateDataStore:
                     "learning_enabled": True,
                     "learning_data": learning_data
                 }
-                
-                # Ensure directory exists
-                await self._hass.async_add_executor_job(self._ensure_data_directory)
                 
                 # Start timing for write latency measurement (after directory creation)
                 start_time = time.perf_counter()
@@ -278,6 +388,16 @@ class SmartClimateDataStore:
                 if not isinstance(learning_data, dict):
                     _LOGGER.warning("Missing or invalid learning_data in %s", self._data_file_path)
                     return None
+
+                if self._thermal_data_is_empty_default_snapshot(self._extract_thermal_data(learning_data)):
+                    existing_thermal_data = self._load_restorable_thermal_data_from_existing_files()
+                    if existing_thermal_data:
+                        learning_data = copy.deepcopy(learning_data)
+                        learning_data["thermal_data"] = existing_thermal_data
+                        _LOGGER.warning(
+                            "Restored learned thermal data for %s from backup/existing persistence because primary snapshot was empty/default",
+                            self._entity_id,
+                        )
                 
                 _LOGGER.debug(
                     "Loaded learning data for %s (%d bytes)",
