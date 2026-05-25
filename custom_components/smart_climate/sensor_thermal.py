@@ -458,6 +458,135 @@ class ModelConfidenceSensor(SmartClimateThermalSensor):
             return None
 
 
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return split confidence context."""
+        thermal_components = self._get_thermal_components() or {}
+        thermal_manager = thermal_components.get("thermal_manager")
+        if thermal_manager and hasattr(thermal_manager, "get_confidence_breakdown"):
+            breakdown = thermal_manager.get_confidence_breakdown()
+        else:
+            thermal_model = thermal_components.get("thermal_model")
+            breakdown = (
+                thermal_model.get_confidence_breakdown()
+                if thermal_model and hasattr(thermal_model, "get_confidence_breakdown") else {}
+            )
+        return {
+            "thermal_probe_confidence": round(float(breakdown.get("thermal_probe_confidence", 0.0)) * 100, 1),
+            "passive_drift_confidence": round(float(breakdown.get("passive_drift_confidence", 0.0)) * 100, 1),
+            "overall_model_confidence": round(float(breakdown.get("overall_model_confidence", 0.0)) * 100, 1),
+            "active_probe_count": breakdown.get("active_probe_count", 0),
+            "passive_probe_count": breakdown.get("passive_probe_count", 0),
+            "total_probe_count": breakdown.get("total_probe_count", 0),
+            "source": "thermal_model.confidence_breakdown",
+        }
+
+
+class ThermalProbeConfidenceSensor(SmartClimateThermalSensor):
+    """Sensor for active thermal probe confidence percentage."""
+
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator, base_entity_id, "thermal_probe_confidence", config_entry)
+        self._attr_name = "Thermal Probe Confidence"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 1
+        self._attr_icon = "mdi:test-tube"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> Optional[float]:
+        thermal_components = self._get_thermal_components() or {}
+        thermal_manager = thermal_components.get("thermal_manager")
+        if thermal_manager and hasattr(thermal_manager, "get_confidence_breakdown"):
+            return thermal_manager.get_confidence_breakdown().get("thermal_probe_confidence", 0.0) * 100
+        return None
+
+
+class PassiveDriftConfidenceSensor(SmartClimateThermalSensor):
+    """Sensor for passive/history-backfill drift confidence percentage."""
+
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator, base_entity_id, "passive_drift_confidence", config_entry)
+        self._attr_name = "Passive Drift Confidence"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 1
+        self._attr_icon = "mdi:weather-windy"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> Optional[float]:
+        thermal_components = self._get_thermal_components() or {}
+        thermal_manager = thermal_components.get("thermal_manager")
+        if thermal_manager and hasattr(thermal_manager, "get_confidence_breakdown"):
+            return thermal_manager.get_confidence_breakdown().get("passive_drift_confidence", 0.0) * 100
+        return None
+
+
+class OverallControlConfidenceSensor(SmartClimateThermalSensor):
+    """Sensor for combined Smart Climate control confidence."""
+
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator, base_entity_id, "overall_control_confidence", config_entry)
+        self._attr_name = "Overall Control Confidence"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 1
+        self._attr_icon = "mdi:shield-check"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def native_value(self) -> Optional[float]:
+        thermal_components = self._get_thermal_components() or {}
+        thermal_manager = thermal_components.get("thermal_manager")
+        model_conf = 0.0
+        if thermal_manager and hasattr(thermal_manager, "get_confidence_breakdown"):
+            model_conf = float(thermal_manager.get_confidence_breakdown().get("overall_model_confidence", 0.0)) * 100
+        data = self.coordinator.data or {}
+        hysteresis_conf = self._as_float(data.get("current_accuracy"))
+        if hysteresis_conf is None:
+            hysteresis_conf = self._as_float(data.get("power_correlation_accuracy"))
+        if hysteresis_conf is None:
+            return model_conf
+        return max(model_conf, min(100.0, hysteresis_conf))
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        data = self.coordinator.data or {}
+        return {
+            "hysteresis_confidence": self._as_float(data.get("current_accuracy")),
+            "power_correlation_accuracy": self._as_float(data.get("power_correlation_accuracy")),
+            "status_detail": "Combined confidence: uses thermal model confidence plus existing hysteresis/power learning confidence",
+        }
+
+
+class ProbeDiagnosticsSensor(SmartClimateThermalSensor):
+    """Sensor exposing why probe learning is or is not running."""
+
+    def __init__(self, coordinator, base_entity_id: str, config_entry: ConfigEntry) -> None:
+        super().__init__(coordinator, base_entity_id, "probe_diagnostics", config_entry)
+        self._attr_name = "Probe Diagnostics"
+        self._attr_icon = "mdi:clipboard-pulse-outline"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def _diagnostics(self) -> Dict[str, Any]:
+        thermal_components = self._get_thermal_components() or {}
+        thermal_manager = thermal_components.get("thermal_manager")
+        if thermal_manager and hasattr(thermal_manager, "get_probe_diagnostics"):
+            return thermal_manager.get_probe_diagnostics()
+        return {"last_decision": "unavailable", "last_blocker": "blocked_no_thermal_manager"}
+
+    @property
+    def native_value(self) -> Optional[str]:
+        diagnostics = self._diagnostics()
+        return diagnostics.get("last_blocker") or diagnostics.get("last_decision")
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        return self._diagnostics()
+
+
 class TauCoolingSensor(SmartClimateThermalSensor):
     """Sensor for thermal cooling time constant."""
     
@@ -885,6 +1014,10 @@ __all__ = [
     "ShadowModeSensor",
     # Performance sensors
     "ModelConfidenceSensor",
+    "ThermalProbeConfidenceSensor",
+    "PassiveDriftConfidenceSensor",
+    "OverallControlConfidenceSensor",
+    "ProbeDiagnosticsSensor",
     "TauCoolingSensor",
     "TauWarmingSensor", 
     "AverageOnCycleSensor",

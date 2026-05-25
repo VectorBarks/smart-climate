@@ -86,6 +86,10 @@ from .sensor_thermal import (
     ComfortPreferenceSensor,
     ShadowModeSensor,
     ModelConfidenceSensor,
+    ThermalProbeConfidenceSensor,
+    PassiveDriftConfidenceSensor,
+    OverallControlConfidenceSensor,
+    ProbeDiagnosticsSensor,
     TauCoolingSensor,
     TauWarmingSensor,
     AverageOnCycleSensor,
@@ -199,6 +203,10 @@ async def async_setup_entry(
                 
                 # Performance Sensors (5)
                 ModelConfidenceSensor(coordinator, entity_id, config_entry),
+                ThermalProbeConfidenceSensor(coordinator, entity_id, config_entry),
+                PassiveDriftConfidenceSensor(coordinator, entity_id, config_entry),
+                OverallControlConfidenceSensor(coordinator, entity_id, config_entry),
+                ProbeDiagnosticsSensor(coordinator, entity_id, config_entry),
                 TauCoolingSensor(coordinator, entity_id, config_entry),
                 TauWarmingSensor(coordinator, entity_id, config_entry),
                 AverageOnCycleSensor(coordinator, entity_id, config_entry),

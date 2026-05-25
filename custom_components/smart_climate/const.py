@@ -220,8 +220,8 @@ DEFAULT_CALIBRATION_DRIFT_THRESHOLD = 0.3
 
 # Passive learning default values (v1.4.3+)
 DEFAULT_PASSIVE_LEARNING_ENABLED = True  # Enabled by default for new passive learning feature
-DEFAULT_PASSIVE_MIN_DRIFT_MINUTES = 15  # Minimum 15 minutes of off time for valid drift
-DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD = 0.3  # Accept passive measurements with 30% confidence or higher
+DEFAULT_PASSIVE_MIN_DRIFT_MINUTES = 10  # Faster relearn: accept 10 minutes of off time for valid drift
+DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD = 0.2  # Faster relearn: accept passive measurements with 20% confidence or higher
 
 # Humidity monitoring default values (v1.5.0+)
 DEFAULT_HUMIDITY_CHANGE_THRESHOLD = 2.0  # percent

@@ -31,6 +31,7 @@ class ProbeResult:
     aborted: bool
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     outdoor_temp: Optional[float] = field(default=None)
+    source: str = "active"
 
 
 class PassiveThermalModel:
@@ -105,22 +106,47 @@ class PassiveThermalModel:
     
     def get_confidence(self) -> float:
         """Confidence based on count AND diversity."""
+        return self._calculate_confidence_for_history(list(self._probe_history))
+
+    def _calculate_confidence_for_history(self, history: List[ProbeResult]) -> float:
+        """Calculate confidence for a selected probe subset."""
         import math
-        
-        if not self._probe_history:
+
+        if not history:
             return 0.0
-            
-        # Base confidence from probe count (up to 80%)
-        probe_count = len(self._probe_history)
+
+        probe_count = len(history)
         base_confidence = min(math.log(probe_count + 1) / math.log(16), 0.8)
-        
-        # Diversity bonus (up to 20%)
-        diversity_score = self._calculate_diversity_score()
+
+        diversity_score = self._calculate_diversity_score(history)
         diversity_bonus = diversity_score * 0.2
-        
+
         return min(base_confidence + diversity_bonus, 1.0)
 
-    def _calculate_diversity_score(self) -> float:
+    def get_confidence_for_sources(self, sources: set[str]) -> float:
+        """Return model confidence calculated only from selected probe sources."""
+        selected = [
+            probe for probe in self._probe_history
+            if getattr(probe, "source", "active") in sources
+        ]
+        return self._calculate_confidence_for_history(selected)
+
+    def get_confidence_breakdown(self) -> dict:
+        """Return split confidence metrics for diagnostics and UI sensors."""
+        active_sources = {"active"}
+        passive_sources = {"passive", "history_backfill"}
+        active_count = sum(1 for probe in self._probe_history if getattr(probe, "source", "active") in active_sources)
+        passive_count = sum(1 for probe in self._probe_history if getattr(probe, "source", "active") in passive_sources)
+        return {
+            "thermal_probe_confidence": self.get_confidence_for_sources(active_sources),
+            "passive_drift_confidence": self.get_confidence_for_sources(passive_sources),
+            "overall_model_confidence": self.get_confidence(),
+            "active_probe_count": active_count,
+            "passive_probe_count": passive_count,
+            "total_probe_count": len(self._probe_history),
+        }
+
+    def _calculate_diversity_score(self, history: Optional[List[ProbeResult]] = None) -> float:
         """Calculate diversity score based on temperature bin coverage.
         
         Returns:
@@ -129,13 +155,14 @@ class PassiveThermalModel:
         # Import here to avoid circular imports
         from .probe_scheduler import OUTDOOR_TEMP_BINS
         
-        if not self._probe_history:
+        selected_history = list(self._probe_history) if history is None else list(history)
+        if not selected_history:
             return 0.0
             
         # Count unique temperature bins represented in probe history
         covered_bins = set()
         
-        for probe in self._probe_history:
+        for probe in selected_history:
             if probe.outdoor_temp is not None:
                 bin_index = self._get_temperature_bin_index(probe.outdoor_temp)
                 covered_bins.add(bin_index)

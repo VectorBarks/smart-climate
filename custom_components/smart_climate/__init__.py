@@ -786,6 +786,18 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                     _LOGGER.debug("Learning data and engine state restored for entity: %s", entity_id)
                 else:
                     _LOGGER.debug("No learning data to restore for entity: %s", entity_id)
+
+                if thermal_efficiency_enabled and thermal_components:
+                    thermal_model = thermal_components.get("thermal_model")
+                    if thermal_model and hasattr(thermal_model, "get_probe_count") and thermal_model.get_probe_count() == 0:
+                        try:
+                            from .thermal_history_backfill import async_backfill_from_recorder
+                            added = await async_backfill_from_recorder(hass, thermal_model, config)
+                            if added:
+                                _LOGGER.info("Thermal history backfill restored %d inferred probes for %s", added, entity_id)
+                        except Exception as backfill_exc:
+                            _LOGGER.debug("Thermal history backfill skipped for %s: %s", entity_id, backfill_exc)
+                
             except Exception as exc:
                 _LOGGER.warning("Failed to load learning data for %s: %s", entity_id, exc)
                 # Continue setup without loaded data

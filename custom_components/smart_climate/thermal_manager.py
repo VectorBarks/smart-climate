@@ -18,6 +18,10 @@ from .const import (
     MIN_ON_TIME_SECONDS,
     PRIMING_DURATION_HOURS,
     RECOVERY_DURATION_MINUTES,
+    CONF_PASSIVE_CONFIDENCE_THRESHOLD,
+    CONF_PASSIVE_MIN_DRIFT_MINUTES,
+    DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD,
+    DEFAULT_PASSIVE_MIN_DRIFT_MINUTES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -140,7 +144,7 @@ class ThermalManager:
         self.stability_detector = StabilityDetector(
             idle_threshold_minutes=self._config.get('calibration_idle_minutes', 30),
             drift_threshold=self._config.get('calibration_drift_threshold', 0.3),
-            passive_min_drift_minutes=self._config.get('passive_min_drift_minutes', 15)
+            passive_min_drift_minutes=self._config.get(CONF_PASSIVE_MIN_DRIFT_MINUTES, DEFAULT_PASSIVE_MIN_DRIFT_MINUTES)
         )
         
         # Initialize state handlers registry
@@ -479,7 +483,8 @@ class ThermalManager:
                     "fit_quality": probe.fit_quality,
                     "aborted": probe.aborted,
                     "timestamp": probe.timestamp.isoformat(),  # Read existing timestamp
-                    "outdoor_temp": probe.outdoor_temp  # v1.5.3 enhancement - None for legacy probes
+                    "outdoor_temp": probe.outdoor_temp,  # v1.5.3 enhancement - None for legacy probes
+                    "source": getattr(probe, "source", "active")
                 }
                 probe_history.append(probe_data)
 
@@ -532,6 +537,10 @@ class ThermalManager:
             },
             "probe_history": probe_history,
             "confidence": self._model.get_confidence() if hasattr(self._model, 'get_confidence') else 0.0,
+            "confidence_breakdown": (
+                self._model.get_confidence_breakdown()
+                if hasattr(self._model, 'get_confidence_breakdown') else {}
+            ),
             "stability_detector": stability_data,
             "probe_scheduler_config": self._serialize_probe_scheduler_config(),  # NEW - v2.1
             "metadata": {
@@ -845,6 +854,7 @@ class ThermalManager:
                                             _LOGGER.debug("Invalid outdoor_temp type: %s", type(outdoor_temp_value))
                                     # If no outdoor_temp field, leave as None (legacy v1.5.2 behavior)
                                     
+                                    source = str(probe_dict.get("source") or probe_dict.get("sample_type") or "active")
                                     probe = ProbeResult(
                                         tau_value=float(probe_dict["tau_value"]),
                                         confidence=float(confidence),
@@ -852,7 +862,8 @@ class ThermalManager:
                                         fit_quality=float(fit_quality),
                                         aborted=bool(probe_dict["aborted"]),
                                         timestamp=timestamp,  # Pass the restored timestamp
-                                        outdoor_temp=outdoor_temp  # v1.5.3 enhancement
+                                        outdoor_temp=outdoor_temp,  # v1.5.3 enhancement
+                                        source=source
                                     )
                                     restored_probes.append(probe)
                                     _LOGGER.debug("Restored probe: tau=%.1f, confidence=%.2f", 
@@ -926,6 +937,34 @@ class ThermalManager:
         if recoveries_this_session > 0:
             _LOGGER.warning("Thermal data restoration completed with %d field recoveries", 
                           recoveries_this_session)
+
+    def get_probe_diagnostics(self) -> Dict[str, Any]:
+        """Return current probe scheduler diagnostics for sensors and dashboards."""
+        if self.probe_scheduler and hasattr(self.probe_scheduler, "get_probe_diagnostics"):
+            return self.probe_scheduler.get_probe_diagnostics()
+        return {
+            "last_decision": "unavailable",
+            "last_blocker": "blocked_probe_scheduler_disabled",
+            "mode": "disabled",
+            "fast_relearn_active": False,
+            "probe_count": self._model.get_probe_count() if hasattr(self._model, "get_probe_count") else 0,
+            "eligible_next_probe_at": None,
+            "hours_until_next_probe": 0.0,
+        }
+
+    def get_confidence_breakdown(self) -> Dict[str, Any]:
+        """Return split thermal confidence metrics."""
+        if hasattr(self._model, "get_confidence_breakdown"):
+            return self._model.get_confidence_breakdown()
+        confidence = self._model.get_confidence() if hasattr(self._model, "get_confidence") else 0.0
+        return {
+            "thermal_probe_confidence": confidence,
+            "passive_drift_confidence": 0.0,
+            "overall_model_confidence": confidence,
+            "active_probe_count": 0,
+            "passive_probe_count": 0,
+            "total_probe_count": 0,
+        }
 
     def update_state(self, current_temp: Optional[float] = None, outdoor_temp: Optional[float] = None, hvac_mode: Optional[str] = None) -> None:
         """Update thermal state and check for transitions.
@@ -1065,8 +1104,8 @@ class ThermalManager:
             outdoor_temp: Current outdoor temperature (°C) for ProbeResult enhancement
         
         Uses configuration parameters:
-        - passive_confidence_threshold: Minimum confidence to accept results (default 0.3)
-        - passive_min_drift_minutes: Minimum drift duration (default 15)
+        - passive_confidence_threshold: Minimum confidence to accept results (default 0.2)
+        - passive_min_drift_minutes: Minimum drift duration (default 10)
         """
         try:
             # Check for natural drift event
@@ -1090,7 +1129,7 @@ class ThermalManager:
                 return
                 
             # Check confidence threshold from config
-            confidence_threshold = self._config.get('passive_confidence_threshold', 0.3)
+            confidence_threshold = self._config.get(CONF_PASSIVE_CONFIDENCE_THRESHOLD, DEFAULT_PASSIVE_CONFIDENCE_THRESHOLD)
             if probe_result.confidence < confidence_threshold:
                 _LOGGER.debug("Passive learning rejected: confidence %.3f < threshold %.3f", 
                              probe_result.confidence, confidence_threshold)

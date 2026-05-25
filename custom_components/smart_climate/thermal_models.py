@@ -60,6 +60,7 @@ class ProbeResult:
     aborted: bool
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     outdoor_temp: Optional[float] = field(default=None)
+    source: str = "active"
 
 
 class ThermalState(Enum):

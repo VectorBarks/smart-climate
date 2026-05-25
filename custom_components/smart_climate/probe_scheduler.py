@@ -18,6 +18,9 @@ _LOGGER = logging.getLogger(__name__)
 # Configuration constants from architecture specification
 MIN_PROBE_INTERVAL = timedelta(hours=12)  # System recovery time
 MAX_PROBE_INTERVAL = timedelta(days=7)    # Force probe if exceeded
+FAST_RELEARN_PROBE_LIMIT = 5
+FAST_RELEARN_MIN_INTERVAL = timedelta(hours=6)
+FAST_RELEARN_MAX_INTERVAL = timedelta(days=2)
 
 OUTDOOR_TEMP_BINS = [-10, 0, 10, 20, 30]  # Adaptive based on climate
 
@@ -76,6 +79,49 @@ def validate_advanced_settings(settings: AdvancedSettings) -> Tuple[bool, List[s
 
 
 
+class BinCoverage(dict):
+    """Temperature-bin coverage that behaves like both legacy dict and ratio."""
+
+    def __init__(self, bins=None, ratio: float = 0.0):
+        super().__init__(bins or {})
+        self.ratio = float(ratio)
+
+    def __float__(self):
+        return self.ratio
+
+    def __mul__(self, other):
+        return self.ratio * other
+
+    def __rmul__(self, other):
+        return other * self.ratio
+
+    def __sub__(self, other):
+        return self.ratio - other
+
+    def __rsub__(self, other):
+        return other - self.ratio
+
+    def __lt__(self, other):
+        return self.ratio < other
+
+    def __le__(self, other):
+        return self.ratio <= other
+
+    def __gt__(self, other):
+        return self.ratio > other
+
+    def __ge__(self, other):
+        return self.ratio >= other
+
+    def __eq__(self, other):
+        if isinstance(other, (int, float)):
+            return self.ratio == float(other)
+        return dict.__eq__(self, other)
+
+    def __format__(self, spec):
+        return format(self.ratio, spec)
+
+
 class LearningProfile(Enum):
     """Learning profile options for probe scheduling."""
     COMFORT = "comfort"      # Default - long intervals, requires presence
@@ -102,8 +148,8 @@ class ProbeScheduler:
         self,
         hass: HomeAssistant,
         thermal_model: PassiveThermalModel,
-        presence_entity_id: Optional[str],
-        weather_entity_id: Optional[str],
+        presence_entity_id: Optional[str] = None,
+        weather_entity_id: Optional[str] = None,
         calendar_entity_id: Optional[str] = None,
         manual_override_entity_id: Optional[str] = None,
         learning_profile: LearningProfile = LearningProfile.BALANCED
@@ -140,9 +186,51 @@ class ProbeScheduler:
         
         # Set up logger for this specific instance
         self._logger = logging.getLogger(f"{__name__}.probe_scheduler")
+        self._last_diagnostics = self._new_diagnostics("not_checked")
         self._logger.debug("ProbeScheduler initialized with presence=%s, weather=%s, calendar=%s, manual=%s, profile=%s",
                           presence_entity_id, weather_entity_id, calendar_entity_id, manual_override_entity_id, learning_profile.value)
         
+
+    def _new_diagnostics(self, decision: str, blocker: Optional[str] = None) -> dict:
+        """Build a stable diagnostics payload for the latest probe decision."""
+        probe_count = len(self._get_probe_history()) if hasattr(self, "_model") else 0
+        fast_relearn = probe_count < FAST_RELEARN_PROBE_LIMIT
+        return {
+            "last_decision": decision,
+            "last_blocker": blocker,
+            "mode": "fast_relearn" if fast_relearn else "normal",
+            "fast_relearn_active": fast_relearn,
+            "probe_count": probe_count,
+            "fast_relearn_probe_limit": FAST_RELEARN_PROBE_LIMIT,
+            "effective_min_interval_hours": self._effective_min_interval().total_seconds() / 3600,
+            "effective_max_interval_days": self._effective_max_interval().total_seconds() / 86400,
+            "presence_check_skipped": False,
+            "eligible_next_probe_at": None,
+            "hours_until_next_probe": 0.0,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def _set_diagnostics(self, decision: str, blocker: Optional[str] = None, **extra) -> None:
+        diagnostics = self._new_diagnostics(decision, blocker)
+        diagnostics.update(extra)
+        self._last_diagnostics = diagnostics
+
+    def get_probe_diagnostics(self) -> dict:
+        """Return latest probe scheduling diagnostics for sensors/dashboards."""
+        return dict(self._last_diagnostics)
+
+    def _is_fast_relearn_active(self) -> bool:
+        return len(self._get_probe_history()) < FAST_RELEARN_PROBE_LIMIT
+
+    def _effective_min_interval(self) -> timedelta:
+        if self._is_fast_relearn_active():
+            return FAST_RELEARN_MIN_INTERVAL
+        return timedelta(hours=self._profile_config.min_probe_interval_hours)
+
+    def _effective_max_interval(self) -> timedelta:
+        if self._is_fast_relearn_active():
+            return FAST_RELEARN_MAX_INTERVAL
+        return timedelta(days=self._profile_config.max_probe_interval_days)
 
 
     def _check_presence_entity(self) -> Optional[bool]:
@@ -209,56 +297,61 @@ class ProbeScheduler:
         return state.state == "on"
 
     def should_probe_now(self) -> bool:
-        """Main decision method combining all factors.
-        
-        Implements decision tree from architecture specification with profile-aware logic:
-        1. Force probe if maximum interval exceeded
-        2. Block if minimum interval not met
-        3. Block if not opportune time (only if presence_required in profile)
-        4. Block if low information gain
-        5. Approve if all conditions favorable
-        
-        Returns:
-            True if conditions are ideal for thermal probing
-        """
+        """Main decision method combining all factors with fast-relearn diagnostics."""
         try:
-            # Step 1: Force probe if maximum interval exceeded
+            probe_history = self._get_probe_history()
+            probe_count = len(probe_history)
+            fast_relearn = probe_count < FAST_RELEARN_PROBE_LIMIT
+
+            if probe_count == 0:
+                self._set_diagnostics(
+                    "approved",
+                    "approved_first_probe",
+                    presence_check_skipped=True,
+                )
+                self._logger.info("Probe approved: first thermal probe is prioritized")
+                return True
+
             if self._check_maximum_interval_exceeded():
+                self._set_diagnostics(
+                    "approved",
+                    "approved_max_interval",
+                    presence_check_skipped=fast_relearn,
+                )
                 self._logger.info("Probe forced: maximum interval exceeded")
                 return True
-            
-            # Step 2: Block if minimum interval not met
+
             if not self._enforce_minimum_interval():
                 self._logger.debug("Probe blocked: minimum interval not met")
                 return False
-            
-            
-            # Step 3: Block if not opportune time (only if presence required in profile)
-            if self._profile_config.presence_required and not self._is_opportune_time():
-                self._logger.debug("Probe blocked: user present (profile: %s requires presence)", self._learning_profile.value)
-                return False
-            elif not self._profile_config.presence_required:
-                self._logger.debug("Presence check skipped (profile: %s allows probing regardless)", self._learning_profile.value)
-            
-            # Step 4: Block if low information gain
-            # Get current outdoor temperature for information gain analysis
+
+            if self._profile_config.presence_required and not fast_relearn:
+                if not self._is_opportune_time():
+                    self._set_diagnostics("blocked", "blocked_presence")
+                    self._logger.debug("Probe blocked: user present (profile: %s requires presence)", self._learning_profile.value)
+                    return False
+            else:
+                self._logger.debug("Presence check skipped (profile=%s, fast_relearn=%s)", self._learning_profile.value, fast_relearn)
+
             current_outdoor_temp = self._get_current_outdoor_temperature()
-            probe_history = self._get_probe_history()
-            
-            if not self._has_high_information_gain(current_outdoor_temp, probe_history):
-                self._logger.debug("Probe blocked: low information gain (threshold: %.1f)", 
-                                 self._profile_config.information_gain_threshold)
+            if not fast_relearn and not self._has_high_information_gain(current_outdoor_temp, probe_history):
+                self._set_diagnostics("blocked", "blocked_low_information_gain")
+                self._logger.debug("Probe blocked: low information gain (threshold: %.1f)", self._profile_config.information_gain_threshold)
                 return False
-            
-            # All conditions favorable - approve probe
-            self._logger.info("Probe approved: all conditions favorable (profile: %s)", self._learning_profile.value)
+
+            self._set_diagnostics(
+                "approved",
+                "approved_fast_relearn" if fast_relearn else "approved",
+                presence_check_skipped=fast_relearn or not self._profile_config.presence_required,
+            )
+            self._logger.info("Probe approved: conditions favorable (profile=%s, fast_relearn=%s)", self._learning_profile.value, fast_relearn)
             return True
-            
+
         except Exception as e:
             self._logger.error("Error in probe decision logic: %s", e)
-            # Conservative: block probe on error
+            self._set_diagnostics("blocked", "blocked_error", error=str(e))
             return False
-        
+
     def _is_opportune_time(self) -> bool:
         """Check presence hierarchy for opportune probe timing.
         
@@ -388,7 +481,7 @@ class ProbeScheduler:
         # Handle temperatures at or above the highest boundary
         return len(temp_bins)
         
-    def _get_bin_coverage(self, probe_history) -> float:
+    def _get_bin_coverage(self, probe_history) -> BinCoverage:
         """Calculate what fraction of temperature bins have been probed.
         
         Analyzes probe history to determine temperature diversity.
@@ -401,21 +494,21 @@ class ProbeScheduler:
             Coverage ratio (0.0 to 1.0) where 1.0 means all bins covered
         """
         if not probe_history:
-            return 0.0
+            return BinCoverage({}, 0.0)
             
         # Track which bins have been probed
-        probed_bins = set()
+        probed_bins = {}
         
         for probe in probe_history:
             if probe.outdoor_temp is not None:
                 bin_index = self._get_temp_bin(probe.outdoor_temp)
-                probed_bins.add(bin_index)
+                probed_bins[bin_index] = probed_bins.get(bin_index, 0) + 1
                 
         # Total possible bins (6: <-10, -10-0, 0-10, 10-20, 20-30, >30)
         total_bins = len(OUTDOOR_TEMP_BINS) + 1
         
         # Calculate coverage ratio
-        return len(probed_bins) / total_bins
+        return BinCoverage(probed_bins, len(probed_bins) / total_bins)
 
     def _check_maximum_interval_exceeded(self) -> bool:
         """Check if maximum probe interval has been exceeded.
@@ -427,27 +520,24 @@ class ProbeScheduler:
             True if maximum interval exceeded and probe should be forced
         """
         try:
-            # Get the last probe time from ThermalManager
             last_probe_time = self._get_last_probe_time()
-            
             if last_probe_time is None:
-                # Never probed before - don't force probe
                 self._logger.debug("No previous probe found, not forcing based on maximum interval")
                 return False
-            
-            # Calculate time since last probe
-            current_time = datetime.now()
+
+            max_interval = self._effective_max_interval()
+            current_time = datetime.now(last_probe_time.tzinfo) if last_probe_time.tzinfo else datetime.now()
             time_since_last = current_time - last_probe_time
-            
-            if time_since_last >= MAX_PROBE_INTERVAL:
+
+            if time_since_last >= max_interval:
                 self._logger.info(
                     "Maximum probe interval exceeded: %.1f days since last probe (limit: %.1f days)",
                     time_since_last.total_seconds() / 86400,
-                    MAX_PROBE_INTERVAL.total_seconds() / 86400
+                    max_interval.total_seconds() / 86400
                 )
                 return True
             else:
-                days_remaining = (MAX_PROBE_INTERVAL - time_since_last).total_seconds() / 86400
+                days_remaining = (max_interval - time_since_last).total_seconds() / 86400
                 self._logger.debug(
                     "Maximum interval not exceeded, %.1f days remaining until forced probe",
                     days_remaining
@@ -469,19 +559,13 @@ class ProbeScheduler:
             True if minimum interval met and probe can proceed
         """
         try:
-            # Get the last probe time from ThermalManager
             last_probe_time = self._get_last_probe_time()
-            
             if last_probe_time is None:
-                # Never probed before - allow probe
                 self._logger.debug("No previous probe found, minimum interval requirement met")
                 return True
-            
-            # Get minimum interval from profile configuration
-            min_interval = timedelta(hours=self._profile_config.min_probe_interval_hours)
-            
-            # Calculate time since last probe
-            current_time = datetime.now()
+
+            min_interval = self._effective_min_interval()
+            current_time = datetime.now(last_probe_time.tzinfo) if last_probe_time.tzinfo else datetime.now()
             time_since_last = current_time - last_probe_time
             
             if time_since_last >= min_interval:
@@ -492,7 +576,15 @@ class ProbeScheduler:
                 )
                 return True
             else:
-                hours_remaining = (min_interval - time_since_last).total_seconds() / 3600
+                remaining = min_interval - time_since_last
+                hours_remaining = remaining.total_seconds() / 3600
+                eligible_at = last_probe_time + min_interval
+                self._set_diagnostics(
+                    "blocked",
+                    "blocked_min_interval",
+                    eligible_next_probe_at=eligible_at.isoformat(),
+                    hours_until_next_probe=hours_remaining,
+                )
                 self._logger.debug(
                     "Minimum interval not met, %.1f hours remaining until next probe allowed",
                     hours_remaining
@@ -514,6 +606,11 @@ class ProbeScheduler:
             Datetime of last probe, or None if no probe history found
         """
         try:
+            if hasattr(self._model, "get_last_probe_time"):
+                model_probe_time = self._model.get_last_probe_time()
+                if model_probe_time is not None:
+                    return model_probe_time
+
             # Access thermal components via hass.data
             if not hasattr(self._hass, 'data') or not self._hass.data:
                 self._logger.debug("No hass.data available for probe time lookup")
