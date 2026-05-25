@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.7.4 (2026-05-25)
+
+### Summary
+Smart Climate Control v1.7.4 is a pre-release focused on thermal cold-start recovery after data loss, reset, or wrapped ARGO climate churn. It adds faster relearning, recorder-history backfill, split confidence telemetry, and explicit probe-blocker diagnostics.
+
+### Added
+- Fast-relearn / commissioning mode for the first five thermal probes: first chance is prioritized, minimum interval drops to 6 hours, maximum interval drops to 48 hours, and presence blocking is skipped during relearn.
+- Recorder-history backfill that infers conservative passive probe candidates from room temperature, outdoor temperature, HVAC mode, and power/compressor history when probe history is empty.
+- Split confidence telemetry for active thermal probes, passive/history drift, and overall control confidence.
+- `Probe Diagnostics` sensor attributes exposing the latest scheduling decision, blocker reason, next eligible probe time, effective mode, and relearn status.
+
+### Changed
+- Passive drift learning defaults are more useful after reset: minimum drift window is now 10 minutes and confidence threshold is now 0.2.
+- Empty probe-history cold starts now prioritize the first valid probe instead of waiting for perfect diversity/opportunity.
+- Thermal persistence keeps probe source metadata (`active`, `passive`, `history_backfill`) for clearer diagnostics.
+- `analyze_drift_data` now has a NumPy-only fallback so passive/history learning still works when SciPy is unavailable.
+- README/HACS metadata now points at the current pre-release train.
+
+### Verification
+- `python -m json.tool custom_components/smart_climate/manifest.json >/dev/null && python -m json.tool hacs.json >/dev/null`
+- `python -m py_compile custom_components/smart_climate/probe_scheduler.py custom_components/smart_climate/thermal_model.py custom_components/smart_climate/thermal_models.py custom_components/smart_climate/thermal_utils.py custom_components/smart_climate/thermal_manager.py custom_components/smart_climate/thermal_history_backfill.py custom_components/smart_climate/sensor_thermal.py custom_components/smart_climate/sensor.py custom_components/smart_climate/__init__.py`
+- `python -m pytest tests/test_fast_relearn_thermal_learning.py tests/test_thermal_utils.py tests/test_probe_scheduler_edge_cases.py::TestProbeSchedulerEdgeCases::test_empty_probe_history_scenarios -q`
+- Full `python -m pytest -q` is still blocked at collection by existing local HA test-harness/legacy issues unrelated to this change: missing mocked HA button/switch/weather/setup packages, missing optional `freezegun`/`pytest_homeassistant_custom_component`, stale removed config constants/imports, non-subscriptable mocked `DataUpdateCoordinator`, and an invalid legacy U+200C character in `tests/test_climate_thermal_priority.py`.
+
 ## v1.7.3 (2026-05-25)
 
 ### Summary

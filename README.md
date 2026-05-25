@@ -1,13 +1,13 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.7.2--pre--release-orange.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.7.4--pre--release-orange.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 Smart Climate Control wraps an existing Home Assistant climate entity and makes it behave like the room you actually care about, not like the AC unit's badly placed internal sensor.
 
-Current pre-release: **v1.7.2**. This release protects Smart Climate thermal learning persistence during reloads: empty/default thermal snapshots no longer overwrite learned tau/probe history, and startup can recover restorable thermal data from the persistence backup.
+Current pre-release: **v1.7.4**. This release accelerates thermal cold-start recovery after reset or data loss with fast-relearn mode, recorder-history backfill, split confidence telemetry, and explicit probe-blocker diagnostics.
 
 ## What it does
 
