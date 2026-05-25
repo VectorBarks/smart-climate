@@ -6,6 +6,13 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
+from .const import (
+    MIN_OFF_TIME_SECONDS,
+    MIN_ON_TIME_SECONDS,
+    PRIMING_DURATION_HOURS,
+    RECOVERY_DURATION_MINUTES,
+)
+
 
 @dataclass
 class ThermalConstants:
@@ -24,10 +31,10 @@ class ThermalConstants:
     """
     tau_cooling: float = 90.0      # 1.5 minutes - how fast temperature drops when AC off
     tau_warming: float = 150.0     # 2.5 minutes - how fast temperature rises when AC off  
-    min_off_time: int = 600        # 10 minutes minimum off time
-    min_on_time: int = 300         # 5 minutes minimum on time
-    priming_duration: int = 86400  # 24 hours for initial learning
-    recovery_duration: int = 1800  # 30 minutes for mode change recovery
+    min_off_time: int = MIN_OFF_TIME_SECONDS
+    min_on_time: int = MIN_ON_TIME_SECONDS
+    priming_duration: int = PRIMING_DURATION_HOURS * 3600
+    recovery_duration: int = RECOVERY_DURATION_MINUTES * 60
 
 
 @dataclass(frozen=True)

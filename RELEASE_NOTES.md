@@ -1,5 +1,27 @@
 # Release Notes
 
+## v1.7.1 (2026-05-25)
+
+### Summary
+Smart Climate Control v1.7.1 is a pre-release focused on closing the remaining open bug issues around configuration validation and centralized defaults. It keeps existing thermal timing behavior intact while making the source of truth explicit in `const.py`.
+
+### Fixed
+- Forecast configuration now rejects impossible heat-wave and clear-sky windows where `lookahead_hours < pre_action_hours + min_duration_hours`.
+- `CycleMonitor` default minimum off/on durations now use `MIN_OFF_TIME_SECONDS` and `MIN_ON_TIME_SECONDS`.
+- Thermal model and manager defaults now use shared priming/recovery constants instead of duplicating raw seconds.
+- Mode behavior defaults now use shared away/sleep/boost constants.
+
+### Issues
+- Fixes #57
+- Fixes #58
+- Fixes #59
+- Fixes #69
+
+### Verification
+- `for f in custom_components/smart_climate/manifest.json hacs.json custom_components/smart_climate/strings.json custom_components/smart_climate/translations/en.json; do python -m json.tool "$f" >/dev/null; done`
+- `python -m py_compile custom_components/smart_climate/config_flow.py custom_components/smart_climate/cycle_monitor.py custom_components/smart_climate/mode_behaviors.py custom_components/smart_climate/thermal_models.py custom_components/smart_climate/thermal_manager.py custom_components/smart_climate/__init__.py`
+- `python -m pytest tests/test_open_bug_issue_regressions.py tests/test_no_runtime_magic_defaults.py tests/test_config_flow_power_options.py tests/test_thermal_models.py tests/test_thermal_manager.py -q`
+
 ## v1.6.0 (2026-05-25)
 
 ### Summary

@@ -165,6 +165,55 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _validate_forecast_strategy_windows(user_input: Dict[str, Any]) -> None:
+    """Reject weather strategy windows that can never match."""
+    strategy_fields = (
+        (
+            CONF_HEAT_WAVE_LOOKAHEAD_HOURS,
+            CONF_HEAT_WAVE_MIN_DURATION_HOURS,
+            CONF_HEAT_WAVE_PRE_ACTION_HOURS,
+            DEFAULT_HEAT_WAVE_LOOKAHEAD_HOURS,
+            DEFAULT_HEAT_WAVE_MIN_DURATION_HOURS,
+            DEFAULT_HEAT_WAVE_PRE_ACTION_HOURS,
+            "heat_wave_lookahead_too_short",
+        ),
+        (
+            CONF_CLEAR_SKY_LOOKAHEAD_HOURS,
+            CONF_CLEAR_SKY_MIN_DURATION_HOURS,
+            CONF_CLEAR_SKY_PRE_ACTION_HOURS,
+            DEFAULT_CLEAR_SKY_LOOKAHEAD_HOURS,
+            DEFAULT_CLEAR_SKY_MIN_DURATION_HOURS,
+            DEFAULT_CLEAR_SKY_PRE_ACTION_HOURS,
+            "clear_sky_lookahead_too_short",
+        ),
+    )
+
+    for (
+        lookahead_key,
+        min_duration_key,
+        pre_action_key,
+        default_lookahead,
+        default_min_duration,
+        default_pre_action,
+        error_key,
+    ) in strategy_fields:
+        lookahead = user_input.get(lookahead_key, default_lookahead)
+        min_duration = user_input.get(min_duration_key, default_min_duration)
+        pre_action = user_input.get(pre_action_key, default_pre_action)
+        if lookahead < min_duration + pre_action:
+            raise vol.Invalid(error_key)
+
+
+def _forecast_window_error_to_errors(error: vol.Invalid) -> Dict[str, str]:
+    """Map forecast validation errors to Home Assistant form fields."""
+    message = str(error)
+    if "heat_wave_lookahead_too_short" in message:
+        return {CONF_HEAT_WAVE_LOOKAHEAD_HOURS: "heat_wave_lookahead_too_short"}
+    if "clear_sky_lookahead_too_short" in message:
+        return {CONF_CLEAR_SKY_LOOKAHEAD_HOURS: "clear_sky_lookahead_too_short"}
+    return {"base": "unknown"}
+
+
 class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Smart Climate Control."""
 
@@ -207,6 +256,10 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         })
         return vol.Schema(schema_dict)
+
+    def _validate_forecast_strategy_windows(self, user_input: Dict[str, Any]) -> None:
+        """Reject weather strategy windows that can never match."""
+        _validate_forecast_strategy_windows(user_input)
     
     async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle the initial step."""
@@ -248,6 +301,10 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors[CONF_GRADUAL_ADJUSTMENT_RATE] = "out_of_range"
                 elif "learning_probe_step_out_of_range" in str(ex):
                     errors[CONF_LEARNING_PROBE_STEP] = "out_of_range"
+                elif "heat_wave_lookahead_too_short" in str(ex):
+                    errors[CONF_HEAT_WAVE_LOOKAHEAD_HOURS] = "heat_wave_lookahead_too_short"
+                elif "clear_sky_lookahead_too_short" in str(ex):
+                    errors[CONF_CLEAR_SKY_LOOKAHEAD_HOURS] = "clear_sky_lookahead_too_short"
                 else:
                     errors["base"] = "unknown"
                     _LOGGER.exception("Unexpected error in config flow: %s", ex)
@@ -662,6 +719,7 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Validate weather forecast configuration
         forecast_enabled = user_input.get(CONF_FORECAST_ENABLED, DEFAULT_FORECAST_ENABLED)
         validated[CONF_FORECAST_ENABLED] = forecast_enabled
+        self._validate_forecast_strategy_windows(user_input)
         
         if forecast_enabled:
             # Weather entity is required when forecast is enabled
@@ -1032,17 +1090,24 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Handle options flow."""
+        errors = {}
+
         if user_input is not None:
             # Clean up empty string entity IDs to None
             cleaned_input = self._clean_entity_ids(user_input)
-            
-            if cleaned_input.get(CONF_LEARNING_PROFILE) == "custom":
-                # Store basic settings and move to advanced
-                self._basic_settings = cleaned_input
-                return await self.async_step_advanced()
+
+            try:
+                _validate_forecast_strategy_windows(cleaned_input)
+            except vol.Invalid as ex:
+                errors.update(_forecast_window_error_to_errors(ex))
             else:
-                # Direct save for non-custom profiles
-                return self.async_create_entry(title="", data=cleaned_input)
+                if cleaned_input.get(CONF_LEARNING_PROFILE) == "custom":
+                    # Store basic settings and move to advanced
+                    self._basic_settings = cleaned_input
+                    return await self.async_step_advanced()
+                else:
+                    # Direct save for non-custom profiles
+                    return self.async_create_entry(title="", data=cleaned_input)
         
         current_config = self.config_entry.data
         current_options = self.config_entry.options
@@ -1687,6 +1752,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=data_schema,
+            errors=errors,
             description_placeholders=self._get_description_placeholders()
         )
 

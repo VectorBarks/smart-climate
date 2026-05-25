@@ -5,6 +5,8 @@ import time
 from collections import deque
 from typing import Tuple
 
+from .const import MIN_OFF_TIME_SECONDS, MIN_ON_TIME_SECONDS
+
 
 class CycleMonitor:
     """Monitor HVAC cycle timing and health for thermal efficiency system.
@@ -13,12 +15,16 @@ class CycleMonitor:
     issues that indicate system problems or thermal efficiency opportunities.
     """
     
-    def __init__(self, min_off_time: int = 600, min_on_time: int = 300) -> None:
+    def __init__(
+        self,
+        min_off_time: int = MIN_OFF_TIME_SECONDS,
+        min_on_time: int = MIN_ON_TIME_SECONDS,
+    ) -> None:
         """Initialize CycleMonitor with timing constraints.
         
         Args:
-            min_off_time: Minimum off time in seconds (default: 600 = 10 minutes)
-            min_on_time: Minimum on time in seconds (default: 300 = 5 minutes)
+            min_off_time: Minimum off time in seconds.
+            min_on_time: Minimum on time in seconds.
         """
         self._min_off_time = min_off_time
         self._min_on_time = min_on_time

@@ -10,7 +10,15 @@ from homeassistant.core import HomeAssistant
 from .thermal_models import ThermalState, ThermalConstants
 from .thermal_preferences import UserPreferences
 from .thermal_model import PassiveThermalModel
-from .const import CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_HVAC_MODE, DEFAULT_TARGET_TEMPERATURE
+from .const import (
+    CONF_DEFAULT_TARGET_TEMPERATURE,
+    DEFAULT_HVAC_MODE,
+    DEFAULT_TARGET_TEMPERATURE,
+    MIN_OFF_TIME_SECONDS,
+    MIN_ON_TIME_SECONDS,
+    PRIMING_DURATION_HOURS,
+    RECOVERY_DURATION_MINUTES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,10 +129,10 @@ class ThermalManager:
         self.thermal_constants = ThermalConstants(
             tau_cooling=self._config.get('tau_cooling', 90.0),
             tau_warming=self._config.get('tau_warming', 150.0),
-            min_off_time=self._config.get('min_off_time', 600),
-            min_on_time=self._config.get('min_on_time', 300),
-            priming_duration=self._config.get('priming_duration', 86400),
-            recovery_duration=self._config.get('recovery_duration', 1800)
+            min_off_time=self._config.get('min_off_time', MIN_OFF_TIME_SECONDS),
+            min_on_time=self._config.get('min_on_time', MIN_ON_TIME_SECONDS),
+            priming_duration=self._config.get('priming_duration', PRIMING_DURATION_HOURS * 3600),
+            recovery_duration=self._config.get('recovery_duration', RECOVERY_DURATION_MINUTES * 60)
         )
         
         # Initialize stability detector for opportunistic calibration

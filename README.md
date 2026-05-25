@@ -1,13 +1,13 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.6.0-brightgreen.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.7.1--pre--release-orange.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 Smart Climate Control wraps an existing Home Assistant climate entity and makes it behave like the room you actually care about, not like the AC unit's badly placed internal sensor.
 
-Current release: **v1.6.0**. This production release consolidates the 1.5.5 beta line: immediate diagnostic sensor hydration, core-card dashboard generation from live entities, clearer diagnostic states, safer Quiet Mode hysteresis learning, probe-bound handling, transition-based power telemetry, and centralized runtime defaults.
+Current pre-release: **v1.7.1**. This release fixes open configuration and constant-centralization bugs: impossible weather strategy lookahead windows are rejected, mode defaults use shared constants, and thermal/cycle timing defaults track `const.py`.
 
 ## What it does
 

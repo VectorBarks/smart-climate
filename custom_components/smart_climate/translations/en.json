@@ -93,7 +93,9 @@
       "away_temperature_out_of_range": "Away temperature must be between the minimum and maximum temperatures",
       "power_threshold_invalid": "Power thresholds must be in order: idle < minimum < maximum",
       "weather_entity_not_found": "Selected weather entity was not found",
-      "forecast_weather_entity_required": "Weather entity is required when forecast integration is enabled"
+      "forecast_weather_entity_required": "Weather entity is required when forecast integration is enabled",
+      "heat_wave_lookahead_too_short": "Heat wave lookahead must be at least pre-action plus minimum duration",
+      "clear_sky_lookahead_too_short": "Clear sky lookahead must be at least pre-action plus minimum duration"
     },
     "abort": {
       "already_configured": "This climate entity is already configured"

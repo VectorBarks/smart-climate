@@ -1,6 +1,6 @@
 {
   "name": "Smart Climate Control",
-  "hacs": "1.6.0",
+  "hacs": "1.7.1",
   "domains": [
     "smart_climate"
   ],

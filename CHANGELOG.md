@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-05-25
+
+### Fixed
+- Reject impossible heat-wave and clear-sky forecast strategy windows where lookahead is shorter than pre-action plus minimum duration.
+- Centralize `CycleMonitor` minimum on/off timing defaults on `MIN_ON_TIME_SECONDS` and `MIN_OFF_TIME_SECONDS`.
+- Centralize thermal model priming/recovery durations on `PRIMING_DURATION_HOURS` and `RECOVERY_DURATION_MINUTES` while preserving existing 24h/30min behavior.
+- Centralize mode behavior defaults on `DEFAULT_AWAY_TEMPERATURE`, `DEFAULT_SLEEP_OFFSET`, and `DEFAULT_BOOST_OFFSET`.
+
+### Tests
+- Added regression coverage for GitHub bug issues #57, #58, #59, and #69.
+
 ## [1.6.0] - 2026-05-25
 
 ### Added
@@ -1155,7 +1166,8 @@ This release was superseded by v1.2.0-beta5 which implements a more robust archi
 - Safe temperature limits to prevent extreme settings
 - Atomic file operations for data persistence
 
-[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/VectorBarks/smart-climate/compare/v1.6.0...v1.7.1
 [1.6.0]: https://github.com/VectorBarks/smart-climate/compare/v1.5.5-beta24...v1.6.0
 [1.5.5-beta5]: https://github.com/VectorBarks/smart-climate/compare/v1.5.2-beta7...v1.5.5-beta5
 [1.3.0]: https://github.com/VectorBarks/smart-climate/compare/v1.2.1-beta3...v1.3.0

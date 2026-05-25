@@ -49,7 +49,9 @@
       "already_configured": "This climate entity is already configured",
       "no_climate_entities": "No climate entities found in your Home Assistant",
       "no_temperature_sensors": "No temperature sensors found in your Home Assistant",
-      "invalid_temperature_range": "Invalid temperature range specified"
+      "invalid_temperature_range": "Invalid temperature range specified",
+      "heat_wave_lookahead_too_short": "Heat wave lookahead must be at least pre-action plus minimum duration",
+      "clear_sky_lookahead_too_short": "Clear sky lookahead must be at least pre-action plus minimum duration"
     },
     "abort": {
       "already_configured": "This climate entity is already configured"

@@ -44,6 +44,8 @@ from .const import (
     DEFAULT_POWER_IDLE_THRESHOLD,
     DEFAULT_QUIET_MODE_ENABLED,
     DEFAULT_WEATHER_ENTITY_ID,
+    MIN_OFF_TIME_SECONDS,
+    MIN_ON_TIME_SECONDS,
     STARTUP_TIMEOUT_SEC,
 )
 from .data_store import SmartClimateDataStore
@@ -563,8 +565,8 @@ async def _async_setup_entity_persistence(hass: HomeAssistant, entry: ConfigEntr
                 
                 _LOGGER.info("[DEBUG] Creating cycle monitor for entity: %s", entity_id)
                 cycle_monitor = CycleMonitor(
-                    min_off_time=config.get("minimum_off_time", config.get("min_off_time", 600)),
-                    min_on_time=config.get("minimum_on_time", config.get("min_on_time", 300)),
+                    min_off_time=config.get("minimum_off_time", config.get("min_off_time", MIN_OFF_TIME_SECONDS)),
+                    min_on_time=config.get("minimum_on_time", config.get("min_on_time", MIN_ON_TIME_SECONDS)),
                 )
                 _LOGGER.info("[DEBUG] Cycle monitor created successfully")
 

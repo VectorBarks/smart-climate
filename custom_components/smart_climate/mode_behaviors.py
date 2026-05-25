@@ -2,11 +2,17 @@
 
 from typing import Dict, Any
 
+from .const import (
+    DEFAULT_AWAY_TEMPERATURE,
+    DEFAULT_BOOST_OFFSET as CONST_DEFAULT_BOOST_OFFSET,
+    DEFAULT_SLEEP_OFFSET as CONST_DEFAULT_SLEEP_OFFSET,
+)
+
 # Default mode-specific configuration values
 DEFAULT_MODE_CONFIG = {
-    "away_temperature": 19.0,  # Fixed temperature for away mode
-    "sleep_offset": 1.0,       # Warmer offset for sleep mode (night)
-    "boost_offset": -2.0,      # Extra cooling offset for boost mode
+    "away_temperature": DEFAULT_AWAY_TEMPERATURE,
+    "sleep_offset": CONST_DEFAULT_SLEEP_OFFSET,
+    "boost_offset": CONST_DEFAULT_BOOST_OFFSET,
 }
 
 
@@ -56,6 +62,6 @@ class ModeConfigConstants:
     MODE_BOOST = "boost"
     
     # Default values
-    DEFAULT_AWAY_TEMP = 19.0
-    DEFAULT_SLEEP_OFFSET = 1.0
-    DEFAULT_BOOST_OFFSET = -2.0
+    DEFAULT_AWAY_TEMP = DEFAULT_AWAY_TEMPERATURE
+    DEFAULT_SLEEP_OFFSET = CONST_DEFAULT_SLEEP_OFFSET
+    DEFAULT_BOOST_OFFSET = CONST_DEFAULT_BOOST_OFFSET
