@@ -4,10 +4,10 @@ Smart Climate Control can generate a Lovelace dashboard for a selected Smart Cli
 
 ## What the generated dashboard includes
 
-- **Overview**: thermostat card, live status, current offsets, compressor/probe status
+- **Overview**: thermostat card, live status, current offsets, compressor/probe status, thermal relearn explanation, and confidence gauges
 - **Learning**: learning, calibration, hysteresis, probe, sample, and forecast-related entities
-- **Thermal**: thermal state, compressor/cycle metrics, comfort/window data
-- **Performance**: accuracy, offset, model, prediction, correlation, efficiency, and latency metrics
+- **Thermal**: thermal state, compressor/cycle metrics, comfort/window data, probe diagnostics, fast-relearn status, and confidence breakdown
+- **Performance**: accuracy, offset, model, prediction, correlation, confidence, efficiency, and latency metrics
 - **Diagnostics**: broad list of related Smart Climate entities for debugging
 
 ## Why this replaced the old dashboard
@@ -52,6 +52,26 @@ The Overview markdown card exposes the important learning distinction:
 
 This is the main data-quality safeguard: probe events help narrow thresholds but do not count as exact natural samples.
 
+## Thermal relearn and confidence fields shown in the dashboard
+
+The generated dashboard includes a **Thermal relearn confidence** markdown card plus dedicated gauges when the related sensors exist. This is the recovery view to use after a reset, HA reload, wrapped-climate outage, or lost thermal probe history.
+
+- `sensor.{climate_name}_thermal_state`: current thermal phase such as `priming`, `drifting`, `probing`, or `correcting`
+- `sensor.{climate_name}_model_confidence`: legacy headline confidence; attributes also expose the active/passive split when available
+- `sensor.{climate_name}_thermal_probe_confidence`: confidence from active thermal probes only
+- `sensor.{climate_name}_passive_drift_confidence`: confidence from passive drift and safe Recorder-history backfill candidates
+- `sensor.{climate_name}_overall_control_confidence`: control-facing confidence that combines active probes and passive drift evidence
+- `sensor.{climate_name}_probe_diagnostics`: latest probe scheduler decision, mode, blocker, probe count, effective interval, and next eligible probe time
+
+How to read the common recovery states:
+
+- `fast_relearn`: commissioning/recovery mode. The first five probes use shorter safe intervals so relearning does not take days.
+- `approved_first_probe`: empty probe history is not waiting for perfect diversity; the first valid recovery probe is allowed.
+- `blocked_min_interval`: not a failure. The scheduler is intentionally waiting until the next safe probe time.
+- `thermal_probe_confidence = 0%` with useful passive/overall confidence: active probes are still young, but passive/history evidence is already supporting control.
+
+Do not reset training data just because the dashboard shows `blocked_min_interval` or 0% active probe confidence. Use `probe_diagnostics` to see whether the system is waiting intentionally or truly blocked.
+
 ## Customizing after generation
 
 The generated dashboard is meant to be a safe baseline. You can still edit it in Lovelace:
@@ -80,6 +100,10 @@ That is stale YAML from the old template. Regenerate the dashboard with the curr
 ### Some entities show `unavailable` or `learning`
 
 That can be normal during startup or early learning. Check the status/detail attributes on the entity for the reason.
+
+### Thermal probe confidence is 0% but overall confidence is not
+
+That is expected after cold-start recovery. Active thermal probes need real probe history, while passive drift and Recorder backfill can already contribute to `overall_control_confidence`. Watch `probe_diagnostics` for `fast_relearn`, `probe_count`, and `eligible_next_probe_at` before assuming the model is stuck.
 
 ## Related docs
 

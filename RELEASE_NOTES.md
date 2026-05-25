@@ -1,5 +1,15 @@
 # Release Notes
 
+## v1.7.5 (2026-05-25)
+
+### Added
+- Generated runtime dashboards now include a **Thermal relearn confidence** explanation card with live states for thermal state, model confidence, active thermal probe confidence, passive drift/backfill confidence, overall control confidence, and probe diagnostics.
+- Dedicated dashboard gauges for `thermal_probe_confidence`, `passive_drift_confidence`, `overall_control_confidence`, and `model_confidence` when those entities exist.
+- Probe scheduler explanation card that documents `approved_first_probe`, `fast_relearn`, and `blocked_min_interval` directly in the generated dashboard.
+
+### Documentation
+- README, dashboard setup, sensor reference, technical reference, troubleshooting, and service docs now describe the confidence split, fast-relearn recovery, Recorder-history backfill, and probe diagnostics.
+
 ## v1.7.4 (2026-05-25)
 
 ### Summary

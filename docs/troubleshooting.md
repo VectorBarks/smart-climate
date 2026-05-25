@@ -143,6 +143,38 @@ This guide helps you diagnose and resolve common issues with Smart Climate Contr
 - Avoid frequent manual overrides during learning
 - Verify offset is actually being applied (non-zero)
 
+#### Thermal confidence is low after reset or wrapped climate outage
+
+**Symptoms**:
+- Wrapped physical climate entity is alive, but Smart Climate thermal confidence looks low or split
+- `sensor.{climate_name}_thermal_probe_confidence` is 0%
+- `sensor.{climate_name}_probe_diagnostics` shows `fast_relearn` or `blocked_min_interval`
+- The device may still respond/beep, but active thermal probe history is young or empty
+
+**Diagnostic Steps**:
+1. Open the generated dashboard and check **Thermal relearn confidence**.
+2. Compare:
+   - `thermal_probe_confidence`: active probes only
+   - `passive_drift_confidence`: passive drift / Recorder-history evidence
+   - `overall_control_confidence`: practical control confidence
+3. Check `probe_diagnostics` attributes:
+   - `mode`
+   - `fast_relearn_active`
+   - `probe_count`
+   - `last_blocker`
+   - `eligible_next_probe_at`
+
+**Interpretation**:
+- `fast_relearn` means Smart Climate is intentionally recovering thermal probe history faster than normal.
+- `blocked_min_interval` means the next probe is waiting for the minimum safe interval, not that learning is stuck.
+- Active probe confidence can be 0% while passive/overall confidence is already useful.
+
+**Solutions**:
+- Do not reset training data just because active probe confidence is 0%.
+- Let fast relearn collect the first five probes unless `probe_diagnostics` shows a hard blocker that never clears.
+- Regenerate the dashboard after upgrading so the confidence split and probe diagnostics are visible.
+- If both wrapped climate and Smart Climate are unavailable, debug the wrapped integration/device first.
+
 #### AC Overcooling During Learning Phase
 
 **Symptoms**: AC cools room well below target temperature during initial learning period

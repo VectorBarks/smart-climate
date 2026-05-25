@@ -1,13 +1,13 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.7.4--pre--release-orange.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.7.5--pre--release-orange.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 Smart Climate Control wraps an existing Home Assistant climate entity and makes it behave like the room you actually care about, not like the AC unit's badly placed internal sensor.
 
-Current pre-release: **v1.7.4**. This release accelerates thermal cold-start recovery after reset or data loss with fast-relearn mode, recorder-history backfill, split confidence telemetry, and explicit probe-blocker diagnostics.
+Current pre-release: **v1.7.5**. This release accelerates thermal cold-start recovery after reset or data loss and makes the recovery state visible in the generated dashboard with confidence-breakdown gauges, probe diagnostics, and inline explanations.
 
 ## What it does
 
@@ -98,7 +98,7 @@ Quiet Mode reduces unnecessary setpoint commands while still avoiding learning d
 
 ## Dashboard
 
-The dashboard service generates a robust Lovelace dashboard using only built-in Home Assistant cards.
+The dashboard service generates a robust Lovelace dashboard using only built-in Home Assistant cards. The generated dashboard now surfaces the full thermal recovery picture instead of hiding it behind one generic confidence number.
 
 1. Developer Tools → Services
 2. Call `smart_climate.generate_dashboard`
@@ -106,6 +106,14 @@ The dashboard service generates a robust Lovelace dashboard using only built-in 
 4. Copy the generated YAML from the notification into a dashboard raw editor
 
 The dashboard uses real entity IDs from the entity registry. It does not depend on ApexCharts, Mushroom, Button Card, or placeholder replacement hacks.
+
+What to look at after a reset or wrapped-climate outage:
+- `sensor.{climate_name}_thermal_probe_confidence`: confidence from active thermal probes only
+- `sensor.{climate_name}_passive_drift_confidence`: confidence from passive drift and safe Recorder backfill candidates
+- `sensor.{climate_name}_overall_control_confidence`: control-facing combined confidence
+- `sensor.{climate_name}_probe_diagnostics`: current scheduler mode, blocker, probe count, and next eligible probe time
+
+If `thermal_probe_confidence` is still 0% but `passive_drift_confidence` and `overall_control_confidence` are useful, the system is not blind; it is using passive/history evidence while active probes rebuild.
 
 ## Documentation
 

@@ -64,6 +64,15 @@ If you have a power sensor, this advanced system learns your AC's operational be
 - Separates natural exact samples from deliberate probe constraints
 - Optimizes predictions based on AC state
 
+#### 3. Thermal Relearn and Passive Drift Confidence
+The thermal model learns how the room itself cools and warms:
+- Active thermal probes rebuild direct probe confidence.
+- Passive drift and Recorder-history backfill can contribute confidence even before active probes mature.
+- `overall_control_confidence` combines active and passive evidence for practical control decisions.
+- `probe_diagnostics` explains whether the next probe is running, waiting safely, or blocked.
+
+After a reset or wrapped-climate outage, seeing `fast_relearn` or `blocked_min_interval` in probe diagnostics is normal. Do not reset training data just because active probe confidence is still 0%.
+
 ### Learning Timeline
 
 - **First 24 hours**: Basic patterns emerge

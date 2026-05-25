@@ -21,6 +21,36 @@ RELATED_ENTITIES = [
         "state": "0",
     },
     {
+        "entity_id": "sensor.scc_torsten_model_confidence",
+        "domain": "sensor",
+        "friendly_name": "SCC Torsten Model Confidence",
+        "state": "56.7",
+    },
+    {
+        "entity_id": "sensor.scc_torsten_thermal_probe_confidence",
+        "domain": "sensor",
+        "friendly_name": "SCC Torsten Thermal Probe Confidence",
+        "state": "0.0",
+    },
+    {
+        "entity_id": "sensor.scc_torsten_passive_drift_confidence",
+        "domain": "sensor",
+        "friendly_name": "SCC Torsten Passive Drift Confidence",
+        "state": "56.7",
+    },
+    {
+        "entity_id": "sensor.scc_torsten_overall_control_confidence",
+        "domain": "sensor",
+        "friendly_name": "SCC Torsten Overall Control Confidence",
+        "state": "56.7",
+    },
+    {
+        "entity_id": "sensor.scc_torsten_probe_diagnostics",
+        "domain": "sensor",
+        "friendly_name": "SCC Torsten Probe Diagnostics",
+        "state": "blocked_min_interval",
+    },
+    {
         "entity_id": "sensor.scc_torsten_compressor_state",
         "domain": "sensor",
         "friendly_name": "SCC Torsten Compressor State",
@@ -31,6 +61,12 @@ RELATED_ENTITIES = [
         "domain": "sensor",
         "friendly_name": "SCC Torsten Temperature Window",
         "state": "learning",
+    },
+    {
+        "entity_id": "sensor.scc_torsten_thermal_state",
+        "domain": "sensor",
+        "friendly_name": "SCC Torsten Thermal State",
+        "state": "drifting",
     },
     {
         "entity_id": "switch.smart_climate_control_climate_klimaanlage_tu_climate_learning",
@@ -83,6 +119,8 @@ def test_runtime_dashboard_references_only_existing_entities():
     assert "sensor.smart_klimaanlage_tu_climate_offset_current" not in yaml_content
     assert "custom:apexcharts-card" not in yaml_content
     assert "custom:plotly-graph-card" not in yaml_content
+    assert "&id" not in yaml_content
+    assert "*id" not in yaml_content
 
 
 def test_runtime_dashboard_uses_core_cards_and_keeps_five_views():
@@ -119,3 +157,31 @@ def test_runtime_dashboard_explains_hysteresis_learning_metrics():
     assert "Power correlation" in yaml_content
     assert "power_correlation_status_detail" in yaml_content
     assert "power_correlation_sample_count" in yaml_content
+
+
+def test_runtime_dashboard_shows_thermal_relearn_confidence_and_probe_blockers():
+    """Cold-start recovery telemetry must be visible and explained in the generated dashboard."""
+    yaml_content = DashboardGenerator().generate_runtime_dashboard(
+        "climate.smart_klimaanlage_tu_climate",
+        "Smart Klimaanlage TU Climate",
+        RELATED_ENTITIES,
+    )
+    dashboard = yaml.safe_load(yaml_content)
+
+    assert "sensor.scc_torsten_thermal_probe_confidence" in yaml_content
+    assert "sensor.scc_torsten_passive_drift_confidence" in yaml_content
+    assert "sensor.scc_torsten_overall_control_confidence" in yaml_content
+    assert "sensor.scc_torsten_probe_diagnostics" in yaml_content
+    assert "Thermal relearn confidence" in yaml_content
+    assert "Active thermal probes" in yaml_content
+    assert "Passive drift / recorder backfill" in yaml_content
+    assert "Overall control confidence" in yaml_content
+    assert "Probe diagnostics" in yaml_content
+    assert "fast_relearn" in yaml_content
+    assert "blocked_min_interval" in yaml_content
+    assert any(
+        card.get("type") == "gauge"
+        and card.get("entity") == "sensor.scc_torsten_thermal_probe_confidence"
+        for view in dashboard["views"]
+        for card in view["cards"]
+    )

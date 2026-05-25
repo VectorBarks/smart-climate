@@ -132,6 +132,7 @@ class DashboardGenerator:
             default_flow_style=False,
             allow_unicode=True,
             sort_keys=False,
+            width=4096,
         )
         self._validate_runtime_yaml_output(yaml_content)
         return yaml_content
@@ -189,23 +190,36 @@ class DashboardGenerator:
         ]
         overview_entities = self._select_entities(
             related_entities,
-            ["current_offset", "learning_progress", "current_accuracy", "compressor_state", "temperature_window", "weather_forecast", "convergence_trend", "quiet_mode"],
-            limit=14,
+            [
+                "current_offset", "learning_progress", "current_accuracy", "compressor_state",
+                "temperature_window", "weather_forecast", "convergence_trend", "quiet_mode",
+                "model_confidence", "overall_control_confidence", "probe_diagnostics",
+            ],
+            limit=18,
         )
         learning_entities = self._select_entities(
             related_entities,
-            ["learning", "calibration", "hysteresis", "adaptive_delay", "sample", "window", "seasonal", "forecast", "transition", "probe"],
-            limit=24,
+            [
+                "learning", "calibration", "hysteresis", "adaptive_delay", "sample", "window",
+                "seasonal", "forecast", "transition", "probe", "diagnostics", "fast_relearn",
+            ],
+            limit=28,
         )
         thermal_entities = self._select_entities(
             related_entities,
-            ["thermal", "cycle", "tau", "compressor", "quiet", "comfort", "operating_window"],
-            limit=24,
+            [
+                "thermal", "cycle", "tau", "compressor", "quiet", "comfort",
+                "operating_window", "confidence", "passive", "drift", "probe_diagnostics",
+            ],
+            limit=32,
         )
         performance_entities = self._select_entities(
             related_entities,
-            ["accuracy", "offset", "model", "prediction", "correlation", "efficiency", "error", "latency", "mae", "mse", "r_squared"],
-            limit=28,
+            [
+                "accuracy", "offset", "model", "prediction", "correlation", "efficiency",
+                "error", "latency", "mae", "mse", "r_squared", "confidence",
+            ],
+            limit=32,
         )
         diagnostic_entities = self._dedupe_entities(related_entities)[:40]
         history_entities = [entity["entity_id"] for entity in numeric_entities[:8]]
@@ -218,6 +232,8 @@ class DashboardGenerator:
                 "cards": [
                     climate_card,
                     self._build_markdown_status_card(climate_entity_id),
+                    self._build_thermal_relearn_status_card(related_entities),
+                    *self._build_confidence_gauge_cards(related_entities),
                     *self._build_gauge_cards(numeric_entities),
                     self._build_entities_card("Live Status", overview_entities),
                 ],
@@ -226,13 +242,20 @@ class DashboardGenerator:
                 "title": "Learning",
                 "path": "learning",
                 "icon": "mdi:brain",
-                "cards": [self._build_entities_card("Learning & Forecast", learning_entities)],
+                "cards": [
+                    self._build_probe_scheduler_reference_card(related_entities),
+                    self._build_entities_card("Learning & Forecast", learning_entities),
+                ],
             },
             {
                 "title": "Thermal",
                 "path": "thermal",
                 "icon": "mdi:thermometer-lines",
-                "cards": [self._build_entities_card("Thermal & Quiet Mode", thermal_entities)],
+                "cards": [
+                    self._build_thermal_relearn_status_card(related_entities),
+                    *self._build_confidence_gauge_cards(related_entities),
+                    self._build_entities_card("Thermal & Quiet Mode", thermal_entities),
+                ],
             },
             {
                 "title": "Performance",
@@ -316,6 +339,136 @@ class DashboardGenerator:
             if len(cards) >= 4:
                 break
         return cards
+
+    def _build_confidence_gauge_cards(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Build dedicated gauges for thermal relearn confidence breakdown sensors."""
+        preferred = [
+            "thermal_probe_confidence",
+            "passive_drift_confidence",
+            "overall_control_confidence",
+            "model_confidence",
+        ]
+        cards = []
+        used = set()
+        for keyword in preferred:
+            match = self._find_entity(entities, [keyword])
+            if not match or match["entity_id"] in used or not self._is_numeric_state(match.get("state")):
+                continue
+            used.add(match["entity_id"])
+            cards.append({
+                "type": "gauge",
+                "entity": match["entity_id"],
+                "name": self._display_name(match),
+                "min": 0,
+                "max": 100,
+                "needle": True,
+            })
+        return cards
+
+    @staticmethod
+    def _entity_haystack(entity: Dict[str, Any]) -> str:
+        """Return searchable text for an entity-registry item."""
+        return f"{entity.get('entity_id', '')} {entity.get('friendly_name', '')}".lower()
+
+    def _find_entity(self, entities: List[Dict[str, Any]], keywords: List[str]) -> Optional[Dict[str, Any]]:
+        """Return the first existing entity whose id/name contains all keywords."""
+        for entity in self._dedupe_entities(entities):
+            haystack = self._entity_haystack(entity)
+            if all(keyword in haystack for keyword in keywords):
+                return entity
+        return None
+
+    def _state_line(self, label: str, entity: Optional[Dict[str, Any]], explanation: str) -> str:
+        """Build one markdown line with a live state when an entity exists."""
+        if entity:
+            entity_id = entity["entity_id"]
+            return f"- **{label}**: `{{{{ states('{entity_id}') }}}}` — {explanation}"
+        return f"- **{label}**: not discovered for this entity — {explanation}"
+
+    def _build_thermal_relearn_status_card(self, entities: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Build an explanatory dashboard card for thermal cold-start recovery."""
+        thermal_state = self._find_entity(entities, ["thermal_state"])
+        model_confidence = self._find_entity(entities, ["model_confidence"])
+        thermal_probe_confidence = self._find_entity(entities, ["thermal_probe_confidence"])
+        passive_drift_confidence = self._find_entity(entities, ["passive_drift_confidence"])
+        overall_control_confidence = self._find_entity(entities, ["overall_control_confidence"])
+        probe_diagnostics = self._find_entity(entities, ["probe_diagnostics"])
+
+        lines = [
+            "## Thermal relearn confidence",
+            self._state_line(
+                "Thermal state",
+                thermal_state,
+                "current model phase; `drifting` means Smart Climate is using passive room movement inside the comfort window.",
+            ),
+            self._state_line(
+                "Model confidence",
+                model_confidence,
+                "legacy headline confidence; its attributes include the active/passive breakdown when available.",
+            ),
+            self._state_line(
+                "Active thermal probes",
+                thermal_probe_confidence,
+                "confidence from deliberate thermal probes only. This can be 0% during a fresh relearn without meaning control is blind.",
+            ),
+            self._state_line(
+                "Passive drift / recorder backfill",
+                passive_drift_confidence,
+                "confidence from passive drift and safe Home Assistant Recorder backfill candidates.",
+            ),
+            self._state_line(
+                "Overall control confidence",
+                overall_control_confidence,
+                "the control-facing confidence that combines active probes with passive drift evidence.",
+            ),
+            self._state_line(
+                "Probe diagnostics",
+                probe_diagnostics,
+                "why the next probe is allowed, running, or intentionally blocked.",
+            ),
+        ]
+        if probe_diagnostics:
+            probe_entity = probe_diagnostics["entity_id"]
+            lines.extend([
+                f"  - Mode: `{{{{ state_attr('{probe_entity}', 'mode') }}}}`",
+                f"  - Fast relearn active: `{{{{ state_attr('{probe_entity}', 'fast_relearn_active') }}}}`",
+                f"  - Probe count: `{{{{ state_attr('{probe_entity}', 'probe_count') }}}}`",
+                f"  - Last blocker: `{{{{ state_attr('{probe_entity}', 'last_blocker') }}}}`",
+                f"  - Next eligible probe: `{{{{ state_attr('{probe_entity}', 'eligible_next_probe_at') }}}}`",
+            ])
+        lines.extend([
+            "",
+            "### How to read this",
+            "- `fast_relearn`: commissioning/recovery mode after reset or empty probe history; it shortens safe probe spacing so learning does not take days.",
+            "- `blocked_min_interval`: not broken; the scheduler is waiting for the minimum safe interval before the next probe.",
+            "- Passive confidence can be useful before active probe confidence rises; that is why the dashboard separates the numbers instead of hiding everything behind one 0% value.",
+        ])
+        return {
+            "type": "markdown",
+            "title": "Thermal relearn & confidence",
+            "content": "\n".join(lines),
+        }
+
+    def _build_probe_scheduler_reference_card(self, entities: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Build a concise explanation for probe scheduler diagnostics."""
+        probe_diagnostics = self._find_entity(entities, ["probe_diagnostics"])
+        lines = [
+            "## Probe scheduler diagnostics",
+            self._state_line(
+                "Probe diagnostics",
+                probe_diagnostics,
+                "single place to see the current scheduler decision and blocker.",
+            ),
+            "- `approved_first_probe`: the first recovery probe is allowed even with empty history.",
+            "- `fast_relearn`: early probe-history recovery mode with shorter safe intervals.",
+            "- `blocked_min_interval`: waiting deliberately; do not reset just because this appears.",
+            "- Presence/opportunistic blockers are relaxed during fast relearn; safety/device-protection blockers still apply.",
+        ]
+        return {
+            "type": "markdown",
+            "title": "Probe scheduler diagnostics",
+            "content": "\n".join(lines),
+        }
 
     @staticmethod
     def _gauge_range(entity_id: str) -> tuple[float, float]:

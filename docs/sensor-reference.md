@@ -15,16 +15,16 @@ This comprehensive guide covers all sensors created by Smart Climate Control, th
 
 ## Sensor Overview
 
-Smart Climate Control creates **47 comprehensive sensors** that provide deep insights into your system's operation, learning progress, and performance metrics. These sensors are automatically created and organized into logical categories.
+Smart Climate Control creates a broad set of diagnostic sensors that provide deep insights into operation, learning progress, thermal recovery, confidence, and performance metrics. These sensors are automatically created and organized into logical categories.
 
 ### Sensor Categories
 
-- **Core Sensors (12)**: Essential operation metrics
-- **Dashboard Sensors (5)**: Automatically created for visualization  
-- **Learning & ML Sensors (13)**: Machine learning progress and accuracy
-- **Thermal Management Sensors (7)**: Thermal efficiency and state tracking
-- **Performance Metrics (6)**: System performance and resource usage
-- **System Health Sensors (4)**: Availability and diagnostic information
+- **Core Sensors**: Essential operation metrics
+- **Dashboard Sensors**: Automatically created for visualization
+- **Learning & ML Sensors**: Machine learning progress and accuracy
+- **Thermal Management Sensors**: Thermal efficiency, state tracking, confidence split, and probe diagnostics
+- **Performance Metrics**: System performance and resource usage
+- **System Health Sensors**: Availability and diagnostic information
 
 ## Complete Sensor Reference
 
@@ -128,8 +128,9 @@ Smart Climate Control creates **47 comprehensive sensors** that provide deep ins
 - **Entity**: `sensor.{climate_name}_model_confidence`
 - **Unit**: %
 - **Range**: 0-100%
-- **Purpose**: Overall ML model confidence
-- **Note**: 0% during calibration/PRIMING is normal
+- **Purpose**: Headline model confidence for compatibility with existing dashboards and automations
+- **Attributes**: `thermal_probe_confidence`, `passive_drift_confidence`, `overall_model_confidence`, `active_probe_count`, `passive_probe_count`
+- **Note**: After reset or data loss, read the split confidence sensors below before treating 0% active probe confidence as a failure.
 
 #### Model Entropy
 - **Entity**: `sensor.{climate_name}_model_entropy`
@@ -220,6 +221,34 @@ Smart Climate Control creates **47 comprehensive sensors** that provide deep ins
 - **Entity**: `sensor.{climate_name}_thermal_state`
 - **Values**: `priming`, `drifting`, `correcting`, `recovery`, `probing`, `calibrating`
 - **Purpose**: Current thermal management state
+
+#### Thermal Probe Confidence
+- **Entity**: `sensor.{climate_name}_thermal_probe_confidence`
+- **Unit**: %
+- **Range**: 0-100%
+- **Purpose**: Confidence from active thermal probes only
+- **Interpretation**: Can be 0% after reset or reload while the active probe history is still rebuilding. Check `passive_drift_confidence` and `overall_control_confidence` before assuming control quality is zero.
+
+#### Passive Drift Confidence
+- **Entity**: `sensor.{climate_name}_passive_drift_confidence`
+- **Unit**: %
+- **Range**: 0-100%
+- **Purpose**: Confidence from passive room drift and safe Recorder-history backfill candidates
+- **Interpretation**: Shows whether the model has useful passive/history evidence even before active thermal probes mature.
+
+#### Overall Control Confidence
+- **Entity**: `sensor.{climate_name}_overall_control_confidence`
+- **Unit**: %
+- **Range**: 0-100%
+- **Purpose**: Control-facing combined confidence from active probes and passive drift evidence
+- **Interpretation**: Use this as the practical confidence signal for dashboards/automations that should not panic when only active probe confidence is young.
+
+#### Probe Diagnostics
+- **Entity**: `sensor.{climate_name}_probe_diagnostics`
+- **Values**: scheduler decision such as `approved`, `blocked_min_interval`, `blocked_presence`, or `unavailable`
+- **Purpose**: Shows why the next thermal probe is running, allowed, or blocked
+- **Key Attributes**: `mode`, `fast_relearn_active`, `probe_count`, `last_decision`, `last_blocker`, `eligible_next_probe_at`, `effective_min_interval_hours`, `effective_max_interval_hours`
+- **Interpretation**: `fast_relearn` means cold-start recovery is active. `blocked_min_interval` means the scheduler is intentionally waiting for the next safe probe window; it is not a reason to reset training data.
 
 #### Comfort Preference Level
 - **Entity**: `sensor.{climate_name}_comfort_preference_level`

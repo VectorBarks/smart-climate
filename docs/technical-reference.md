@@ -229,6 +229,33 @@ The thermal manager considers:
 - Higher = room holds temperature longer
 - Affected by: Insulation, external heat sources
 
+### Cold-Start Relearn, Backfill, and Confidence Split
+
+Thermal learning can lose active probe history after data reset, restore churn, or wrapped climate entity recreation even when the underlying physical climate device is still available. Smart Climate handles this as a thermal-model recovery problem, not as a reason to reset all training data.
+
+Recovery behavior:
+
+- **Fast relearn / commissioning mode**: active for the first five probes. The first valid recovery probe is prioritized, the effective minimum interval drops to 6 hours, the effective maximum interval drops to 48 hours, and soft/opportunistic blockers such as presence are relaxed.
+- **Recorder-history backfill**: when probe history is empty, the thermal manager can seed conservative passive candidates from room temperature, outdoor temperature, HVAC mode, and power/compressor history.
+- **Probe diagnostics**: the scheduler publishes the latest decision, blocker, mode, probe count, and next eligible probe time through `sensor.{climate_name}_probe_diagnostics`.
+- **Split confidence**: dashboards and automations can distinguish active probe confidence from passive/history confidence.
+
+Confidence signals:
+
+- `thermal_probe_confidence`: active thermal probe evidence only
+- `passive_drift_confidence`: passive room drift and Recorder backfill evidence
+- `overall_control_confidence`: combined control-facing confidence
+- `model_confidence`: compatibility headline sensor; its attributes include the same breakdown when available
+
+Important interpretation rule: `thermal_probe_confidence = 0%` during fast relearn does not mean Smart Climate is blind if `passive_drift_confidence` or `overall_control_confidence` is non-zero. It means active probe history is still rebuilding.
+
+Common probe diagnostic states:
+
+- `approved_first_probe`: empty probe history is allowed to start recovery instead of waiting for perfect diversity.
+- `fast_relearn`: recovery mode is active.
+- `blocked_min_interval`: the scheduler is intentionally waiting for the next safe probe time.
+- `blocked_presence`: normal-mode presence blocker; relaxed during fast relearn, but safety/device blockers still apply.
+
 ## Probe Timestamp Persistence System
 
 The probe timestamp persistence system ensures accurate temporal tracking of thermal probe data, maintaining the integrity of historical thermal learning information across system restarts and data transfers.

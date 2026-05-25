@@ -10,7 +10,7 @@ Generates a complete visualization dashboard customized for your Smart Climate d
 
 **Service**: `smart_climate.generate_dashboard`
 
-**Description**: Creates a ready-to-use dashboard YAML configuration with all necessary cards and layouts for monitoring your Smart Climate device's learning progress, offset history, and performance metrics.
+**Description**: Creates a ready-to-use dashboard YAML configuration with built-in Home Assistant cards for monitoring learning progress, offset history, thermal recovery, probe diagnostics, confidence breakdown, and performance metrics.
 
 **Fields**:
 
@@ -25,7 +25,7 @@ data:
   climate_entity_id: climate.living_room_smart_ac
 ```
 
-**Result**: Creates a persistent notification containing complete dashboard YAML that can be copied and pasted into a new Lovelace dashboard.
+**Result**: Creates a persistent notification containing complete dashboard YAML that can be copied and pasted into a new Lovelace dashboard. The generated YAML uses live entity-registry IDs, so thermal confidence sensors such as `thermal_probe_confidence`, `passive_drift_confidence`, `overall_control_confidence`, and `probe_diagnostics` appear when they exist for the selected Smart Climate config entry.
 
 **Usage**:
 1. Call the service via Developer Tools → Services
