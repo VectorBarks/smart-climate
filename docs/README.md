@@ -2,7 +2,7 @@
 
 Documentation for Smart Climate Control, a Home Assistant custom integration that wraps an existing climate entity and adds room-sensor based offset control, learning, compressor-state awareness, Quiet Mode, thermal telemetry, and dashboard tooling.
 
-Current docs target **v1.5.5-beta20**.
+Current docs target **v1.6.0**.
 
 ## Start here
 

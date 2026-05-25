@@ -44,7 +44,7 @@ HACS provides the easiest installation and update experience with automatic noti
 2. Search for "Smart Climate Control"
 3. Click on the integration card
 4. Click "Download" 
-5. Select the latest version (v1.5.5-beta20 or newer)
+5. Select the latest production version, currently v1.6.0 or newer
 6. Click "Download" again to confirm
 7. **Restart Home Assistant** (required for custom integrations)
 
@@ -207,7 +207,7 @@ Smart Climate Control includes automatic migration for data and configuration.
 
 ### Current migration notes
 
-The current release line is **v1.5.5-beta20**. It is backward compatible and focuses on data quality:
+The current production release is **v1.6.0**. It is backward compatible and consolidates the 1.5.5 beta stabilization line:
 
 - Natural compressor transitions remain exact hysteresis samples.
 - Deliberate Quiet Mode learning probes are stored as bounds/constraints.
@@ -242,7 +242,7 @@ If upgrading from pre-v1.2.0, you'll gain access to automatic dashboard sensors:
 
 ### Breaking Changes
 
-**v1.5.5-beta20**: No breaking changes - fully backward compatible
+**v1.6.0**: No breaking changes - fully backward compatible
 
 **v1.3.0**: No breaking changes - new features are optional
 

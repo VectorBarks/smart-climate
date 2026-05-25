@@ -1,5 +1,38 @@
 # Release Notes
 
+## v1.6.0 (2026-05-25)
+
+### Summary
+Smart Climate Control v1.6.0 is the production release for the 1.5.5 beta stabilization line. It turns the recent beta fixes into a stable HACS release focused on reliable diagnostics, safer Quiet Mode learning, cleaner dashboards, and removal of fragile runtime defaults.
+
+### Added
+- Production-ready Quiet Mode hysteresis learning with bounded probe behavior.
+- Core-card Lovelace dashboard generation based on live Home Assistant entity registry data.
+- More explicit diagnostic states and detail/source attributes for learning, Quiet Mode, compressor, and thermal telemetry.
+- Transition-based power-correlation telemetry from observed compressor start/stop events.
+- Regression coverage for runtime fallback constants and unsafe magic defaults.
+
+### Fixed
+- Hydrates humidity and derived diagnostic sensors during setup/reload so they no longer sit at `unknown` until a later poll.
+- Prevents Quiet Mode from deadlocking hysteresis learning while still blocking probes during active compressor operation.
+- Stores deliberate probe transitions as bounds/constraints instead of corrupting natural hysteresis samples.
+- Generates dashboards without guessed helper IDs, custom-card dependencies, or placeholder entity IDs.
+- Centers operating-window helper sensors on the live Smart Climate target instead of stale `24.0°C` defaults.
+- Centralizes runtime fallback values for target temperature, outdoor/current temperature, comfort window, HVAC mode, weather entity ID, and Quiet Mode defaults.
+
+### Upgrade notes
+- No breaking changes.
+- Existing configuration and learning data are preserved.
+- A reset is not required for normal upgrades.
+- If you used a generated dashboard from older beta releases, regenerate it after upgrading to get the cleaned core-card version.
+
+### Verification
+- `python -m json.tool custom_components/smart_climate/manifest.json`
+- `python -m py_compile custom_components/smart_climate/const.py custom_components/smart_climate/climate.py custom_components/smart_climate/thermal_sensor.py custom_components/smart_climate/thermal_manager.py custom_components/smart_climate/coordinator.py custom_components/smart_climate/quiet_mode_controller.py custom_components/smart_climate/compressor_state_analyzer.py custom_components/smart_climate/mode_manager.py custom_components/smart_climate/__init__.py custom_components/smart_climate/config_flow.py custom_components/smart_climate/migration.py`
+- `pytest tests/test_no_runtime_magic_defaults.py tests/test_quiet_mode_controller.py tests/test_quiet_mode_coordinator_data.py tests/test_thermal_sensor.py tests/test_thermal_manager.py tests/test_target_temperature.py -q`
+- `pytest tests/test_config_flow_power_options.py -q`
+- Full `pytest -q` is still blocked by existing collection/harness issues unrelated to this release prep: missing HA component mocks/packages, stale legacy imports, stale removed config constants, missing optional `freezegun`/`pytest_homeassistant_custom_component`, and invalid legacy test character in `tests/test_climate_thermal_priority.py`.
+
 ## v1.5.5-beta24 (2026-05-24)
 
 ### Summary

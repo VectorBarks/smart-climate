@@ -948,6 +948,14 @@ state.attributes.get('seasonal_patterns_count')  # Seasonal learning
 
 #### Version Upgrade Notes
 
+**v1.6.0**:
+- Production release consolidating the 1.5.5 beta stabilization line
+- No breaking changes, fully backward compatible
+- Diagnostic sensors hydrate immediately during setup/reload
+- Generated dashboards use live entity-registry data and built-in Home Assistant cards
+- Quiet Mode learning probes are bounded and blocked during active compressor operation
+- Runtime fallback values are centralized to avoid stale hardcoded defaults
+
 **v1.5.5-beta20**:
 - No breaking changes, fully backward compatible
 - Probe-induced transitions are persisted as bounds/constraints, separate from natural exact hysteresis samples

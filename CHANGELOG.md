@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-05-25
+
+### Added
+- Production release consolidating the 1.5.5 beta stabilization line.
+- Core-card dashboard generation from live Home Assistant entity-registry data.
+- Explicit diagnostic states/detail attributes for Smart Climate learning, Quiet Mode, compressor state, and thermal telemetry.
+- Transition-based power-correlation telemetry from observed compressor start/stop events.
+- Regression guard for unsafe runtime magic defaults.
+
+### Fixed
+- Hydrate humidity-derived diagnostic sensors during setup/reload.
+- Prevent Quiet Mode learning deadlocks while blocking probes during active compressor operation.
+- Store deliberate learning probes as bounds/constraints instead of exact natural hysteresis samples.
+- Remove guessed dashboard helper IDs, custom-card dependencies, and placeholder entity references.
+- Center operating-window helper sensors on the live Smart Climate target temperature.
+- Centralize runtime fallback values and Quiet Mode defaults.
+
+### Changed
+- Promoted the 1.5.5 beta line to stable production release `v1.6.0`.
+- Existing configuration and learning data remain backward compatible; no reset required.
+
+### Documentation
+- Updated README, installation guide, technical reference, and documentation index for `v1.6.0`.
+
+### Tests
+- Verified focused compile and regression suites before release.
+
 ## [1.5.5-beta19] - 2026-05-23
 
 ### Fixed
@@ -1128,7 +1155,8 @@ This release was superseded by v1.2.0-beta5 which implements a more robust archi
 - Safe temperature limits to prevent extreme settings
 - Atomic file operations for data persistence
 
-[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.5.5-beta5...HEAD
+[Unreleased]: https://github.com/VectorBarks/smart-climate/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/VectorBarks/smart-climate/compare/v1.5.5-beta24...v1.6.0
 [1.5.5-beta5]: https://github.com/VectorBarks/smart-climate/compare/v1.5.2-beta7...v1.5.5-beta5
 [1.3.0]: https://github.com/VectorBarks/smart-climate/compare/v1.2.1-beta3...v1.3.0
 [1.2.1-beta3]: https://github.com/VectorBarks/smart-climate/compare/v1.2.1-beta2...v1.2.1-beta3
