@@ -302,8 +302,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # --- ENTITY AVAILABILITY WAITING ---
     # Required entities (must be available for startup)
     required_entities = [
-        entry.data[CONF_CLIMATE_ENTITY],
-        entry.data[CONF_ROOM_SENSOR],
+        config[CONF_CLIMATE_ENTITY],
+        config[CONF_ROOM_SENSOR],
     ]
     
     # Optional entities (enhance functionality, allow degraded operation)
@@ -898,6 +898,31 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info("Smart Climate Control unload completed for entry: %s", entry.entry_id)
     return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    device_entry: Any,
+) -> bool:
+    """Allow Home Assistant to remove orphaned Smart Climate devices safely."""
+    entity_registry = er.async_get(hass)
+
+    for entity_entry in entity_registry.entities.values():
+        if (
+            getattr(entity_entry, "config_entry_id", None) == entry.entry_id
+            and getattr(entity_entry, "device_id", None) == device_entry.id
+            and getattr(entity_entry, "disabled_by", None) is None
+        ):
+            _LOGGER.warning(
+                "Rejecting removal of Smart Climate device %s because active entity %s still exists",
+                device_entry.id,
+                getattr(entity_entry, "entity_id", "unknown"),
+            )
+            return False
+
+    _LOGGER.info("Allowing removal of orphaned Smart Climate device %s", device_entry.id)
+    return True
 
 
 async def handle_generate_dashboard(call: ServiceCall) -> None:

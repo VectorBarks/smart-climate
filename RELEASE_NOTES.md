@@ -1,5 +1,19 @@
 # Release Notes
 
+## v1.7.8
+
+Runtime hotfix for existing Smart Climate entries repointed through Options Flow.
+
+### Fixed
+- Use the merged config-entry data plus Options Flow overrides when waiting for required startup entities.
+- Prevent stale `entry.data` climate/room sensor IDs from keeping setup in retry after the Options Flow points Smart Climate at the replacement wrapped climate entity.
+
+### Verified
+- `pytest tests/test_options_runtime_config.py -q`
+- `pytest tests/test_config_flow_climate_entity_options.py tests/test_config_flow_power_options.py tests/test_startup_timeout_config.py -q`
+- `python -m py_compile custom_components/smart_climate/__init__.py custom_components/smart_climate/config_flow.py`
+
+
 ## v1.7.7
 
 Runtime fix for the v1.7.6 Options Flow hotfix.

@@ -1,13 +1,13 @@
 # Smart Climate Control for Home Assistant
 
-[![Version](https://img.shields.io/badge/Version-1.7.7--pre--release-orange.svg)](https://github.com/VectorBarks/smart-climate/releases)
+[![Version](https://img.shields.io/badge/Version-1.7.8--pre--release-orange.svg)](https://github.com/VectorBarks/smart-climate/releases)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-blue.svg)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 Smart Climate Control wraps an existing Home Assistant climate entity and makes it behave like the room you actually care about, not like the AC unit's badly placed internal sensor.
 
-Current pre-release: **v1.7.5**. This release accelerates thermal cold-start recovery after reset or data loss and makes the recovery state visible in the generated dashboard with confidence-breakdown gauges, probe diagnostics, and inline explanations.
+Current pre-release: **v1.7.8**. This hotfix makes runtime setup honor Options Flow climate/room sensor overrides, so existing entries can be repointed without recreating Smart Climate or losing learning data.
 
 ## What it does
 
