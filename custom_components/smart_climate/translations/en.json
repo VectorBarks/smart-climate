@@ -107,6 +107,7 @@
         "title": "Smart Climate Control Options",
         "description": "Adjust settings for your Smart Climate Control integration",
         "data": {
+          "climate_entity": "Wrapped Climate Entity",
           "max_offset": "Maximum Temperature Offset (\u00b0C)",
           "min_temperature": "Minimum Temperature (\u00b0C)",
           "max_temperature": "Maximum Temperature (\u00b0C)",
@@ -152,6 +153,7 @@
           "learning_probe_step": "Learning Probe Step (\u00b0C per update)"
         },
         "data_description": {
+          "climate_entity": "Change the underlying climate entity without deleting this Smart Climate entry or losing learned data",
           "max_offset": "Maximum temperature offset to apply (safety limit)",
           "min_temperature": "Minimum temperature the system can set",
           "max_temperature": "Maximum temperature the system can set",

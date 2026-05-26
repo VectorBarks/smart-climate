@@ -848,7 +848,7 @@ class SmartClimateConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> "SmartClimateOptionsFlow":
         """Get the options flow for this handler."""
-        return SmartClimateOptionsFlow()
+        return SmartClimateOptionsFlow(config_entry)
 
 
 class SmartClimateOptionsFlow(config_entries.OptionsFlow):
@@ -856,6 +856,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
     
     def __init__(self, config_entry: config_entries.ConfigEntry = None) -> None:
         """Initialize options flow."""
+        self.config_entry = config_entry
         self._basic_settings: Optional[Dict[str, Any]] = None
     
     def _add_power_threshold_fields_options(self, schema: vol.Schema, current_config: dict, current_options: dict) -> vol.Schema:
@@ -924,6 +925,17 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                 state.entity_id.startswith("sensor.") and
                 state.attributes.get("device_class") == "power"
             ):
+                friendly_name = state.attributes.get("friendly_name", state.entity_id)
+                entities[state.entity_id] = friendly_name
+
+        return entities
+
+    async def _get_climate_entities(self) -> Dict[str, str]:
+        """Get all climate entities."""
+        entities = {}
+
+        for state in self.hass.states.async_all():
+            if state.entity_id.startswith("climate."):
                 friendly_name = state.attributes.get("friendly_name", state.entity_id)
                 entities[state.entity_id] = friendly_name
 
@@ -1112,9 +1124,20 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         current_config = self.config_entry.data
         current_options = self.config_entry.options
         
-        # Get available humidity and power sensors for selectors
+        # Get available entities for selectors
+        climate_entities = await self._get_climate_entities()
         humidity_sensors = await self._get_humidity_sensors()
         power_sensors = await self._get_power_sensors()
+        current_climate = current_options.get(
+            CONF_CLIMATE_ENTITY,
+            current_config.get(CONF_CLIMATE_ENTITY),
+        )
+        if current_climate and current_climate not in climate_entities:
+            climate_entities[current_climate] = f"{current_climate} (currently configured)"
+        climate_options = [
+            selector.SelectOptionDict(value=entity_id, label=f"{entity_id} ({friendly_name})")
+            for entity_id, friendly_name in sorted(climate_entities.items())
+        ]
         power_options = [
             selector.SelectOptionDict(value="", label="(Optional) None")
         ]
@@ -1128,6 +1151,15 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
         
         # Build existing configuration schema
         existing_schema = vol.Schema({
+            vol.Optional(
+                CONF_CLIMATE_ENTITY,
+                default=current_climate,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=climate_options,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             vol.Optional(
                 CONF_MAX_OFFSET,
                 default=current_options.get(CONF_MAX_OFFSET, current_config.get(CONF_MAX_OFFSET, DEFAULT_MAX_OFFSET))

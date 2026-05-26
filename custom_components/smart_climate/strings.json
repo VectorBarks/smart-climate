@@ -63,6 +63,7 @@
         "title": "Smart Climate Control Options",
         "description": "Configure advanced settings for your Smart Climate Control",
         "data": {
+          "climate_entity": "Wrapped Climate Entity",
           "thermal_efficiency_enabled": "Enable Thermal Efficiency",
           "quiet_mode_enabled": "Enable Quiet Mode",
           "power_sensor": "Power Sensor (Optional)",
@@ -78,6 +79,7 @@
           "calibration_drift_threshold": "Calibration Temperature Stability (\u00b0C)"
         },
         "data_description": {
+          "climate_entity": "Change the underlying climate entity without deleting this Smart Climate entry or losing learned data",
           "thermal_efficiency_enabled": "Enable advanced thermal efficiency optimization for energy savings",
           "quiet_mode_enabled": "Suppress unnecessary temperature adjustments when AC compressor is idle to reduce beep noise",
           "preference_level": "Choose your balance between comfort and energy savings",

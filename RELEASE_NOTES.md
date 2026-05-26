@@ -1,5 +1,19 @@
 # Release Notes
 
+## v1.7.6
+
+Hotfix for ARGO/CMK entity replacement without losing Smart Climate learned data.
+
+### Fixed
+- Expose the wrapped `climate_entity` in the Options Flow so an existing Smart Climate entry can be pointed at a replacement physical climate entity.
+- Pass the existing config entry into the Options Flow so current config data is available as defaults.
+
+### Verified
+- `pytest tests/test_config_flow_power_options.py tests/test_config_flow_climate_entity_options.py -q`
+- `python -m py_compile custom_components/smart_climate/config_flow.py custom_components/smart_climate/__init__.py`
+- `python -m json.tool custom_components/smart_climate/manifest.json >/dev/null`
+
+
 ## v1.7.5 (2026-05-25)
 
 ### Added
