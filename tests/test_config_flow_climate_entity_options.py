@@ -165,7 +165,7 @@ def test_config_flow_passes_config_entry_to_options_flow():
     options_flow = SmartClimateConfigFlow.async_get_options_flow(config_entry)
 
     assert isinstance(options_flow, SmartClimateOptionsFlow)
-    assert options_flow.config_entry is config_entry
+    assert options_flow._get_config_entry() is config_entry
 
 
 def test_options_flow_can_store_selected_climate_entity_override():

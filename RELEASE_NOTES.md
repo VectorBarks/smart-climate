@@ -1,5 +1,19 @@
 # Release Notes
 
+## v1.7.7
+
+Runtime fix for the v1.7.6 Options Flow hotfix.
+
+### Fixed
+- Avoid assigning to Home Assistant's read-only `OptionsFlow.config_entry` property.
+- Keep the wrapped climate entity selector available in Options Flow while using HA's runtime config-entry lookup correctly.
+
+### Verified
+- `pytest tests/test_config_flow_power_options.py tests/test_config_flow_climate_entity_options.py -q`
+- `python -m py_compile custom_components/smart_climate/config_flow.py custom_components/smart_climate/__init__.py`
+- JSON validation for manifest, HACS metadata, strings, and English translations.
+
+
 ## v1.7.6
 
 Hotfix for ARGO/CMK entity replacement without losing Smart Climate learned data.

@@ -856,8 +856,17 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
     
     def __init__(self, config_entry: config_entries.ConfigEntry = None) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._provided_config_entry = config_entry
         self._basic_settings: Optional[Dict[str, Any]] = None
+
+    def _get_config_entry(self) -> config_entries.ConfigEntry:
+        """Return the current config entry in both HA runtime and isolated tests."""
+        try:
+            return self.config_entry
+        except (AttributeError, ValueError):
+            if self._provided_config_entry is None:
+                raise
+            return self._provided_config_entry
     
     def _add_power_threshold_fields_options(self, schema: vol.Schema, current_config: dict, current_options: dict) -> vol.Schema:
         """Add power threshold fields to the options schema."""
@@ -943,7 +952,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
 
     def _get_options_schema(self) -> vol.Schema:
         """Return ProbeScheduler options schema using SelectSelector patterns."""
-        current_options = self.config_entry.options
+        current_options = self._get_config_entry().options
         
         # Build calendar entity options (following humidity sensor pattern)
         calendar_options = [
@@ -1059,7 +1068,7 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
 
     def _get_advanced_schema(self) -> vol.Schema:
         """Return advanced settings schema for custom profile."""
-        current_options = self.config_entry.options
+        current_options = self._get_config_entry().options
         
         return vol.Schema({
             vol.Optional(
@@ -1121,8 +1130,9 @@ class SmartClimateOptionsFlow(config_entries.OptionsFlow):
                     # Direct save for non-custom profiles
                     return self.async_create_entry(title="", data=cleaned_input)
         
-        current_config = self.config_entry.data
-        current_options = self.config_entry.options
+        entry = self._get_config_entry()
+        current_config = entry.data
+        current_options = entry.options
         
         # Get available entities for selectors
         climate_entities = await self._get_climate_entities()
