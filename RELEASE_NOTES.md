@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.7.9
+
+Runtime hotfix for Smart Climate setpoint control while the compressor is idle.
+
+### Fixed
+- Bypass gradual AC setpoint stepping when learned compressor hysteresis shows the raw calculated setpoint is needed to start cooling.
+- Keep no-beep suppression for idle upward/non-starting cooling commands even when Quiet Mode is disabled.
+- Use the Smart Climate target, not the wrapped AC actuator setpoint or current room temperature, for thermal operating-window calculations.
+- Keep coordinator thermal-manager lookup aligned with the shared runtime manager while preserving test injection fallback.
+
+### Verified
+- `pytest tests/test_quiet_mode_learning_mode_behavior.py tests/test_thermal_coordinator_phase2.py tests/test_thermal_manager.py -q`
+- `python -m py_compile custom_components/smart_climate/climate.py custom_components/smart_climate/coordinator.py custom_components/smart_climate/thermal_manager.py custom_components/smart_climate/quiet_mode_controller.py custom_components/smart_climate/compressor_state_analyzer.py`
+- `git diff --check`
+- Full `pytest -q` remains blocked at collection by existing local HA test-harness/legacy issues unrelated to this hotfix: missing mocked HA button/switch/weather/setup packages, missing optional `freezegun`/`pytest_homeassistant_custom_component`, stale removed config constants/imports, and an invalid legacy U+200C character in `tests/test_climate_thermal_priority.py`.
+
 ## v1.7.8
 
 Runtime hotfix for existing Smart Climate entries repointed through Options Flow.

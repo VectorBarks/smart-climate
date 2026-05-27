@@ -966,7 +966,13 @@ class ThermalManager:
             "total_probe_count": 0,
         }
 
-    def update_state(self, current_temp: Optional[float] = None, outdoor_temp: Optional[float] = None, hvac_mode: Optional[str] = None) -> None:
+    def update_state(
+        self,
+        current_temp: Optional[float] = None,
+        outdoor_temp: Optional[float] = None,
+        hvac_mode: Optional[str] = None,
+        setpoint: Optional[float] = None,
+    ) -> None:
         """Update thermal state and check for transitions.
         
         This method should be called periodically by the coordinator to:
@@ -979,6 +985,7 @@ class ThermalManager:
             current_temp: Current room temperature
             outdoor_temp: Current outdoor temperature 
             hvac_mode: Current HVAC mode (cool/heat/auto)
+            setpoint: User-facing control target temperature for operating-window bounds
         
         Enhanced with ProbeScheduler integration per architecture Section 20.11.
         """
@@ -1005,16 +1012,36 @@ class ThermalManager:
                 try:
                     _LOGGER.debug("Executing state handler for %s", self._current_state.value)
                     
-                    # Calculate operating window if we have the necessary parameters
+                    # Calculate operating window if we have the necessary parameters.
+                    # Use the user-facing control setpoint, not current_temp; otherwise
+                    # DRIFTING can never exit because the window follows the room.
                     operating_window = None
-                    if current_temp is not None and outdoor_temp is not None and hvac_mode is not None:
-                        # Use current room temperature as setpoint approximation
-                        setpoint = current_temp
-                        operating_window = self.get_operating_window(setpoint, outdoor_temp, hvac_mode)
-                        _LOGGER.debug("Calculated operating window: %s for temp=%.1f", operating_window, current_temp)
+                    control_setpoint = setpoint
+                    if not isinstance(control_setpoint, (int, float)) or isinstance(control_setpoint, bool):
+                        control_setpoint = self._setpoint
+
+                    if (
+                        current_temp is not None
+                        and outdoor_temp is not None
+                        and hvac_mode is not None
+                        and isinstance(control_setpoint, (int, float))
+                        and not isinstance(control_setpoint, bool)
+                    ):
+                        operating_window = self.get_operating_window(float(control_setpoint), outdoor_temp, hvac_mode)
+                        _LOGGER.debug(
+                            "Calculated operating window: %s for temp=%.1f setpoint=%.1f",
+                            operating_window,
+                            current_temp,
+                            float(control_setpoint),
+                        )
                     else:
-                        _LOGGER.debug("Missing parameters for operating window calculation: temp=%s, outdoor=%s, hvac_mode=%s",
-                                    current_temp, outdoor_temp, hvac_mode)
+                        _LOGGER.debug(
+                            "Missing parameters for operating window calculation: temp=%s, outdoor=%s, hvac_mode=%s, setpoint=%s",
+                            current_temp,
+                            outdoor_temp,
+                            hvac_mode,
+                            control_setpoint,
+                        )
                     
                     # Call state handler with temperature and operating window parameters
                     handler_next_state = current_handler.execute(self, current_temp, operating_window)

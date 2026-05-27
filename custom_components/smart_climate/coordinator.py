@@ -335,6 +335,43 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
         
         # Default fallback
         return "idle"
+
+    @staticmethod
+    def _numeric_temperature(value) -> Optional[float]:
+        """Return numeric temperatures as float, excluding bools and placeholders."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        return float(value)
+
+    def _get_active_thermal_manager(self) -> Optional["ThermalManager"]:
+        """Return the shared ThermalManager, falling back to an injected test instance."""
+        if self._entity_id:
+            manager = self.get_thermal_manager(self._entity_id)
+            if manager is not None:
+                return manager
+        return self._thermal_manager
+
+    def _resolve_control_setpoint(self, thermal_manager: Optional["ThermalManager"] = None) -> Optional[float]:
+        """Resolve the user-facing Smart Climate target for thermal windows.
+
+        The wrapped AC setpoint is an actuator command and can be intentionally
+        far above/below the user target. Thermal operating windows must be
+        centered on the Smart Climate target instead.
+        """
+        if self._entity_id:
+            smart_state = self.hass.states.get(self._entity_id)
+            attrs = smart_state.attributes if smart_state and smart_state.attributes else {}
+            for key in ("temperature", "target_temperature"):
+                target = self._numeric_temperature(attrs.get(key))
+                if target is not None:
+                    return target
+
+        if thermal_manager is not None:
+            target = self._numeric_temperature(getattr(thermal_manager, "_setpoint", None))
+            if target is not None:
+                return target
+
+        return None
     
     def _run_cycle_detection_state_machine(self, hvac_action, room_temp, outdoor_temp):
         """Core state machine for detecting live AC cycles."""
@@ -564,7 +601,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
             
             # Phase 2: ThermalManager state-aware protocol
             # Get ThermalManager from hass.data for the correct entity
-            thermal_manager = self.get_thermal_manager(self._entity_id) if self._entity_id else None
+            thermal_manager = self._get_active_thermal_manager()
             if self.thermal_efficiency_enabled and thermal_manager and room_temp is not None:
                 try:
                     # Update stability detector with current AC state and temperature
@@ -582,23 +619,29 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                         _LOGGER.debug("Fed HVAC state for passive learning: ts=%.1f, temp=%.1f°C, hvac=%s", 
                                     current_timestamp, room_temp, hvac_state)
                     
+                    control_setpoint = self._resolve_control_setpoint(thermal_manager)
+
                     # CRITICAL FIX: Update thermal state and check for transitions
                     # This is the periodic check that was missing
                     thermal_manager.update_state(
                         current_temp=room_temp,
                         outdoor_temp=outdoor_temp,
-                        hvac_mode=hvac_mode
+                        hvac_mode=hvac_mode,
+                        setpoint=control_setpoint,
                     )
                     
-                    # Get current setpoint (approximate from room temp for now)
-                    setpoint = room_temp  # TODO: Get actual setpoint from wrapped entity
-                    
-                    # Calculate operating window using ThermalManager
-                    thermal_window = thermal_manager.get_operating_window(
-                        setpoint=setpoint,
-                        outdoor_temp=outdoor_temp or DEFAULT_OUTDOOR_TEMPERATURE,  # Default outdoor temp
-                        hvac_mode=hvac_mode or DEFAULT_HVAC_MODE
-                    )
+                    # Calculate operating window using the Smart Climate target.
+                    # Do not center it on room_temp; that masks comfort-bound breaches.
+                    if control_setpoint is not None:
+                        thermal_window = thermal_manager.get_operating_window(
+                            setpoint=control_setpoint,
+                            outdoor_temp=outdoor_temp or DEFAULT_OUTDOOR_TEMPERATURE,  # Default outdoor temp
+                            hvac_mode=hvac_mode or DEFAULT_HVAC_MODE
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "Skipping ThermalManager operating window: no Smart Climate control setpoint available"
+                        )
                     
                     # Control OffsetEngine learning based on current state
                     current_state = thermal_manager.current_state
@@ -613,16 +656,22 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                         self._offset_engine.resume_learning()
                         _LOGGER.debug("Learning enabled for %s state", current_state.value)
                     
-                    # Get learning target for state-aware training
-                    learning_target = thermal_manager.get_learning_target(
-                        current=room_temp,
-                        window=thermal_window
-                    )
-                    
-                    _LOGGER.debug(
-                        "ThermalManager state: %s, window: (%.1f, %.1f), learning_target: %.1f",
-                        current_state.value, thermal_window[0], thermal_window[1], learning_target
-                    )
+                    # Get learning target for state-aware training when a real window exists.
+                    if thermal_window is not None:
+                        learning_target = thermal_manager.get_learning_target(
+                            current=room_temp,
+                            window=thermal_window
+                        )
+                        _LOGGER.debug(
+                            "ThermalManager state: %s, window: (%.1f, %.1f), learning_target: %.1f",
+                            current_state.value, thermal_window[0], thermal_window[1], learning_target
+                        )
+                    else:
+                        learning_target = None
+                        _LOGGER.debug(
+                            "ThermalManager state: %s, learning target unavailable without operating window",
+                            current_state.value,
+                        )
                     
                 except Exception as exc:
                     _LOGGER.warning("Error in ThermalManager state logic: %s", exc)
@@ -762,7 +811,7 @@ class SmartClimateCoordinator(DataUpdateCoordinator[SmartClimateData]):
                 if self._quiet_mode_controller is not None:
                     quiet_mode_suppressions = self._quiet_mode_controller.get_suppression_count()
             
-            thermal_manager = self.get_thermal_manager(self._entity_id) if self._entity_id else None
+            thermal_manager = self._get_active_thermal_manager()
             if self.thermal_efficiency_enabled and thermal_manager:
                 thermal_state = thermal_manager.current_state.value
                 learning_active = not getattr(self._offset_engine, '_learning_paused', False)

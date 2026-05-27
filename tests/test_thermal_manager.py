@@ -228,6 +228,27 @@ class TestThermalManager:
         # State should remain unchanged unless explicitly transitioned
         assert thermal_manager.current_state == initial_state
 
+    def test_update_state_uses_control_setpoint_for_drifting_bounds(
+        self, thermal_manager, mock_preferences
+    ):
+        """DRIFTING must compare room temp against the control setpoint window.
+
+        Regression: update_state centered the operating window on current_temp,
+        which made the room always look inside the window and kept DRIFTING
+        active even after comfort upper bound was exceeded.
+        """
+        mock_preferences.get_adjusted_band.return_value = 0.5
+        thermal_manager._current_state = ThermalState.DRIFTING
+
+        thermal_manager.update_state(
+            current_temp=24.1,
+            outdoor_temp=28.0,
+            hvac_mode="cool",
+            setpoint=23.5,
+        )
+
+        assert thermal_manager.current_state == ThermalState.CORRECTING
+
     def test_state_aware_window_calculation(self, thermal_manager, mock_preferences):
         """Test that operating window calculation is state-aware."""
         mock_preferences.get_adjusted_band.return_value = 1.5

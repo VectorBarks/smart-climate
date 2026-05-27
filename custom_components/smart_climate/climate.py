@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .models import OffsetInput, OffsetResult, ModeAdjustments
 from .thermal_models import ThermalState
-from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD, CONF_POWER_MIN_THRESHOLD, DEFAULT_POWER_MIN_THRESHOLD, CONF_POWER_MAX_THRESHOLD, DEFAULT_POWER_MAX_THRESHOLD, CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE, CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE, CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE, DEFAULT_TEMPERATURE_STEP, DEFAULT_EMA_COEFFICIENT, DEFAULT_EFFICIENCY_SCORE
+from .const import DOMAIN, TEMP_DEVIATION_THRESHOLD, CONF_ADAPTIVE_DELAY, DEFAULT_ADAPTIVE_DELAY, CONF_PREDICTIVE, CONF_FORECAST_ENABLED, ACTIVE_HVAC_MODES, CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED, CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP, CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD, CONF_POWER_MIN_THRESHOLD, DEFAULT_POWER_MIN_THRESHOLD, CONF_POWER_MAX_THRESHOLD, DEFAULT_POWER_MAX_THRESHOLD, CONF_DEFAULT_TARGET_TEMPERATURE, DEFAULT_TARGET_TEMPERATURE, CONF_MIN_TEMPERATURE, DEFAULT_MIN_TEMPERATURE, CONF_MAX_TEMPERATURE, DEFAULT_MAX_TEMPERATURE, DEFAULT_TEMPERATURE_STEP, DEFAULT_EMA_COEFFICIENT, DEFAULT_EFFICIENCY_SCORE, QUIET_MODE_SUPPORTED_HVAC_MODES
 from .delay_learner import DelayLearner
 from .forecast_engine import ForecastEngine
 from .config_helpers import build_predictive_config
@@ -151,14 +151,19 @@ class SmartClimateEntity(ClimateEntity):
         self._attr_target_temperature_low = None
         self.hass = hass
         
+        # Initialize compressor-idle analysis used both by Quiet Mode and by
+        # unconditional no-beep suppression for safe non-cooling setpoint changes.
+        self._compressor_state_analyzer = CompressorStateAnalyzer(
+            power_threshold=config.get(CONF_POWER_IDLE_THRESHOLD, DEFAULT_POWER_IDLE_THRESHOLD)
+        )
+
         # Initialize quiet mode controller
         self._quiet_mode_enabled = config.get(CONF_QUIET_MODE_ENABLED, DEFAULT_QUIET_MODE_ENABLED)
         self._quiet_mode_controller = None
         if self._quiet_mode_enabled:
-            analyzer = CompressorStateAnalyzer()
             self._quiet_mode_controller = QuietModeController(
                 enabled=True,
-                analyzer=analyzer,
+                analyzer=self._compressor_state_analyzer,
                 logger=_LOGGER,
                 learning_probe_step=config.get(CONF_LEARNING_PROBE_STEP, DEFAULT_LEARNING_PROBE_STEP),
             )
@@ -1714,6 +1719,118 @@ class SmartClimateEntity(ClimateEntity):
             _LOGGER.debug("Error getting hysteresis cycle count: %s", exc)
             return 0
     
+    def _normalise_hvac_mode(self, hvac_mode) -> str:
+        """Return HVAC mode as a lower-case string for mode comparisons."""
+        value = getattr(hvac_mode, "value", hvac_mode)
+        return str(value).lower()
+
+    def _should_bypass_gradual_for_idle_compressor_start(
+        self,
+        *,
+        current_room_temp: Optional[float],
+        current_setpoint: Optional[float],
+        target_setpoint: Optional[float],
+        power_consumption: Optional[float],
+        hvac_mode,
+        hysteresis_learner,
+    ) -> bool:
+        """Return whether the raw target should be sent to start an idle compressor.
+
+        Gradual stepping is good for avoiding oscillation while the compressor is
+        already active or the requested change is non-critical. When the room is
+        too warm, the compressor is idle, and learned hysteresis says only the raw
+        calculated setpoint crosses the start threshold, rate limiting can turn a
+        needed cooling command into a harmless beep. In that case, send the raw
+        target as a deliberate compressor-start kick.
+        """
+        if (
+            current_setpoint is None
+            or target_setpoint is None
+            or current_room_temp is None
+            or power_consumption is None
+            or hysteresis_learner is None
+        ):
+            return False
+
+        hvac_mode_value = self._normalise_hvac_mode(hvac_mode)
+        if hvac_mode_value not in QUIET_MODE_SUPPORTED_HVAC_MODES:
+            return False
+
+        if not self._compressor_state_analyzer.is_compressor_idle(power_consumption):
+            return False
+
+        try:
+            current_setpoint_float = float(current_setpoint)
+            target_setpoint_float = float(target_setpoint)
+            room_temp_float = float(current_room_temp)
+        except (TypeError, ValueError):
+            return False
+
+        if target_setpoint_float >= current_setpoint_float:
+            return False
+
+        would_activate = self._compressor_state_analyzer.would_adjustment_activate_compressor(
+            room_temp_float,
+            target_setpoint_float,
+            hysteresis_learner,
+            hvac_mode_value,
+        )
+        return would_activate is True
+
+    def _should_suppress_idle_safe_setpoint_change(
+        self,
+        *,
+        current_room_temp: Optional[float],
+        current_setpoint: Optional[float],
+        new_setpoint: Optional[float],
+        power_consumption: Optional[float],
+        hvac_mode,
+        hysteresis_learner,
+    ) -> tuple[bool, Optional[str]]:
+        """Suppress AC beeps for idle cooling commands that cannot start the compressor.
+
+        This is intentionally independent from Quiet Mode: raising or keeping a
+        cooling setpoint while the compressor is already idle is a no-op for the
+        physical compressor but still makes many AC units beep. The Smart Climate
+        entity keeps the user-facing target internally and skips only the wrapped
+        device command.
+        """
+        if current_setpoint is None or new_setpoint is None or current_room_temp is None:
+            return False, None
+        if power_consumption is None:
+            return False, None
+
+        hvac_mode_value = self._normalise_hvac_mode(hvac_mode)
+        if hvac_mode_value not in QUIET_MODE_SUPPORTED_HVAC_MODES:
+            return False, None
+
+        if not self._compressor_state_analyzer.is_compressor_idle(power_consumption):
+            return False, None
+
+        try:
+            current_setpoint_float = float(current_setpoint)
+            new_setpoint_float = float(new_setpoint)
+            room_temp_float = float(current_room_temp)
+        except (TypeError, ValueError):
+            return False, None
+
+        # In cooling modes, a higher/unchanged AC setpoint cannot ask for more
+        # cooling, so sending it would only beep while the compressor stays idle.
+        if new_setpoint_float >= current_setpoint_float:
+            return True, "compressor idle; safe upward cooling setpoint command suppressed"
+
+        if hysteresis_learner is not None:
+            would_activate = self._compressor_state_analyzer.would_adjustment_activate_compressor(
+                room_temp_float,
+                new_setpoint_float,
+                hysteresis_learner,
+                hvac_mode_value,
+            )
+            if would_activate is False:
+                return True, "compressor idle; learned hysteresis says setpoint will not activate compressor"
+
+        return False, None
+
     async def _apply_temperature_with_offset(self, target_temp: float, source: str = "manual") -> None:
         """Apply target temperature with calculated offset to wrapped entity."""
         _LOGGER.debug(
@@ -2002,16 +2119,30 @@ class SmartClimateEntity(ClimateEntity):
             raw_adjusted_temp = adjusted_temp
             current_setpoint = current_ac_setpoint
             was_learning_probe = False
+            hysteresis_learner = getattr(self._offset_engine, "_hysteresis_learner", None)
             if current_setpoint is not None:
-                adjusted_temp = self._temperature_controller.apply_gradual_adjustment(
-                    current_setpoint,
-                    adjusted_temp,
-                )
+                if self._should_bypass_gradual_for_idle_compressor_start(
+                    current_room_temp=room_temp,
+                    current_setpoint=current_setpoint,
+                    target_setpoint=adjusted_temp,
+                    power_consumption=power_consumption,
+                    hvac_mode=self.hvac_mode,
+                    hysteresis_learner=hysteresis_learner,
+                ):
+                    _LOGGER.info(
+                        "Compressor start kick: bypassing gradual step %.1f°C -> %.1f°C because learned hysteresis predicts activation",
+                        current_setpoint,
+                        adjusted_temp,
+                    )
+                else:
+                    adjusted_temp = self._temperature_controller.apply_gradual_adjustment(
+                        current_setpoint,
+                        adjusted_temp,
+                    )
 
             # Check quiet mode suppression and learning probes
             if self._quiet_mode_controller and power_consumption is not None:
-                if current_setpoint is not None:
-                    hysteresis_learner = self._offset_engine._hysteresis_learner
+                if current_setpoint is not None and hysteresis_learner is not None:
                     progressive_setpoint = self._quiet_mode_controller.get_progressive_adjustment(
                         current_room_temp=room_temp,
                         current_setpoint=current_setpoint,
@@ -2045,6 +2176,22 @@ class SmartClimateEntity(ClimateEntity):
                             current_setpoint, adjusted_temp, reason
                         )
                         return  # Don't send to AC
+            should_suppress_idle_safe, idle_safe_reason = self._should_suppress_idle_safe_setpoint_change(
+                current_room_temp=room_temp,
+                current_setpoint=current_setpoint,
+                new_setpoint=adjusted_temp,
+                power_consumption=power_consumption,
+                hvac_mode=self.hvac_mode,
+                hysteresis_learner=hysteresis_learner,
+            )
+            if should_suppress_idle_safe:
+                _LOGGER.info(
+                    "No-beep suppression: skipped wrapped setpoint command %.1f°C -> %.1f°C - %s",
+                    current_setpoint,
+                    adjusted_temp,
+                    idle_safe_reason,
+                )
+                return
             
             # Send adjusted temperature to wrapped entity
             await self._temperature_controller.send_temperature_command(

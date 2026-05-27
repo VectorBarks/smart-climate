@@ -249,6 +249,147 @@ async def test_smart_climate_limits_normal_setpoint_changes_by_gradual_rate():
 
 
 @pytest.mark.asyncio
+async def test_smart_climate_bypasses_gradual_step_when_idle_compressor_needs_start_kick():
+    hass = create_mock_hass()
+    hass.data = {}
+    hass.states.set(
+        "climate.argo",
+        create_mock_state(
+            HVACMode.COOL,
+            {
+                "temperature": 28.0,
+                "current_temperature": 28.0,
+                "hvac_modes": [HVACMode.OFF, HVACMode.COOL],
+            },
+            entity_id="climate.argo",
+        ),
+    )
+
+    learner = HysteresisLearner(min_samples=2)
+    for setpoint in (24.0, 25.0):
+        learner.record_transition("start", setpoint + 0.6, ac_setpoint_after=setpoint)
+        learner.record_transition("stop", setpoint - 0.4, ac_setpoint_after=setpoint)
+
+    offset_engine = Mock()
+    offset_engine._hysteresis_learner = learner
+    offset_engine.calculate_offset.return_value = OffsetResult(
+        offset=0.0,
+        clamped=False,
+        reason="test",
+        confidence=1.0,
+    )
+    offset_engine._enable_learning = False
+
+    sensor_manager = create_mock_sensor_manager()
+    sensor_manager.get_room_temperature.return_value = 23.9
+    sensor_manager.get_outdoor_temperature.return_value = None
+    sensor_manager.get_power_consumption.return_value = 15.0
+
+    mode_manager = create_mock_mode_manager()
+    mode_manager.current_mode = "none"
+    mode_manager.get_adjustments.return_value = ModeAdjustments(
+        temperature_override=None,
+        offset_adjustment=0.0,
+        update_interval_override=None,
+        boost_offset=0.0,
+    )
+
+    temperature_controller = create_mock_temperature_controller()
+    temperature_controller.apply_offset_and_limits.return_value = 23.2
+    temperature_controller.apply_gradual_adjustment.return_value = 27.5
+    temperature_controller.send_temperature_command = AsyncMock()
+
+    entity = SmartClimateEntity(
+        hass=hass,
+        config={"name": "Smart Argo", "power_sensor": "sensor.argo_power"},
+        wrapped_entity_id="climate.argo",
+        room_sensor_id="sensor.room_temp",
+        offset_engine=offset_engine,
+        sensor_manager=sensor_manager,
+        mode_manager=mode_manager,
+        temperature_controller=temperature_controller,
+        coordinator=create_mock_coordinator(),
+    )
+
+    await entity._apply_temperature_with_offset(23.5)
+
+    temperature_controller.apply_gradual_adjustment.assert_not_called()
+    temperature_controller.send_temperature_command.assert_awaited_once_with(
+        "climate.argo",
+        23.2,
+    )
+
+
+@pytest.mark.asyncio
+async def test_smart_climate_suppresses_idle_higher_setpoint_even_when_quiet_mode_disabled():
+    hass = create_mock_hass()
+    hass.data = {}
+    hass.states.set(
+        "climate.argo",
+        create_mock_state(
+            HVACMode.COOL,
+            {
+                "temperature": 26.0,
+                "current_temperature": 28.0,
+                "hvac_modes": [HVACMode.OFF, HVACMode.COOL],
+            },
+            entity_id="climate.argo",
+        ),
+    )
+
+    offset_engine = Mock()
+    offset_engine._hysteresis_learner = HysteresisLearner()
+    offset_engine.calculate_offset.return_value = OffsetResult(
+        offset=0.0,
+        clamped=False,
+        reason="test",
+        confidence=1.0,
+    )
+    offset_engine._enable_learning = False
+
+    sensor_manager = create_mock_sensor_manager()
+    sensor_manager.get_room_temperature.return_value = 23.9
+    sensor_manager.get_outdoor_temperature.return_value = None
+    sensor_manager.get_power_consumption.return_value = 15.0
+
+    mode_manager = create_mock_mode_manager()
+    mode_manager.current_mode = "none"
+    mode_manager.get_adjustments.return_value = ModeAdjustments(
+        temperature_override=None,
+        offset_adjustment=0.0,
+        update_interval_override=None,
+        boost_offset=0.0,
+    )
+
+    temperature_controller = create_mock_temperature_controller()
+    temperature_controller.apply_offset_and_limits.return_value = 27.0
+    temperature_controller.apply_gradual_adjustment.return_value = 26.5
+    temperature_controller.send_temperature_command = AsyncMock()
+
+    entity = SmartClimateEntity(
+        hass=hass,
+        config={
+            "name": "Smart Argo",
+            "power_sensor": "sensor.argo_power",
+            "quiet_mode_enabled": False,
+        },
+        wrapped_entity_id="climate.argo",
+        room_sensor_id="sensor.room_temp",
+        offset_engine=offset_engine,
+        sensor_manager=sensor_manager,
+        mode_manager=mode_manager,
+        temperature_controller=temperature_controller,
+        coordinator=create_mock_coordinator(),
+    )
+
+    await entity.async_set_temperature(temperature=27.0)
+
+    temperature_controller.apply_gradual_adjustment.assert_called_once_with(26.0, 27.0)
+    temperature_controller.send_temperature_command.assert_not_awaited()
+    assert entity._attr_target_temperature == 27.0
+
+
+@pytest.mark.asyncio
 async def test_smart_climate_keeps_normal_stepping_when_compressor_is_active():
     hass = create_mock_hass()
     hass.data = {}

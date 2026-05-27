@@ -105,6 +105,7 @@ class TestThermalCoordinatorPhase2:
         """Mock ThermalManager."""
         manager = Mock(spec=ThermalManager)
         manager.current_state = ThermalState.PRIMING
+        manager._setpoint = 24.0
         manager.get_operating_window.return_value = (22.5, 25.5)
         manager.should_ac_run.return_value = True
         manager.get_learning_target.return_value = 24.0
@@ -174,7 +175,7 @@ class TestThermalCoordinatorPhase2:
         assert hasattr(coordinator, '_cycle_monitor')
         assert hasattr(coordinator, '_comfort_band_controller')
         assert hasattr(coordinator, '_thermal_manager')
-        assert coordinator._thermal_manager is not None
+        assert coordinator._thermal_manager is None  # Shared manager is resolved from hass.data at runtime
 
     # Test 2: ThermalManager not initialized when disabled
     def test_thermal_manager_not_initialized_when_disabled(
@@ -234,6 +235,51 @@ class TestThermalCoordinatorPhase2:
         assert 'thermal_window' in kwargs
         assert kwargs['thermal_window'] == thermal_window
 
+    @pytest.mark.asyncio
+    async def test_coordinator_uses_smart_climate_target_for_thermal_window(
+        self,
+        coordinator_with_thermal_manager,
+        mock_hass,
+        mock_sensor_manager,
+        mock_thermal_manager,
+    ):
+        """Thermal state checks must use Smart Climate target, not room temp."""
+        coordinator_with_thermal_manager._entity_id = "climate.smart_test"
+        coordinator_with_thermal_manager.get_thermal_manager = Mock(return_value=mock_thermal_manager)
+        mock_sensor_manager.get_room_temperature.return_value = 24.1
+        mock_sensor_manager.get_outdoor_temperature.return_value = 28.0
+        mock_sensor_manager.get_power_consumption.return_value = 17.0
+
+        smart_state = Mock()
+        smart_state.state = "cool"
+        smart_state.attributes = {"temperature": 23.5}
+        wrapped_state = Mock()
+        wrapped_state.state = "cool"
+        wrapped_state.attributes = {"current_temperature": 24.0, "hvac_action": "idle"}
+
+        def get_state(entity_id):
+            if entity_id == "climate.smart_test":
+                return smart_state
+            if entity_id == "climate.test_ac":
+                return wrapped_state
+            return None
+
+        mock_hass.states.get.side_effect = get_state
+
+        await coordinator_with_thermal_manager._async_update_data()
+
+        mock_thermal_manager.update_state.assert_called_with(
+            current_temp=24.1,
+            outdoor_temp=28.0,
+            hvac_mode="cool",
+            setpoint=23.5,
+        )
+        mock_thermal_manager.get_operating_window.assert_called_with(
+            setpoint=23.5,
+            outdoor_temp=28.0,
+            hvac_mode="cool",
+        )
+
     # Test 6: Learning Target Calculation and Usage
     @pytest.mark.asyncio
     async def test_learning_target_calculation_and_usage(self, coordinator_with_thermal_manager, mock_offset_engine, mock_thermal_manager):
@@ -246,8 +292,8 @@ class TestThermalCoordinatorPhase2:
         
         # Verify get_learning_target was called with current temp and window
         mock_thermal_manager.get_learning_target.assert_called_once()
-        call_args = mock_thermal_manager.get_learning_target.call_args[0]
-        assert len(call_args) == 2  # current_temp, window
+        _, kwargs = mock_thermal_manager.get_learning_target.call_args
+        assert kwargs == {"current": 24.0, "window": (22.5, 25.5)}
 
     # Test 7: State Persistence Across Updates
     @pytest.mark.asyncio
@@ -373,16 +419,15 @@ class TestThermalCoordinatorPhase2:
         assert data.learning_target == boundary_target
         assert data.thermal_state == ThermalState.CORRECTING.value
 
-    # Test 16: Other States Don't Affect Learning
+    # Test 16: PRIMING Pauses Learning
     @pytest.mark.asyncio
-    async def test_other_states_dont_affect_learning(self, coordinator_with_thermal_manager, mock_offset_engine, mock_thermal_manager):
-        """Test that states other than DRIFTING/CORRECTING don't change learning state."""
+    async def test_priming_state_pauses_learning(self, coordinator_with_thermal_manager, mock_offset_engine, mock_thermal_manager):
+        """Test that PRIMING pauses offset learning while baseline data is gathered."""
         mock_thermal_manager.current_state = ThermalState.PRIMING
         
         await coordinator_with_thermal_manager._async_update_data()
         
-        # Verify neither pause nor resume was called
-        mock_offset_engine.pause_learning.assert_not_called()
+        mock_offset_engine.pause_learning.assert_called_once()
         mock_offset_engine.resume_learning.assert_not_called()
 
     # Test 17: Error Handling in State Logic

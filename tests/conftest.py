@@ -149,7 +149,17 @@ class MockDeviceInfo(dict):
         super().__init__(**kwargs)
 
 class MockDataUpdateCoordinator:
-    pass
+    def __init__(self, *args, **kwargs):
+        self.hass = args[0] if args else kwargs.get("hass")
+        self.logger = args[1] if len(args) > 1 else kwargs.get("logger")
+        self.name = kwargs.get("name")
+        self.update_interval = kwargs.get("update_interval")
+        self.data = None
+        self.last_update_success = True
+
+    @classmethod
+    def __class_getitem__(cls, item):
+        return cls
 
 class MockUpdateFailed(Exception):
     pass
